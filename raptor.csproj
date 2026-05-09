@@ -6,5 +6,15 @@
     <Nullable>enable</Nullable>
     <LangVersion>12</LangVersion>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!--
+      The default .NET SDK glob compiles every *.cs under the project root.
+      Exclude:
+        tests/**  — has its own RaptorTests.csproj with xUnit/FsCheck refs.
+                    Compiling those files into the game assembly fails to
+                    find xunit/Fact types.
+        .godot/** — Godot editor scratch dir; regenerates AssemblyInfo.cs
+                    that duplicates the one MSBuild auto-generates.
+    -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);.godot/**;tests/**</DefaultItemExcludes>
   </PropertyGroup>
 </Project>
