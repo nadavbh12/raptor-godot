@@ -11,6 +11,10 @@ run/main_scene="res://scenes/Main.tscn"
 config/features=PackedStringArray("4.3", "C#", "Compatibility")
 config/icon="res://icon.svg"
 
+[autoload]
+
+SimClock="*res://src/Sim/SimClock.cs"
+
 [dotnet]
 
 project/assembly_name="Raptor"

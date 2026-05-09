@@ -1,0 +1,8 @@
+[gd_scene load_steps=2 format=3 uid="uid://main_scene"]
+
+[node name="Main" type="Node2D"]
+
+[node name="Label" type="Label" parent="."]
+offset_left = 100.0
+offset_top = 80.0
+text = "Raptor — Godot 4 + C#"
