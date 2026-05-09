@@ -1,0 +1,23 @@
+; Engine configuration file.
+
+config_version=5
+
+[application]
+
+config/name="Raptor"
+run/main_scene="res://scenes/Main.tscn"
+config/features=PackedStringArray("4.3", "C#", "Forward Plus")
+config/icon="res://icon.svg"
+
+[dotnet]
+
+project/assembly_name="Raptor"
+
+[physics]
+
+common/physics_ticks_per_second=70
+common/max_physics_steps_per_frame=8
+
+[rendering]
+
+textures/canvas_textures/default_texture_filter=0

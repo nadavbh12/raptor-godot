@@ -1,0 +1,32 @@
+# Godot 4 .NET ignores
+.godot/
+.import/
+build/
+*.csproj.user
+*.cs.uid
+
+# .NET
+bin/
+obj/
+*.dll.config
+
+# IDE
+.idea/
+.vs/
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test artifacts
+tests/parity_runs/        # transient comparator outputs
+tests/screenshots/        # transient L7 screenshots
+tests/.fsharp/
+
+# Held-out test materials never enter Git in a sealed scenario; for now we
+# DO commit the held-out scripts and goldens (per spec §13a accepted risk),
+# but keep this rule documented for future hardening:
+# tests/scripts/holdout/
+# tests/parity/scripts/holdout/
+# tests/parity/seeds/holdout/
