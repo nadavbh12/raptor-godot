@@ -4,7 +4,11 @@
 # - No `_process` (only `_PhysicsProcess`)
 # - No engine RNG (use the explicit RandomNumberGenerator instance)
 # - No wall-clock time
-# Exit non-zero on violation; whitelist via inline `// LINT-OK: <reason>`.
+# Exit non-zero on violation; whitelist a specific line via the EXACT
+# uppercase token `LINT-OK` in a comment on that line, e.g.
+#   var t = Time.GetTicksMsec();  // LINT-OK: render-only profiling.
+# The marker is case-sensitive — `lint-ok` is rejected on purpose so a
+# casual lowercase mention can't bypass the lint.
 
 set -euo pipefail
 
