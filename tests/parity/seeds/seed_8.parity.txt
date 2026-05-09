@@ -1,0 +1,9 @@
+{"fc":210,"win":"MISSION_1","player_x":144,"player_y":160,"score":10000,"shield":75,"enemies":3,"pbullets":0,"ebullets":0,"obj_hash":"4445527f98b766af"}
+{"fc":420,"win":"MISSION_1","player_x":144,"player_y":160,"score":10000,"shield":75,"enemies":6,"pbullets":0,"ebullets":3,"obj_hash":"4445527f98b766af"}
+{"fc":630,"win":"MISSION_1","player_x":144,"player_y":160,"score":10350,"shield":62,"enemies":8,"pbullets":0,"ebullets":1,"obj_hash":"44459d7f98b7e620"}
+{"fc":840,"win":"MISSION_1","player_x":144,"player_y":160,"score":10350,"shield":61,"enemies":7,"pbullets":0,"ebullets":5,"obj_hash":"4445a07f98b7eb39"}
+{"fc":1050,"win":"MISSION_1","player_x":144,"player_y":160,"score":10700,"shield":52,"enemies":8,"pbullets":0,"ebullets":1,"obj_hash":"4445a77f98b7f71e"}
+{"fc":1260,"win":"MISSION_1","player_x":144,"player_y":160,"score":11050,"shield":40,"enemies":8,"pbullets":0,"ebullets":5,"obj_hash":"4445b37f98b80b82"}
+{"fc":1470,"win":"MISSION_1","player_x":144,"player_y":160,"score":11400,"shield":31,"enemies":6,"pbullets":0,"ebullets":4,"obj_hash":"44457e7f98b7b173"}
+{"fc":1680,"win":"MISSION_1","player_x":144,"player_y":160,"score":11400,"shield":26,"enemies":6,"pbullets":0,"ebullets":8,"obj_hash":"4445817f98b7b68c"}
+{"fc":1890,"win":"MISSION_1","player_x":144,"player_y":160,"score":11750,"shield":19,"enemies":4,"pbullets":0,"ebullets":4,"obj_hash":"44458a7f98b7c5d7"}

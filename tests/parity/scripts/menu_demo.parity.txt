@@ -1,0 +1,2 @@
+{"fc":6459460,"win":"UNKNOWN","player_x":133,"player_y":149,"score":10000,"shield":100,"enemies":4,"pbullets":0,"ebullets":0,"obj_hash":"5e79d88f800a65c6"}
+{"fc":6459670,"win":"UNKNOWN","player_x":111,"player_y":140,"score":10000,"shield":100,"enemies":8,"pbullets":35,"ebullets":2,"obj_hash":"5e79d88f800a65c6"}
