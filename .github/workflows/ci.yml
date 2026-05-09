@@ -1,0 +1,17 @@
+name: CI
+on: [push, pull_request]
+jobs:
+  lint-and-test:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Lint sim discipline
+        run: bash scripts/lint_sim.sh
+      - name: Build project
+        run: dotnet build raptor.csproj
+      - name: Run xUnit tests
+        run: dotnet test tests/RaptorTests.csproj --logger "console;verbosity=normal"
