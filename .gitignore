@@ -3,7 +3,9 @@
 .import/
 build/
 *.csproj.user
-*.cs.uid
+# Match all UID sidecars (Godot 4 emits them for scripts and may emit for
+# scenes/resources in future minor versions).
+*.uid
 
 # .NET
 bin/
