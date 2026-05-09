@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "RaptorParityCheckpoint",
+  "type": "object",
+  "required": ["fc","win","player_x","player_y","score","shield",
+               "enemies","pbullets","ebullets","obj_hash"],
+  "properties": {
+    "fc":         {"type":"integer", "minimum":0},
+    "win":        {"enum":["MENU","BRIEFING","HANGAR","STORE","MISSION_1",
+                           "MISSION_2","MISSION_3","CREDITS","HELP","ORDER",
+                           "DEATH","LANDING","INTRO","UNKNOWN"]},
+    "player_x":   {"type":"integer", "minimum":0, "maximum":319},
+    "player_y":   {"type":"integer", "minimum":0, "maximum":199},
+    "score":      {"type":"integer", "minimum":0},
+    "shield":     {"type":"integer", "minimum":0, "maximum":100},
+    "enemies":    {"type":"integer", "minimum":0, "maximum":64},
+    "pbullets":   {"type":"integer", "minimum":0, "maximum":64},
+    "ebullets":   {"type":"integer", "minimum":0, "maximum":64},
+    "obj_hash":   {"type":"string", "pattern":"^[0-9a-f]{16}$"}
+  }
+}
