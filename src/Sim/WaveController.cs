@@ -500,14 +500,12 @@ public partial class WaveController : Node
         // Shield recharge (mirrors OBJS_Think in OBJECTS.C).
         // CHARGE_SHIELD = 96. Every 97 game loops, heal 1 shield.
         // Only on curplr_diff < DIFF_3 (we're DIFF_2 by default).
-        // Disabled temporarily to isolate bullet damage behavior.
-        // TODO: re-enable once bullet collision is tuned.
-        //_thinkCnt++;
-        //if (_thinkCnt > ChargeShield)
-        //{
-        //    _thinkCnt = 0;
-        //    PlayerLogic.Heal(1);
-        //}
+        _thinkCnt++;
+        if (_thinkCnt > ChargeShield)
+        {
+            _thinkCnt = 0;
+            PlayerLogic.Heal(1);
+        }
     }
 
     // ── Internal scheduler ────────────────────────────────────────────────────
