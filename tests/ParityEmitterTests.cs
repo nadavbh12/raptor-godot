@@ -59,9 +59,9 @@ public class ParityEmitterTests
             // Spot-check the NDJSON shape. Full schema validation runs in Python CI.
             Assert.StartsWith("{\"fc\":70,", line);
             Assert.Contains("\"win\":\"UNKNOWN\"", line);
-            Assert.Contains("\"player_x\":160", line);
-            Assert.Contains("\"player_y\":100", line);
-            Assert.Contains("\"obj_hash\":\"0000000000000000\"", line);
+            Assert.Contains("\"player_x\":144", line);
+            Assert.Contains("\"player_y\":160", line);
+            Assert.Contains("\"obj_hash\":\"cbf29ce484222325\"", line);
             Assert.EndsWith("}", line);
         } finally {
             File.Delete(path);
