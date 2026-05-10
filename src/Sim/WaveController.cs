@@ -85,18 +85,15 @@ public partial class WaveController : Node
     private int  _waveNum    = 1;
 
     // ── Game-loop rate throttle ──────────────────────────────────────────────
-    // The C game loop runs at ~23 Hz: it waits for 3 framecount increments
-    // before each iteration (`while (FRAME_COUNT - local_cnt < 3) legacy_pump();`
-    // in RAP.C). Our Godot physics ticks at 70 Hz. Matching cadence means
-    // advancing sim logic every 3rd physics tick.
-    //
-    // Visual diff with C dosraptor frame dumps confirmed enemies at MISSION_1
-    // fc=350 had moved ~60 px less in Godot with divisor=4 — exactly the gap
-    // a 4-vs-3 game-tick rate predicts. Switching to 3 aligns enemy positions
-    // with the C version even though pass rate temporarily dips on other
-    // (unrelated) divergences that were masked by the slower cadence.
+    // The C game loop's `while (FRAME_COUNT - local_cnt < 3) legacy_pump();`
+    // sets a *minimum* of 3 PIT frames per iteration, but the body work is
+    // non-trivial so the steady-state effective period is ~4 frames. Score-
+    // milestone analysis (C first body-crash kill at MISSION_1 fc=630, the
+    // exact frame Godot d=4 also reaches it) is the strongest signal that
+    // 4 is the right value. d=3 advances 33% too fast and kills land 140 fc
+    // early; d=4 hits each kill timestamp on the nose for the first wave.
     private int _subTick = 0;
-    private const int GameLoopPhysicsTicksPerStep = 3;
+    private const int GameLoopPhysicsTicksPerStep = 4;
 
     // ── Player ────────────────────────────────────────────────────────────────
     public  PlayerLogic  PlayerLogic { get; } = new();
