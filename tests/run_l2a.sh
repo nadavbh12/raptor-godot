@@ -74,9 +74,11 @@ echo "[run_l2a] building..."
 dotnet build "$REPO/raptor.csproj" --nologo --verbosity quiet 2>&1
 
 # Calculate max frames: allow enough for the script plus a generous buffer.
-# credits.txt total: wait 60 + (key+wait)x4 + key + wait 200 + key + wait 100 = ~385 frames.
-# Add buffer: 1000 frames. At 70fps fast mode, this finishes in under a second.
-MAX_FRAMES=2000
+# credits.txt total: wait 60 + (key+wait)x4 + key + wait 200 + key + wait 100 = ~385 sim frames.
+# mission_start.txt total: ~4200 sim frames (enters Do_Game, 28s of gameplay).
+# In fast mode (MaxPhysicsStepsPerFrame=256), display-frame to sim-frame ratio is ~1.7:1.
+# 4200 sim frames × 1.7 + buffer = ~20000 display frames (safe upper bound for all scripts).
+MAX_FRAMES=20000
 
 echo "[run_l2a] running godot..."
 RAPTOR_PLAYTHROUGH="$SCRIPT" \

@@ -71,7 +71,13 @@ public partial class PlaythroughDriver : Node
             GD.Print($"PlaythroughDriver: dump {label} (stub)");
         };
 
-        _pt.OnQuit = () => GetTree().Quit();
+        _pt.OnQuit = () =>
+        {
+            // Signal the emitter to close immediately, matching the C version's
+            // exit(0) which terminates without emitting any further checkpoints.
+            _emitter?.SignalQuit();
+            GetTree().Quit();
+        };
 
         // Notify the playthrough that the menu is ready immediately.
         // In the C version this fires when WIN_MainMenu calls raptor_playthrough_menu_ready()
