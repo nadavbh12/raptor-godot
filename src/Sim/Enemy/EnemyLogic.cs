@@ -330,21 +330,23 @@ public sealed class EnemyLogic
             case EshotType.ES_ATPLAYER:
             default:
                 // Aimed at player: speed starts at 1, accelerates to 6.
-                // Direction is normalised toward (playerX, playerY).
+                // Direction is the normalized vector toward (playerX, playerY).
+                // Pass float components so sub-integer aim doesn't collapse to
+                // cardinal directions (which would make bullets miss whenever
+                // |dx/dist| < 0.5 — most common at typical engagement distances).
                 {
                     int ddx = playerX - sx;
                     int ddy = playerY - sy;
                     double dist = Math.Sqrt((double)(ddx * ddx + ddy * ddy));
-                    int vx = 0, vy = 1;
+                    float vx = 0f, vy = 1f;
                     if (dist > 0)
                     {
-                        vx = (int)Math.Round(ddx / dist);
-                        vy = (int)Math.Round(ddy / dist);
-                        if (vx == 0 && vy == 0) vy = 1;
+                        vx = (float)(ddx / dist);
+                        vy = (float)(ddy / dist);
                     }
                     int dmg = (shootType == (int)EshotType.ES_ATPLAYER) ? HitsAtPlay : HitsNormal;
                     return new BulletLogic(BulletKind.Enemy, sx, sy,
-                        dx: vx, dy: vy, initSpeed: 1, maxSpeed: 6, damage: dmg);
+                        dx: vx, dy: vy, initSpeed: 1, maxSpeed: 6, accelerating: true, damage: dmg);
                 }
         }
     }

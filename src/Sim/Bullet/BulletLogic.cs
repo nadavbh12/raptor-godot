@@ -30,10 +30,14 @@ public sealed class BulletLogic
     /// </summary>
     public int Damage { get; }
 
-    // Direction unit vector (for axis-aligned bullets: exactly -1, 0, or +1 per axis).
-    // For diagonal bullets, these are the fixed per-tick deltas (not unit vectors).
-    private readonly int _dx;  // horizontal step per speed-unit
-    private readonly int _dy;  // vertical step per speed-unit
+    // Per-tick velocity. Stored as float so ATPLAYER aim doesn't collapse to
+    // cardinal directions when the unit vector has |component| < 0.5.
+    // Position is exposed as int (matches C, parity-affecting); the float
+    // accumulator is private state.
+    private readonly float _dx;
+    private readonly float _dy;
+    private float _fx;  // sub-pixel accumulator for X
+    private float _fy;  // sub-pixel accumulator for Y
 
     // Speed model: speed starts at _curSpeed, increments by 1 per Tick to _maxSpeed.
     private int  _curSpeed;
@@ -47,15 +51,8 @@ public sealed class BulletLogic
     /// Used for diagonal bullets (ANGLELEFT, ANGLERIGHT, MISSILE) or simple bullets.
     /// </summary>
     public BulletLogic(BulletKind kind, int x, int y, int velX, int velY, int damage = 2)
+        : this(kind, x, y, (float)velX, (float)velY, initSpeed: 1, maxSpeed: 1, accelerating: false, damage)
     {
-        Kind = kind;
-        X = x; Y = y;
-        _dx = velX;
-        _dy = velY;
-        _curSpeed = 1;
-        _maxSpeed = 1;
-        _accelerating = false;
-        Damage = damage;
     }
 
     /// <summary>
@@ -64,22 +61,35 @@ public sealed class BulletLogic
     /// increases by 1 per tick up to maxSpeed.
     /// </summary>
     public BulletLogic(BulletKind kind, int x, int y, int dx, int dy, int initSpeed, int maxSpeed, int damage = 2)
+        : this(kind, x, y, (float)dx, (float)dy, initSpeed, maxSpeed, accelerating: true, damage)
+    {
+    }
+
+    /// <summary>
+    /// Create a bullet with float per-axis velocity (used for ATPLAYER aim
+    /// where dx/dy is a normalized unit vector with sub-integer components).
+    /// </summary>
+    public BulletLogic(BulletKind kind, int x, int y, float dx, float dy,
+                       int initSpeed, int maxSpeed, bool accelerating, int damage = 2)
     {
         Kind = kind;
         X = x; Y = y;
+        _fx = x; _fy = y;
         _dx = dx;
         _dy = dy;
         _curSpeed = initSpeed;
         _maxSpeed = maxSpeed;
-        _accelerating = true;
+        _accelerating = accelerating;
         Damage = damage;
     }
 
     public void Tick()
     {
         if (!Alive) return;
-        X += _dx * _curSpeed;
-        Y += _dy * _curSpeed;
+        _fx += _dx * _curSpeed;
+        _fy += _dy * _curSpeed;
+        X = (int)_fx;
+        Y = (int)_fy;
         if (_accelerating && _curSpeed < _maxSpeed)
             _curSpeed++;
         // C ESHOT_Think: doneflag when y >= 200 or y < 0 or x >= 320 or x < 0.
