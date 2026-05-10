@@ -19,6 +19,15 @@ SimClock="*res://src/Sim/SimClock.cs"
 
 project/assembly_name="Raptor"
 
+[display]
+
+window/size/viewport_width=320
+window/size/viewport_height=200
+window/stretch/mode="canvas_items"
+window/stretch/aspect="keep"
+window/size/window_width_override=1280
+window/size/window_height_override=800
+
 [physics]
 
 common/physics_ticks_per_second=70

@@ -146,6 +146,11 @@ public partial class WaveController : Node
     private readonly List<BulletLogic>  _playerBullets = new();
     private readonly List<BulletLogic>  _enemyBullets  = new();
 
+    // Read-only accessors for debug rendering only — not parity-affecting.
+    public IReadOnlyList<EnemyLogic>  GetEnemies()       => _enemies;
+    public IReadOnlyList<BulletLogic> GetEnemyBullets()  => _enemyBullets;
+    public IReadOnlyList<BulletLogic> GetPlayerBullets() => _playerBullets;
+
     // ── Collision scratch ─────────────────────────────────────────────────────
     private readonly List<(EnemyLogic enemy, int dmg)> _hitEnemies = new();
     private bool _playerHit;
