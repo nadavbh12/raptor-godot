@@ -67,7 +67,7 @@ public class MenuStateMachineTests
         Assert.Equal(100 + MenuStateMachine.CreditsFadeFrames, m.StateEnteredFrame);
     }
 
-    [Fact]
+    [Fact(Skip = "Stale: dates from menu-only stage when only CREDITS was wired. NEW now correctly transitions to BRIEFING (Stage 5b). L2a tests verify menu transitions against C goldens.")]
     public void Return_on_non_credits_item_stays_in_Menu()
     {
         var m = new MenuStateMachine();
