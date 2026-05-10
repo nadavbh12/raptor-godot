@@ -1,6 +1,8 @@
-[gd_scene load_steps=3 format=3 uid="uid://main_scene"]
+[gd_scene load_steps=5 format=3 uid="uid://main_scene"]
 
 [ext_resource type="Script" path="res://src/Test/ParityEmitter.cs" id="1_parity"]
+[ext_resource type="Script" path="res://src/Sim/MenuController.cs" id="2_menu"]
+[ext_resource type="Script" path="res://src/Test/PlaythroughDriver.cs" id="3_playthrough"]
 
 [node name="Main" type="Node2D"]
 
@@ -8,6 +10,12 @@
 offset_left = 100.0
 offset_top = 80.0
 text = "Raptor — Godot 4 + C#"
+
+[node name="MenuController" type="Node" parent="."]
+script = ExtResource("2_menu")
+
+[node name="PlaythroughDriver" type="Node" parent="."]
+script = ExtResource("3_playthrough")
 
 [node name="ParityEmitter" type="Node" parent="."]
 script = ExtResource("1_parity")
