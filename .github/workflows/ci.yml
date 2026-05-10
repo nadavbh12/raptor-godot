@@ -15,3 +15,5 @@ jobs:
         run: dotnet build raptor.csproj
       - name: Run xUnit tests
         run: dotnet test tests/RaptorTests.csproj --logger "console;verbosity=normal"
+      - name: Parity smoke (skipped on CI runners without Godot)
+        run: bash tests/run_parity_smoke.sh
