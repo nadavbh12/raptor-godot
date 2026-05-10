@@ -3,11 +3,33 @@
     <TargetFramework>net8.0</TargetFramework>
     <IsPackable>false</IsPackable>
     <Nullable>enable</Nullable>
+    <!--
+      Exclude .godot scratch dir (mirrors raptor.csproj exclusion).
+      Compile includes below pull only the sim source files we need.
+    -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);.godot/**</DefaultItemExcludes>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.10.0" />
     <PackageReference Include="xunit" Version="2.9.0" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
     <PackageReference Include="FsCheck.Xunit" Version="3.0.0" />
+  </ItemGroup>
+  <!--
+    We reference the pre-built game DLL and GodotSharp directly rather
+    than using a ProjectReference to raptor.csproj. A ProjectReference
+    would pull in the Godot.NET.Sdk which requires the Godot editor build
+    pipeline; a DLL reference keeps dotnet test self-contained.
+    Build raptor first via: dotnet build raptor.csproj (or via Godot headless).
+
+    The DLL paths are relative to this .csproj file (tests/).
+  -->
+  <ItemGroup>
+    <Reference Include="raptor">
+      <HintPath>../.godot/mono/temp/bin/Debug/raptor.dll</HintPath>
+    </Reference>
+    <Reference Include="GodotSharp">
+      <HintPath>../.godot/mono/temp/bin/Debug/GodotSharp.dll</HintPath>
+    </Reference>
   </ItemGroup>
 </Project>
