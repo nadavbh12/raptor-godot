@@ -24,8 +24,11 @@ public partial class SimClock : Node
         }
     }
 
-    public override void _PhysicsProcess(double _)
-    {
-        Frame++;
-    }
+    public override void _PhysicsProcess(double _) { Tick(); }
+
+    /// <summary>Increments Frame by one. Called by _PhysicsProcess; also callable from tests.</summary>
+    internal static void Tick() { Frame++; }
+
+    /// <summary>Resets Frame to 0. Test-only; never call from game code.</summary>
+    internal static void ResetForTest() { Frame = 0; }
 }

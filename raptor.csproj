@@ -17,4 +17,9 @@
     -->
     <DefaultItemExcludes>$(DefaultItemExcludes);.godot/**;tests/**</DefaultItemExcludes>
   </PropertyGroup>
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>RaptorTests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
 </Project>
