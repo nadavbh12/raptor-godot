@@ -1,2 +1,7 @@
-{"fc":6459460,"win":"UNKNOWN","player_x":133,"player_y":149,"score":10000,"shield":100,"enemies":4,"pbullets":0,"ebullets":0,"obj_hash":"5e79d88f800a65c6"}
-{"fc":6459670,"win":"UNKNOWN","player_x":111,"player_y":140,"score":10000,"shield":100,"enemies":8,"pbullets":35,"ebullets":2,"obj_hash":"5e79d88f800a65c6"}
+{"fc":0,"win":"MENU","player_x":144,"player_y":160,"score":0,"shield":0,"enemies":0,"pbullets":0,"ebullets":0,"obj_hash":"cbf29ce484222325"}
+{"fc":140,"win":"MENU","player_x":142,"player_y":158,"score":10000,"shield":100,"enemies":4,"pbullets":0,"ebullets":0,"obj_hash":"5e79d88f800a65c6"}
+{"fc":280,"win":"MENU","player_x":140,"player_y":156,"score":10000,"shield":100,"enemies":4,"pbullets":0,"ebullets":0,"obj_hash":"5e79d88f800a65c6"}
+{"fc":350,"win":"MENU","player_x":147,"player_y":141,"score":10000,"shield":100,"enemies":4,"pbullets":0,"ebullets":0,"obj_hash":"5e79d88f800a65c6"}
+{"fc":420,"win":"MENU","player_x":160,"player_y":141,"score":10000,"shield":100,"enemies":4,"pbullets":0,"ebullets":0,"obj_hash":"5e79d88f800a65c6"}
+{"fc":490,"win":"MENU","player_x":125,"player_y":141,"score":10000,"shield":100,"enemies":8,"pbullets":25,"ebullets":0,"obj_hash":"5e79d88f800a65c6"}
+{"fc":560,"win":"MENU","player_x":43,"player_y":141,"score":10700,"shield":100,"enemies":6,"pbullets":25,"ebullets":3,"obj_hash":"5e79d88f800a65c6"}

@@ -1,0 +1,6 @@
+{"fc":0,"win":"MENU","player_x":144,"player_y":160,"score":0,"shield":0,"enemies":0,"pbullets":0,"ebullets":0,"obj_hash":"cbf29ce484222325"}
+{"fc":70,"win":"MENU","player_x":144,"player_y":160,"score":0,"shield":0,"enemies":0,"pbullets":0,"ebullets":0,"obj_hash":"cbf29ce484222325"}
+{"fc":140,"win":"MENU","player_x":144,"player_y":160,"score":0,"shield":0,"enemies":0,"pbullets":0,"ebullets":0,"obj_hash":"cbf29ce484222325"}
+{"fc":210,"win":"MENU","player_x":144,"player_y":160,"score":0,"shield":0,"enemies":0,"pbullets":0,"ebullets":0,"obj_hash":"cbf29ce484222325"}
+{"fc":280,"win":"MENU","player_x":144,"player_y":160,"score":0,"shield":0,"enemies":0,"pbullets":0,"ebullets":0,"obj_hash":"cbf29ce484222325"}
+{"fc":350,"win":"MENU","player_x":144,"player_y":160,"score":0,"shield":0,"enemies":0,"pbullets":0,"ebullets":0,"obj_hash":"cbf29ce484222325"}
