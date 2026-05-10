@@ -151,4 +151,146 @@ public class MenuStateMachineTests
         Assert.Equal("MISSION_2", WinState.Mission_2.ToParityString());
         Assert.Equal("MISSION_3", WinState.Mission_3.ToParityString());
     }
+
+    // -------------------------------------------------------------------------
+    // Stage 5a: F1 → HELP transition (help_f1 script)
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void F1_in_Menu_enters_Help_state()
+    {
+        var m = new MenuStateMachine();
+        m.EnterMenu(0);
+        bool transitioned = m.HandleInput("F1", 50);
+        Assert.True(transitioned);
+        Assert.Equal(WinState.Help, m.State);
+    }
+
+    [Fact]
+    public void F1_in_Menu_anchors_with_HelpFadeFrames_offset()
+    {
+        var m = new MenuStateMachine();
+        m.EnterMenu(0);
+        m.HandleInput("F1", 50);
+        Assert.Equal(50 + MenuStateMachine.HelpFadeFrames, m.StateEnteredFrame);
+    }
+
+    [Fact]
+    public void Return_in_Help_exits_to_Unknown()
+    {
+        var m = new MenuStateMachine();
+        m.EnterMenu(0);
+        m.HandleInput("F1", 50);
+        bool transitioned = m.HandleInput("Return", 120);
+        Assert.True(transitioned);
+        Assert.Equal(WinState.Unknown, m.State);
+    }
+
+    [Fact]
+    public void Escape_in_Help_exits_to_Unknown()
+    {
+        var m = new MenuStateMachine();
+        m.EnterMenu(0);
+        m.HandleInput("F1", 50);
+        bool transitioned = m.HandleInput("Escape", 120);
+        Assert.True(transitioned);
+        Assert.Equal(WinState.Unknown, m.State);
+    }
+
+    [Fact]
+    public void Help_anchor_unchanged_when_exiting_to_Unknown()
+    {
+        var m = new MenuStateMachine();
+        m.EnterMenu(0);
+        m.HandleInput("F1", 50);
+        int expectedAnchor = 50 + MenuStateMachine.HelpFadeFrames;
+        m.HandleInput("Return", 120);
+        // Anchor must not change on transition to Unknown.
+        Assert.Equal(expectedAnchor, m.StateEnteredFrame);
+    }
+
+    // -------------------------------------------------------------------------
+    // Stage 5a: ORDER item → HELP (order script)
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Three_Downs_from_zero_land_on_order_item()
+    {
+        var m = new MenuStateMachine();
+        m.EnterMenu(0);
+        m.HandleInput("Down", 0);
+        m.HandleInput("Down", 0);
+        m.HandleInput("Down", 0);
+        Assert.Equal(MenuStateMachine.OrderItemIndex, m.CurrentItem);
+    }
+
+    [Fact]
+    public void Return_on_order_item_enters_Help_state_not_Order()
+    {
+        var m = new MenuStateMachine();
+        m.EnterMenu(0);
+        for (int i = 0; i < MenuStateMachine.OrderItemIndex; i++)
+            m.HandleInput("Down", 0);
+        bool transitioned = m.HandleInput("Return", 80);
+        Assert.True(transitioned);
+        // C version calls HELP_Win(RAP1_TXT) for ORDER — win-state is HELP, not ORDER.
+        Assert.Equal(WinState.Help, m.State);
+    }
+
+    [Fact]
+    public void Return_on_order_item_anchors_with_HelpFadeFrames()
+    {
+        var m = new MenuStateMachine();
+        m.EnterMenu(0);
+        for (int i = 0; i < MenuStateMachine.OrderItemIndex; i++)
+            m.HandleInput("Down", 0);
+        m.HandleInput("Return", 80);
+        Assert.Equal(80 + MenuStateMachine.HelpFadeFrames, m.StateEnteredFrame);
+    }
+
+    // -------------------------------------------------------------------------
+    // Stage 5a: LOAD item → stays in MENU (load_mission script)
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void One_Down_from_zero_lands_on_load_item()
+    {
+        var m = new MenuStateMachine();
+        m.EnterMenu(0);
+        m.HandleInput("Down", 0);
+        Assert.Equal(MenuStateMachine.LoadItemIndex, m.CurrentItem);
+    }
+
+    [Fact]
+    public void Return_on_load_item_stays_in_Menu()
+    {
+        var m = new MenuStateMachine();
+        m.EnterMenu(0);
+        m.HandleInput("Down", 0);
+        bool transitioned = m.HandleInput("Return", 93);
+        Assert.False(transitioned);
+        Assert.Equal(WinState.Menu, m.State);
+    }
+
+    [Fact]
+    public void Return_on_load_item_keeps_Menu_anchor_unchanged()
+    {
+        var m = new MenuStateMachine();
+        m.EnterMenu(42);
+        m.HandleInput("Down", 0);
+        m.HandleInput("Return", 93);
+        // Anchor must remain at the EnterMenu anchor value.
+        Assert.Equal(42, m.StateEnteredFrame);
+    }
+
+    [Fact]
+    public void OnStateChanged_fires_on_F1_transition()
+    {
+        var m = new MenuStateMachine();
+        m.EnterMenu(0);
+        int fired = 0;
+        m.OnStateChanged += () => fired++;
+        m.HandleInput("F1", 50);
+        Assert.Equal(1, fired);
+    }
 }

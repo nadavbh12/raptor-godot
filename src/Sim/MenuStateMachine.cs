@@ -30,6 +30,9 @@ public sealed class MenuStateMachine
     // purposes we still wrap through it; the difference only matters on Return press.
     public const int ItemCount = 7;
     public const int CreditsItemIndex = 4;
+    public const int OrderItemIndex   = 3;
+    public const int LoadItemIndex    = 1;
+    public const int NewItemIndex     = 0;
 
     /// <summary>
     /// Simulated animation delay (in frames at 70 Hz) before CREDITS state is anchored.
@@ -44,6 +47,17 @@ public sealed class MenuStateMachine
     /// where key fired at fc=6584581. 6584651 - 6584581 = 70.
     /// </summary>
     public const int CreditsFadeFrames = 70;
+
+    /// <summary>
+    /// Simulated animation delay (in frames at 70 Hz) before HELP state is anchored.
+    /// In the C version, WIN_Help / WIN_Order call HELP_Win which calls
+    /// raptor_parity_set_win_state(3) immediately (no fade delay like Credits).
+    /// The anchor is set on the same tick as the key press so fc values are
+    /// anchored relative to that exact frame.
+    ///
+    /// Applies to: F1 key → HELP, ORDER item Return → HELP (C calls HELP_Win for RAP1_TXT).
+    /// </summary>
+    public const int HelpFadeFrames = 0;
 
     public WinState State { get; private set; } = WinState.Unknown;
 
@@ -95,6 +109,13 @@ public sealed class MenuStateMachine
                     CurrentItem = (CurrentItem - 1 + ItemCount) % ItemCount;
                     return false;
                 }
+                if (action == "F1")
+                {
+                    // F1 from menu → HELP screen. C calls HELP_Win which runs fades
+                    // before raptor_parity_set_win_state(3). Delay anchor by HelpFadeFrames.
+                    EnterState(WinState.Help, currentFrame + HelpFadeFrames, reAnchor: true);
+                    return true;
+                }
                 if (action == "Return")
                 {
                     if (CurrentItem == CreditsItemIndex)
@@ -105,7 +126,14 @@ public sealed class MenuStateMachine
                         EnterState(WinState.Credits, currentFrame + CreditsFadeFrames, reAnchor: true);
                         return true;
                     }
-                    // Other items: stub — no transition for Stage 4.
+                    if (CurrentItem == OrderItemIndex)
+                    {
+                        // ORDER item → C calls HELP_Win(RAP1_TXT) which emits HELP win-state
+                        // (not ORDER). Same fade delay as regular HELP.
+                        EnterState(WinState.Help, currentFrame + HelpFadeFrames, reAnchor: true);
+                        return true;
+                    }
+                    // LOAD, NEW, OPTS, QUIT, RETURN: stub — stay in MENU (no win-state change).
                     return false;
                 }
                 break;
@@ -118,6 +146,15 @@ public sealed class MenuStateMachine
                     // does NOT re-call set_win_state(1) because the menu is still open).
                     EnterState(WinState.Unknown, currentFrame, reAnchor: false);
                     // Cursor returns to where it was (Credits item stays highlighted).
+                    return true;
+                }
+                break;
+
+            case WinState.Help:
+                if (action == "Return" || action == "Escape")
+                {
+                    // Exit help → back to unknown, same pattern as Credits.
+                    EnterState(WinState.Unknown, currentFrame, reAnchor: false);
                     return true;
                 }
                 break;
