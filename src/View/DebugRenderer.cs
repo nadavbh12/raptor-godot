@@ -76,9 +76,13 @@ public partial class DebugRenderer : Node2D
     private void MaybeShoot()
     {
         if (string.IsNullOrEmpty(_shotDir)) return;
+        // Every simulated second by default; RAPTOR_SHOT_EVERY_SEC overrides.
+        int interval = 1;
+        var iv = OS.GetEnvironment("RAPTOR_SHOT_EVERY_SEC");
+        if (!string.IsNullOrEmpty(iv) && int.TryParse(iv, out var n) && n > 0) interval = n;
         int sec = SimClock.Frame / 70;
-        if (sec == _lastShotSec) return;
-        _lastShotSec = sec;
+        if (sec / interval == _lastShotSec) return;
+        _lastShotSec = sec / interval;
         CallDeferred(nameof(WriteShot), sec, SimClock.Frame);
     }
 

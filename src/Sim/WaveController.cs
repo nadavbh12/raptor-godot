@@ -86,15 +86,17 @@ public partial class WaveController : Node
 
     // ── Game-loop rate throttle ──────────────────────────────────────────────
     // The C game loop runs at ~23 Hz: it waits for 3 framecount increments
-    // before each iteration (RAPTOR_TEST_DETERMINISTIC mode, 70 Hz timer).
-    // Our Godot physics ticks at 70 Hz.  To match countdown/movement/bullet
-    // cadence we only advance sim logic every 3rd physics tick.
+    // before each iteration (`while (FRAME_COUNT - local_cnt < 3) legacy_pump();`
+    // in RAP.C). Our Godot physics ticks at 70 Hz. Matching cadence means
+    // advancing sim logic every 3rd physics tick.
+    //
+    // Visual diff with C dosraptor frame dumps confirmed enemies at MISSION_1
+    // fc=350 had moved ~60 px less in Godot with divisor=4 — exactly the gap
+    // a 4-vs-3 game-tick rate predicts. Switching to 3 aligns enemy positions
+    // with the C version even though pass rate temporarily dips on other
+    // (unrelated) divergences that were masked by the slower cadence.
     private int _subTick = 0;
-    // C's game loop: 3 pumps (while FC-local_cnt < 3) + 1 TILE_DisplayScreen = 4 fc/loop
-    // on average (loop 2 is "free" after GFX_FadeIn(64) blast, but the steady-state is 4).
-    // Empirically derived from the parity golden: spawn of second enemy wave at fc=420 maps
-    // to game loop 89, which at 4 fc/loop fires at tick=356 (after fc=350 sample, before fc=420).
-    private const int GameLoopPhysicsTicksPerStep = 4;
+    private const int GameLoopPhysicsTicksPerStep = 3;
 
     // ── Player ────────────────────────────────────────────────────────────────
     public  PlayerLogic  PlayerLogic { get; } = new();
@@ -352,7 +354,11 @@ public partial class WaveController : Node
     {
         if (_mapSprites == null || _slib == null || _endWaveFlag) return;
 
-        // Advance scroll: mirrors TILE.C tileyoff/tilepos update.
+        // Order matches C: ENEMY_Think (which spawns) is called BEFORE
+        // TILE_DisplayScreen (which advances tilepos) in RAP.C's main loop.
+        // So we spawn for the current tilepos first, then advance scroll.
+        SpawnForTiley(_tiley);
+
         _tileyoff++;
         if (_tileyoff > 0)
         {
@@ -361,9 +367,6 @@ public partial class WaveController : Node
             _tiley     = _tilepos / MAP_COLS - 3;
             if (_tilepos <= 0) _tilepos = 0;
         }
-
-        // Spawn all enemies whose y matches current tiley.
-        SpawnForTiley(_tiley);
     }
 
     internal void PhaseMovement()
