@@ -85,13 +85,21 @@ public partial class WaveController : Node
     private int  _waveNum    = 1;
 
     // ── Game-loop rate throttle ──────────────────────────────────────────────
-    // The C game loop's `while (FRAME_COUNT - local_cnt < 3) legacy_pump();`
-    // sets a *minimum* of 3 PIT frames per iteration, but the body work is
-    // non-trivial so the steady-state effective period is ~4 frames. Score-
-    // milestone analysis (C first body-crash kill at MISSION_1 fc=630, the
-    // exact frame Godot d=4 also reaches it) is the strongest signal that
-    // 4 is the right value. d=3 advances 33% too fast and kills land 140 fc
-    // early; d=4 hits each kill timestamp on the nose for the first wave.
+    // The C game loop has `while (FRAME_COUNT - local_cnt < 3) legacy_pump();`
+    // — a MINIMUM of 3 PIT frames per iteration, with body work pushing
+    // steady-state to ~4. Score-milestone evidence:
+    //   First kill: C @ fc=630 ; Godot d=4 @ fc=630 (match)
+    //   Kill #2:    C @ fc=910 ; Godot d=4 @ fc=1050 (140 fc late)
+    //   Kill #3:    C @ fc=1120; Godot d=4 @ fc=1260 (140 fc late)
+    //   Kill #4:    C @ fc=1400; Godot d=4 @ fc=1750 (350 fc late)
+    //   Kill #5:    C @ fc=1680; Godot d=4 @ fc=2100 (420 fc late)
+    //
+    // Pattern: first kill is exact, subsequent kills lag with growing gap.
+    // Likely cause is that C's early loop iterations run closer to the 3-fc
+    // minimum (fewer entities in the body, so less work per iter), then
+    // settle into 4 fc/iter as the wave fills out. A perfect match needs
+    // a variable cadence (e.g. 3 for the first ~100 iters, 4 thereafter)
+    // or matching C's actual frame budget. d=4 is the best fixed value.
     private int _subTick = 0;
     private const int GameLoopPhysicsTicksPerStep = 4;
 
