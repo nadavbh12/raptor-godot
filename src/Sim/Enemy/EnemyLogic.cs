@@ -84,8 +84,10 @@ public sealed class EnemyLogic
         _sx = spawnX;
         _sy = 100 - meta.HalfY;   // C: sy = 100 - new->hly (uses actual sprite half-height)
 
-        // Countdown uses the map-derived Y (before flight-type reassigns sy).
-        _shootCountdown = meta.Countdown + (-mapY);
+        // Countdown mirrors C's: countdown = lib->countdown + (-new->move.y)
+        // where new->move.y = mapY_raw + 16 - hly. Our mapY == mapY_raw (no corrections),
+        // so: countdown = lib->countdown + (-(mapY + 16 - hly)).
+        _shootCountdown = meta.Countdown + (-(mapY + 16 - meta.HalfY));
         _shootOn    = false;
         _shootFlag  = meta.ShootStart;
         _shootCount = meta.ShootCnt > 0 ? meta.ShootCnt : 1;
