@@ -367,6 +367,7 @@ public partial class WaveController : Node
         int py = PlayerLogic.Y;
 
         // Tick each alive enemy; collect any bullets they fire.
+        // C order: ENEMY_Think fires bullets, then ESHOT_Think ticks them (same frame).
         for (int i = 0; i < _enemies.Count; i++)
         {
             var enemy = _enemies[i];
@@ -380,7 +381,8 @@ public partial class WaveController : Node
         foreach (var b in _playerBullets)
             b.Tick();
 
-        // Tick enemy bullets.
+        // Tick enemy bullets (includes newly fired ones from this frame, matching C's
+        // ESHOT_Think which runs after ENEMY_Think in the same game-loop iteration).
         foreach (var b in _enemyBullets)
             b.Tick();
     }
@@ -390,9 +392,11 @@ public partial class WaveController : Node
         // Enemy bullets vs player AABB.
         // C uses `dx < PLAYERWIDTH/2 && dy < PLAYERHEIGHT/2` (strict less-than).
         // PLAYERWIDTH = 32, PLAYERHEIGHT = 32 → half = 16.
+        // C collision uses player_cx/player_cy = playerx + PLAYERWIDTH/2, playery + PLAYERHEIGHT/2.
+        // PlayerLogic.X/Y are playerx/playery (top-left). Add half-dimensions for center.
         const int playerHw = 16; const int playerHh = 16;
-        int px = PlayerLogic.X;
-        int py = PlayerLogic.Y;
+        int px = PlayerLogic.X + playerHw;   // player_cx = playerx + PLAYERWIDTH/2
+        int py = PlayerLogic.Y + playerHh;   // player_cy = playery + PLAYERHEIGHT/2
 
         _playerHit = false;
         _playerHitDmg = 0;
@@ -433,16 +437,17 @@ public partial class WaveController : Node
         // Mirrors ENEMY.C lines 1039-1057:
         //   if (player_cx > sprite->x && player_cx < sprite->x2)
         //     if (player_cy > sprite->y && player_cy < sprite->y2)
-        // where sprite->x = enemy_centre_x - hlx (top-left corner).
-        // In our system, enemy centre = (e.X, e.Y); top-left = (e.X - e.HalfW, e.Y - e.HalfH).
+        // e.X/e.Y are top-left corner coordinates (= C's sprite->x/y).
+        // C: sprite->x2 = sprite->x + width - 1 (set in ENEMY_Think per flight type).
+        // width = 2*HalfW, height = 2*HalfH.
         _bodyCrashEnemies.Clear();
         foreach (var e in _enemies)
         {
             if (!e.Alive) continue;
-            int ex  = e.X - e.HalfW;   // sprite->x
-            int ex2 = e.X + e.HalfW;   // sprite->x2  (= sprite->x + width)
-            int ey  = e.Y - e.HalfH;   // sprite->y
-            int ey2 = e.Y + e.HalfH;   // sprite->y2  (= sprite->y + height)
+            int ex  = e.X;                    // sprite->x (top-left)
+            int ex2 = e.X + 2 * e.HalfW - 1; // sprite->x2 (= sprite->x + width - 1)
+            int ey  = e.Y;                    // sprite->y (top-left)
+            int ey2 = e.Y + 2 * e.HalfH - 1; // sprite->y2 (= sprite->y + height - 1)
             if (px > ex && px < ex2 && py > ey && py < ey2)
                 _bodyCrashEnemies.Add(e);
         }

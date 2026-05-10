@@ -162,6 +162,12 @@ public sealed class EnemyLogic
     {
         if (!_pathInitialised) return;
 
+        // C ENEMY_Think: sprite->x/y is set from move.x/y BEFORE MoveEobj runs.
+        // We capture the pre-move position here so collision checks see the same
+        // position that C does.
+        X = _mx;
+        Y = _my;
+
         int speed = Meta.MoveSpeed > 0 ? Meta.MoveSpeed : 1;
 
         // Move `speed` pixels along the current Bresenham line.
@@ -176,14 +182,11 @@ public sealed class EnemyLogic
             MoveOneStep();
         }
 
-        X = _mx;
-        Y = _my;
-
         // C removes enemies only when the flight path completes (doneflag after
         // movepos > numflight), not on out-of-bounds position.
         // We only remove if VERY far off-screen to prevent memory leak from
         // stray enemies that somehow never complete their path.
-        if (Y < -500 || Y > 500 || X < -500 || X > 800)
+        if (_my < -500 || _my > 500 || _mx < -500 || _mx > 800)
             Done = true;
     }
 
@@ -241,6 +244,9 @@ public sealed class EnemyLogic
 
     private void MoveOneStep()
     {
+        // Mirrors C's MoveEobj: decrement maxloop first; if it reaches 0,
+        // mark done WITHOUT advancing position (C: "if maxloop==0 { done; return; }").
+        _maxloop--;
         if (_maxloop <= 0) { _moveDone = true; return; }
 
         if (_delX >= _delY)
@@ -255,8 +261,6 @@ public sealed class EnemyLogic
             _err += _delX;
             if (_err > 0) { _mx += _addX; _err -= _delY; }
         }
-        _maxloop--;
-        if (_maxloop <= 0) _moveDone = true;
     }
 
     // Mirrors C's #define values for shootagain state machine.
@@ -398,13 +402,12 @@ public sealed class EnemyLogic
                 _shootFlag = Meta.ShotSpace;
 
                 // Fire one bullet per gun (gun 0 only for now).
-                // In C, enemy->x is the TOP-LEFT corner (after ENEMY_Add subtracts hlx).
-                // Our X is the CENTRE, so we convert:
-                //   gun_screen_x = (X - HalfW) + Meta.ShootX[0]
-                //   gun_screen_y = (Y - HalfH) + Meta.ShootY[0]
+                // X/Y here are top-left corner coordinates (= C's sprite->x/y after ENEMY_Add).
+                // Gun position = sprite top-left + shootx/shooty offset (same as C's
+                //   gun_x = enemy->x + enemy->lib->shootx[gun_num]).
                 const int gunIdx = 0;
-                int bx = (X - Meta.HalfX) + (gunIdx < Meta.ShootX.Length ? Meta.ShootX[gunIdx] : 0);
-                int by = (Y - Meta.HalfY) + (gunIdx < Meta.ShootY.Length ? Meta.ShootY[gunIdx] : 0);
+                int bx = X + (gunIdx < Meta.ShootX.Length ? Meta.ShootX[gunIdx] : 0);
+                int by = Y + (gunIdx < Meta.ShootY.Length ? Meta.ShootY[gunIdx] : 0);
 
                 // Determine bullet trajectory based on shoot_type (mirrors ESHOT.C).
                 int shootType = (gunIdx < Meta.ShootType.Length) ? Meta.ShootType[gunIdx] : 0;
