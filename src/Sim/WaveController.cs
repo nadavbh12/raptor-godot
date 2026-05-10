@@ -102,6 +102,12 @@ public partial class WaveController : Node
     // or matching C's actual frame budget. d=4 is the best fixed value.
     private int _subTick = 0;
     private const int GameLoopPhysicsTicksPerStep = 4;
+    // Variable-cadence experiment (3-fc early -> 4-fc steady, threshold 30 or
+    // 88 iters) didn't beat fixed d=4 — early acceleration moves sprite #0
+    // through the body-crash window too fast, so kill #1 misses C's fc=630
+    // anchor. Compounding effects on later kills also resist a single knob.
+    // Real fix likely requires matching C's actual frame-budget per iter,
+    // which the test harness doesn't currently expose.
 
     // ── Player ────────────────────────────────────────────────────────────────
     public  PlayerLogic  PlayerLogic { get; } = new();
@@ -260,6 +266,7 @@ public partial class WaveController : Node
         _hitEnemies.Clear();
         _playerHit = false;
         _endWaveFlag = false;
+        _subTick = 0;
 
         // Reset scroll to start position (mirrors TILE_Init in C).
         _tilepos  = (MAP_ROWS - MAP_ONSCREEN) * MAP_COLS;
