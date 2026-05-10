@@ -37,6 +37,63 @@ public class PlayerTests
         Assert.Equal(PlayerLogic.MaxX, p.X);
     }
 
+    // Shield / Alive tests (PlayerLogic already had Shield and TakeDamage from earlier stage)
+
+    [Fact]
+    public void Shield_Starts_At_Zero_Before_Reset()
+    {
+        // A new PlayerLogic has no pilot; shield is 0 until Reset() is called.
+        var p = new PlayerLogic();
+        Assert.Equal(0, p.Shield);
+        Assert.False(p.Alive);
+    }
+
+    [Fact]
+    public void Reset_Sets_Shield_To_InitShield()
+    {
+        var p = new PlayerLogic();
+        p.Reset();
+        Assert.Equal(PlayerLogic.InitShield, p.Shield);
+        Assert.True(p.Alive);
+    }
+
+    [Fact]
+    public void TakeDamage_Reduces_Shield_And_Floors_At_Zero()
+    {
+        var p = new PlayerLogic();
+        p.Reset();
+        bool dead = p.TakeDamage(30);
+        Assert.Equal(PlayerLogic.InitShield - 30, p.Shield);
+        Assert.False(dead);
+        Assert.True(p.Alive);
+        dead = p.TakeDamage(200);
+        Assert.Equal(0, p.Shield);
+        Assert.True(dead);
+        Assert.False(p.Alive);
+    }
+
+    [Fact]
+    public void TakeDamage_Zero_Or_Negative_Is_NoOp()
+    {
+        var p = new PlayerLogic();
+        p.Reset();
+        int shield = p.Shield;
+        Assert.False(p.TakeDamage(0));
+        Assert.False(p.TakeDamage(-5));
+        Assert.Equal(shield, p.Shield);
+    }
+
+    [Fact]
+    public void Reset_Restores_Shield_After_Damage()
+    {
+        var p = new PlayerLogic();
+        p.Reset();
+        p.TakeDamage(50);
+        p.Reset();
+        Assert.Equal(PlayerLogic.InitShield, p.Shield);
+        Assert.True(p.Alive);
+    }
+
     // Spec §11 State bounds: Player position is always in [MinX, MaxX] x [MinY, MaxY].
     [Property(MaxTest = 50)]
     public Property Player_position_stays_in_bounds_under_arbitrary_input()

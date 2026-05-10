@@ -6,7 +6,8 @@ namespace Raptor.Sim.Player;
 /// </summary>
 public sealed class PlayerLogic
 {
-    public const int InitX = 160;
+    // PLAYERINITX = 160 - (PLAYERWIDTH/2) = 160 - 16 = 144 (from SOURCE/PUBLIC.H).
+    public const int InitX = 144;
     public const int InitY = 160;
     public const int MinX = 16;
     public const int MaxX = 304;     // 320 - 16
@@ -14,15 +15,45 @@ public sealed class PlayerLogic
     public const int MaxY = 199;
     public const int VelocityPerTick = 4;
 
+    // Starting shield for a new pilot (OBJS_Add(S_ENERGY) + initial fill).
+    // From the C golden: first HANGAR checkpoint shows shield=75.
+    public const int InitShield = 75;
+    public const int MaxShield = 100;
+
     public int X { get; private set; } = InitX;
     public int Y { get; private set; } = InitY;
-    public int Pic { get; private set; } = 4;   // PLAYERINITX uses pic 4 (centered banking frame)
+    // Shield starts at 0 (no pilot); Reset() sets it to InitShield when pilot is created.
+    public int Shield { get; private set; } = 0;
+    public bool Alive => Shield > 0;
+    public int Pic { get; private set; } = 4;   // pic 4 = centered banking frame
 
     public void Reset()
     {
         X = InitX;
         Y = InitY;
+        Shield = InitShield;
         Pic = 4;
+    }
+
+    /// <summary>
+    /// Apply shield damage. Shield is clamped to [0, MaxShield].
+    /// Returns true if the player died (shield reached 0).
+    /// </summary>
+    public bool TakeDamage(int dmg)
+    {
+        if (dmg <= 0) return false;
+        Shield -= dmg;
+        if (Shield < 0) Shield = 0;
+        return Shield == 0;
+    }
+
+    /// <summary>
+    /// Heal shield. Clamped to MaxShield.
+    /// </summary>
+    public void Heal(int amount)
+    {
+        Shield += amount;
+        if (Shield > MaxShield) Shield = MaxShield;
     }
 
     /// <summary>
