@@ -115,14 +115,16 @@ public partial class DebugRenderer : Node2D
         var px = _wave.PlayerLogic.X;
         var py = _wave.PlayerLogic.Y;
 
+        // Sim X/Y are TOP-LEFT (matching C's sprite->x/y semantics — see ENEMY_Add
+        // comments in WaveController). C's GFX_PutSprite renders at top-left, so
+        // we draw directly at (X, Y) without subtracting half-size.
         if (_playerTex != null)
         {
-            var sz = _playerTex.GetSize();
-            DrawTexture(_playerTex, new Vector2(px - sz.X / 2f, py - sz.Y / 2f));
+            DrawTexture(_playerTex, new Vector2(px, py));
         }
         else
         {
-            DrawRect(new Rect2(px - 16, py - 16, 32, 32), new Color(0, 1, 0, 0.7f));
+            DrawRect(new Rect2(px, py, 32, 32), new Color(0, 1, 0, 0.7f));
         }
 
         foreach (var e in _wave.GetEnemies())
@@ -131,26 +133,26 @@ public partial class DebugRenderer : Node2D
             var tex = LoadSprite(e.Meta.IName);
             if (tex != null)
             {
-                var sz = tex.GetSize();
-                DrawTexture(tex, new Vector2(e.X - sz.X / 2f, e.Y - sz.Y / 2f));
+                DrawTexture(tex, new Vector2(e.X, e.Y));
             }
             else
             {
-                DrawRect(new Rect2(e.X - e.HalfW, e.Y - e.HalfH, e.HalfW * 2, e.HalfH * 2),
+                DrawRect(new Rect2(e.X, e.Y, e.HalfW * 2, e.HalfH * 2),
                     new Color(1, 0.3f, 0.3f, 0.7f));
             }
         }
 
+        // Bullet sim X/Y are also top-left (ESHOT_Shoot: cur->move.x -= xoff).
         foreach (var b in _wave.GetEnemyBullets())
         {
             if (!b.Alive) continue;
-            DrawRect(new Rect2(b.X - 2, b.Y - 2, 4, 4), new Color(1, 1, 0));
+            DrawRect(new Rect2(b.X, b.Y, 4, 4), new Color(1, 1, 0));
         }
 
         foreach (var b in _wave.GetPlayerBullets())
         {
             if (!b.Alive) continue;
-            DrawRect(new Rect2(b.X - 2, b.Y - 2, 4, 4), new Color(0, 1, 1));
+            DrawRect(new Rect2(b.X, b.Y, 4, 4), new Color(0, 1, 1));
         }
 
         var sf = SimClock.Frame;
