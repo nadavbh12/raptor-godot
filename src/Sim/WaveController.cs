@@ -101,13 +101,13 @@ public partial class WaveController : Node
     // a variable cadence (e.g. 3 for the first ~100 iters, 4 thereafter)
     // or matching C's actual frame budget. d=4 is the best fixed value.
     private int _subTick = 0;
-    private const int GameLoopPhysicsTicksPerStep = 4;
-    // Variable-cadence experiment (3-fc early -> 4-fc steady, threshold 30 or
-    // 88 iters) didn't beat fixed d=4 — early acceleration moves sprite #0
-    // through the body-crash window too fast, so kill #1 misses C's fc=630
-    // anchor. Compounding effects on later kills also resist a single knob.
-    // Real fix likely requires matching C's actual frame-budget per iter,
-    // which the test harness doesn't currently expose.
+    private int _gameLoopIter = 0;
+    // Position-dump comparison at MISSION_1 fc=560 (after spawn coord fix)
+    // shows C top-left y = 138 vs Godot 130 for sprite #0 — an 8-px gap from
+    // C running 144 game-ticks vs our 140 in the same 560 fc window. That's
+    // 3.89 fc/tick (C) vs 4.0 (us). Approximating with 1 fast iter (3 fc) per
+    // 8 slow iters (4 fc) gives average 35/9 ≈ 3.889 fc/tick. Each LoadWave
+    // resets the iter counter so the fast slot lands on the same iter index.
 
     // ── Player ────────────────────────────────────────────────────────────────
     public  PlayerLogic  PlayerLogic { get; } = new();
@@ -267,6 +267,7 @@ public partial class WaveController : Node
         _playerHit = false;
         _endWaveFlag = false;
         _subTick = 0;
+        _gameLoopIter = 0;
 
         // Reset scroll to start position (mirrors TILE_Init in C).
         _tilepos  = (MAP_ROWS - MAP_ONSCREEN) * MAP_COLS;
@@ -326,12 +327,20 @@ public partial class WaveController : Node
                 // Mirrors: if (cur_enemy->level != EB_NOT_USED) ENEMY_Add(cur_enemy).
                 if (ShouldSpawn(cur) && _slib.Count > cur.Slib && cur.Slib >= 0)
                 {
-                    var meta   = _slib.Get(cur.Slib);
-                    int spawnX = cur.X * MAP_BLOCKSIZE + MAP_LEFT;
-                    // C's mapY formula (ENEMY_Add):
-                    //   new->y = tileyoff - ((tiley - sprite.y) * 32) - 97
-                    // This is the initial screen y used for the countdown, not the flight origin.
-                    int mapY   = _tileyoff - ((tiley - cur.Y) * MAP_BLOCKSIZE) - 97;
+                    var meta = _slib.Get(cur.Slib);
+                    // C ENEMY_Add (ENEMY.C lines 393-400):
+                    //   new->y = tileyoff - (tiley-y)*32 - 97;
+                    //   new->x = sprite.x*32 + MAP_LEFT;
+                    //   new->x += 16; new->y += 16;
+                    //   new->x -= hlx;  new->y -= hly;
+                    // sprite->x/y is the sprite TOP-LEFT after these shifts.
+                    // For SHIP01G1 (hlx=16=MAP_BLOCKSIZE/2), x cancels to
+                    // `sprite.x*32 + MAP_LEFT` — what we already compute. For Y,
+                    // hly=12 != 16 so we owe `+16 - hly = +4`. Generalised:
+                    int spawnX = cur.X * MAP_BLOCKSIZE + MAP_LEFT
+                                 + MAP_BLOCKSIZE / 2 - meta.HalfX;
+                    int mapY   = _tileyoff - ((tiley - cur.Y) * MAP_BLOCKSIZE) - 97
+                                 + MAP_BLOCKSIZE / 2 - meta.HalfY;
                     _enemies.Add(new EnemyLogic(meta, spawnX, mapY));
                 }
 
@@ -348,9 +357,13 @@ public partial class WaveController : Node
     {
         if (!_waveActive) return;
         _subTick++;
-        if (_subTick < GameLoopPhysicsTicksPerStep) return;
+        // 1 out of every 9 iterations uses 3-fc cadence; others use 4-fc.
+        // Average: (3 + 8*4) / 9 = 35/9 ≈ 3.889 fc/iter — matching C.
+        int target = (_gameLoopIter % 9 == 0) ? 3 : 4;
+        if (_subTick < target) return;
         _subTick = 0;
         _scheduler.Tick();
+        _gameLoopIter++;
     }
 
     // ── Phase implementations (called by GamePhaseScheduler) ──────────────────

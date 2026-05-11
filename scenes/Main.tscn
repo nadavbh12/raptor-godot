@@ -1,10 +1,11 @@
-[gd_scene load_steps=7 format=3 uid="uid://main_scene"]
+[gd_scene load_steps=8 format=3 uid="uid://main_scene"]
 
 [ext_resource type="Script" path="res://src/Test/ParityEmitter.cs" id="1_parity"]
 [ext_resource type="Script" path="res://src/Sim/MenuController.cs" id="2_menu"]
 [ext_resource type="Script" path="res://src/Test/PlaythroughDriver.cs" id="3_playthrough"]
 [ext_resource type="Script" path="res://src/Sim/WaveController.cs" id="4_wave"]
 [ext_resource type="Script" path="res://src/View/DebugRenderer.cs" id="5_debug"]
+[ext_resource type="Script" path="res://src/Test/PositionDumper.cs" id="6_pos"]
 
 [node name="Main" type="Node2D"]
 
@@ -22,3 +23,6 @@ script = ExtResource("1_parity")
 
 [node name="DebugRenderer" type="Node2D" parent="."]
 script = ExtResource("5_debug")
+
+[node name="PositionDumper" type="Node" parent="."]
+script = ExtResource("6_pos")

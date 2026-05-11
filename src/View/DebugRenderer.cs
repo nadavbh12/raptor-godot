@@ -34,7 +34,12 @@ public partial class DebugRenderer : Node2D
         }
 
         BuildSpriteIndex();
-        _playerTex = LoadSprite("LPLAYER_PIC");
+        // Player has 7 LPLAYER_PIC frames (0058..0064) for the bank angles
+        // when steering left/right. Index 3 (0061) is the neutral straight-
+        // ahead pose, which is the right default while we don't model bank.
+        _playerTex = LoadSpriteFromPath(
+            Path.Combine(ProjectSettings.GlobalizePath("res://assets/sprites"),
+                         "0061_LPLAYER_PIC.png"));
 
         ZIndex = 100;
     }
@@ -60,10 +65,16 @@ public partial class DebugRenderer : Node2D
     {
         if (_spriteCache.TryGetValue(iname, out var cached)) return cached;
         if (!_spritePaths.TryGetValue(iname, out var path)) return null;
+        return LoadSpriteFromPath(path);
+    }
+
+    private Texture2D? LoadSpriteFromPath(string path)
+    {
+        if (_spriteCache.TryGetValue(path, out var cached)) return cached;
         var img = Image.LoadFromFile(path);
         if (img == null) return null;
         var tex = ImageTexture.CreateFromImage(img);
-        _spriteCache[iname] = tex;
+        _spriteCache[path] = tex;
         return tex;
     }
 
