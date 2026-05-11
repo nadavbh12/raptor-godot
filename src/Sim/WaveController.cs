@@ -205,6 +205,19 @@ public partial class WaveController : Node
 
     // ── Map sprite list for spawning ──────────────────────────────────────────
     private List<MapSpriteEntry>? _mapSprites;
+    private List<MapTileEntry>?   _mapTiles;
+
+    /// <summary>Tile-grid data for the current wave (rows * cols entries, row-major).</summary>
+    public IReadOnlyList<MapTileEntry>? MapTiles => _mapTiles;
+    /// <summary>Current scroll Y offset (mirrors C's tileyoff).</summary>
+    public int TileYOff => _tileyoff;
+    /// <summary>Current top-of-screen row in the tile grid (mirrors C's tilepos).</summary>
+    public int TilePos  => _tilepos;
+    public int MapRows  => MAP_ROWS;
+    public int MapCols  => MAP_COLS;
+    public int MapOnScreen   => MAP_ONSCREEN;
+    public int MapBlockSize  => MAP_BLOCKSIZE;
+    public int MapLeftPx     => MAP_LEFT;
     private SpriteMetaLibrary?    _slib;
     private int                   _spawnIdx = 0;   // index into _mapSprites
     private bool                  _endWaveFlag = false;
@@ -306,6 +319,7 @@ public partial class WaveController : Node
         string mapPath = MazeLevelLoader.WaveMapPath(_assetsRoot ?? "assets", waveNum);
         var mapData    = MazeLevelLoader.Load(mapPath);
         _mapSprites    = mapData.Sprites ?? new List<MapSpriteEntry>();
+        _mapTiles      = mapData.Tiles   ?? new List<MapTileEntry>();
         _spawnIdx      = 0;
 
         GD.Print($"WaveController: loaded wave {waveNum}, {_mapSprites.Count} sprites, tiley={_tiley}");

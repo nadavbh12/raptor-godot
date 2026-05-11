@@ -20,6 +20,8 @@ public partial class DebugRenderer : Node2D
     private readonly Dictionary<string, Texture2D> _spriteCache = new();
     private readonly Dictionary<string, string> _spritePaths = new();
     private Texture2D? _playerTex;
+    private readonly Dictionary<int, Texture2D?> _tileCache = new();
+    private string? _tilesRoot;
 
     public override void _Ready()
     {
@@ -36,6 +38,7 @@ public partial class DebugRenderer : Node2D
         }
 
         BuildSpriteIndex();
+        _tilesRoot = ProjectSettings.GlobalizePath("res://assets/tiles");
         // Player has 7 LPLAYER_PIC frames (0058..0064) for the bank angles
         // when steering left/right. Index 3 (0061) is the neutral straight-
         // ahead pose, which is the right default while we don't model bank.
@@ -68,6 +71,27 @@ public partial class DebugRenderer : Node2D
         if (_spriteCache.TryGetValue(iname, out var cached)) return cached;
         if (!_spritePaths.TryGetValue(iname, out var path)) return null;
         return LoadSpriteFromPath(path);
+    }
+
+    /// <summary>
+    /// Load tile graphic for the given (game-index, flats-index) pair.
+    /// game=0 → tiles/g1/NNNN.png (mirrors C's TILE_Init: titems[i] = startflat[fgame] + flats).
+    /// Returns null (cached) if the file is missing.
+    /// </summary>
+    private Texture2D? LoadTile(int game, int flats)
+    {
+        int key = (game << 16) | (flats & 0xffff);
+        if (_tileCache.TryGetValue(key, out var cached)) return cached;
+        if (_tilesRoot == null) return null;
+        string path = Path.Combine(_tilesRoot, $"g{game + 1}", $"{flats:D4}.png");
+        Texture2D? tex = null;
+        if (File.Exists(path))
+        {
+            var img = Image.LoadFromFile(path);
+            if (img != null) tex = ImageTexture.CreateFromImage(img);
+        }
+        _tileCache[key] = tex;  // cache misses too — avoid retrying every frame
+        return tex;
     }
 
     private Texture2D? LoadSpriteFromPath(string path)
@@ -116,16 +140,29 @@ public partial class DebugRenderer : Node2D
     {
         var img = GetViewport().GetTexture().GetImage();
         if (img == null) return;
+        // Include abs FC in the filename so labeled dumps interleave correctly
+        // with periodic fcNNNNN_secNNN.png dumps when sorted alphabetically.
+        int fc = SimClock.Frame;
         string path = off == 0
-            ? $"{_shotDir}/{seq:D5}_{label}.png"
-            : $"{_shotDir}/{seq:D5}_{label}_p{off:D2}.png";
+            ? $"{_shotDir}/fc{fc:D5}_label_{label}.png"
+            : $"{_shotDir}/fc{fc:D5}_label_{label}_p{off:D2}.png";
         img.SavePng(path);
     }
 
     private void MaybeShoot()
     {
         if (string.IsNullOrEmpty(_shotDir)) return;
-        // Every simulated second by default; RAPTOR_SHOT_EVERY_SEC overrides.
+        // RAPTOR_SHOT_EVERY_FC=N: dump every N sim frames (fine-grained, for video).
+        // RAPTOR_SHOT_EVERY_SEC=N: dump every N simulated seconds (legacy default 1).
+        var fcEvery = OS.GetEnvironment("RAPTOR_SHOT_EVERY_FC");
+        if (!string.IsNullOrEmpty(fcEvery) && int.TryParse(fcEvery, out var nfc) && nfc > 0)
+        {
+            int bucket = SimClock.Frame / nfc;
+            if (bucket == _lastShotSec) return;
+            _lastShotSec = bucket;
+            CallDeferred(nameof(WriteShot), SimClock.Frame / 70, SimClock.Frame);
+            return;
+        }
         int interval = 1;
         var iv = OS.GetEnvironment("RAPTOR_SHOT_EVERY_SEC");
         if (!string.IsNullOrEmpty(iv) && int.TryParse(iv, out var n) && n > 0) interval = n;
@@ -165,12 +202,48 @@ public partial class DebugRenderer : Node2D
     private int _burstRemaining = 0;
     private int _burstFrameOffset = 0;
 
+    /// <summary>
+    /// Render the scrolling tile background. Mirrors C's TILE_Think layout:
+    ///   for loopy in 0..MAP_ONSCREEN, y starting at tileyoff:
+    ///     for loopx in 0..MAP_COLS, x starting at MAP_LEFT:
+    ///       draw titems[mapspot] at (x, y)
+    /// titems[mapspot] = startflat[fgame] + flats — we resolve that via
+    /// LoadTile(fgame, flats) which reads assets/tiles/g{fgame+1}/{flats:D4}.png.
+    /// </summary>
+    private void DrawTileMap()
+    {
+        if (_wave?.MapTiles == null) return;
+        var tiles = _wave.MapTiles;
+        int cols  = _wave.MapCols;
+        int rows  = _wave.MapRows;
+        int onscr = _wave.MapOnScreen;
+        int bs    = _wave.MapBlockSize;
+        int left  = _wave.MapLeftPx;
+
+        int y       = _wave.TileYOff;
+        int mapspot = _wave.TilePos;
+
+        for (int ly = 0; ly < onscr; ly++, y += bs)
+        {
+            int x = left;
+            for (int lx = 0; lx < cols; lx++, x += bs, mapspot++)
+            {
+                if (mapspot < 0 || mapspot >= tiles.Count) continue;
+                var t = tiles[mapspot];
+                var tex = LoadTile(t.FGame, t.Flats);
+                if (tex != null) DrawTexture(tex, new Vector2(x, y));
+            }
+        }
+    }
+
     public override void _Draw()
     {
         DrawRect(new Rect2(0, 0, 320, 200), new Color(0, 0, 0, 1));
         DrawRect(new Rect2(16, 0, 288, 200), new Color(0.05f, 0.05f, 0.1f, 1));
 
         if (_wave == null) return;
+
+        DrawTileMap();
 
         var px = _wave.PlayerLogic.X;
         var py = _wave.PlayerLogic.Y;

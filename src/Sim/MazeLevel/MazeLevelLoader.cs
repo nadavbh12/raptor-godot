@@ -23,12 +23,20 @@ public sealed class MapSpriteEntry
 /// <summary>
 /// Deserialization root for MAP*G*_MAP.json.
 /// </summary>
+/// <summary>One tile entry in the maze grid: which graphic + which game-context.</summary>
+public sealed class MapTileEntry
+{
+    [JsonPropertyName("flats")] public int Flats { get; set; }
+    [JsonPropertyName("fgame")] public int FGame { get; set; }
+}
+
 public sealed class MapLevelData
 {
     [JsonPropertyName("name")]        public string              Name        { get; set; } = "";
     [JsonPropertyName("rows")]        public int                 Rows        { get; set; }
     [JsonPropertyName("cols")]        public int                 Cols        { get; set; }
     [JsonPropertyName("numsprites")]  public int                 NumSprites  { get; set; }
+    [JsonPropertyName("tiles")]       public List<MapTileEntry>?  Tiles      { get; set; }
     [JsonPropertyName("sprites")]     public List<MapSpriteEntry>? Sprites   { get; set; }
 }
 
