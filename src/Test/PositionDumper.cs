@@ -61,7 +61,7 @@ public partial class PositionDumper : Node
     {
         if (_out == null || _wave == null) return;
         var sb = new StringBuilder();
-        sb.Append($"fc={fc} abs={Sim.SimClock.Frame} win={win}\n");
+        sb.Append($"fc={fc} abs={Sim.SimClock.Frame} win={win} iter={_wave.GameLoopIter}\n");
         sb.Append($"player x={_wave.PlayerLogic.X} y={_wave.PlayerLogic.Y} ")
           .Append($"shield={_wave.PlayerLogic.Shield} score={_wave.Score}\n");
 

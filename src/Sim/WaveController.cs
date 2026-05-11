@@ -82,6 +82,12 @@ public partial class WaveController : Node
 
     // ── Wave state ────────────────────────────────────────────────────────────
     private bool _waveActive = false;
+    private int  _gameEnterFc = 0;
+    // C's GFX_FadeIn(gpal, 64) runs at the start of Do_Game before the first
+    // ENEMY_Think, blocking the game loop for ~64 PIT frames (one
+    // pump_events call per palette step). Sim ticks must be paused for the
+    // same span so movement starts from the same fc anchor as C.
+    private const int FadeInHoldFrames = 64;
     private int  _waveNum    = 1;
 
     // ── Game-loop rate throttle ──────────────────────────────────────────────
@@ -102,6 +108,7 @@ public partial class WaveController : Node
     // or matching C's actual frame budget. d=4 is the best fixed value.
     private int _subTick = 0;
     private int _gameLoopIter = 0;
+    public  int GameLoopIter => _gameLoopIter;
     // Position-dump comparison at MISSION_1 fc=560 (after spawn coord fix)
     // shows C top-left y = 138 vs Godot 130 for sprite #0 — an 8-px gap from
     // C running 144 game-ticks vs our 140 in the same 560 fc window. That's
@@ -249,9 +256,10 @@ public partial class WaveController : Node
 
     private void OnGameEnter(int gameNum)
     {
-        _waveNum   = gameNum + 1;  // gameNum is 0-based; wave files are 1-based.
+        _waveNum    = gameNum + 1;  // gameNum is 0-based; wave files are 1-based.
         LoadWave(_waveNum);
-        _waveActive = true;
+        _gameEnterFc = SimClock.Frame;
+        _waveActive  = true;
     }
 
     /// <summary>
@@ -356,10 +364,22 @@ public partial class WaveController : Node
     public override void _PhysicsProcess(double _)
     {
         if (!_waveActive) return;
+
+        // C runs iter 0 (ENEMY_Think + parity emit at MISSION_1 fc=0) BEFORE
+        // the GFX_FadeIn(64) call. So in C, iter 0 happens at fc~0, then a
+        // ~64 fc fade-in delay, then iters 1+ proceed at the steady rate.
+        // We mirror that by firing iter 0 immediately when the wave activates
+        // (subTick path below handles it), then holding subsequent iters for
+        // FadeInHoldFrames frames after game entry.
+        if (_gameLoopIter >= 1 && SimClock.Frame - _gameEnterFc < FadeInHoldFrames)
+            return;
+
         _subTick++;
-        // 1 out of every 9 iterations uses 3-fc cadence; others use 4-fc.
-        // Average: (3 + 8*4) / 9 = 35/9 ≈ 3.889 fc/iter — matching C.
-        int target = (_gameLoopIter % 9 == 0) ? 3 : 4;
+        // 3,3,4,3,4 pattern. Average = 17/5 = 3.4 fc/iter — empirically
+        // matches the C iter count at fc=630 (~166 iters, including iter 0
+        // at fc=0 + 165 post-fade-in iters in 563 fc = 3.41 fc/iter).
+        int phase = _gameLoopIter % 5;
+        int target = (phase == 0 || phase == 1 || phase == 3) ? 3 : 4;
         if (_subTick < target) return;
         _subTick = 0;
         _scheduler.Tick();
