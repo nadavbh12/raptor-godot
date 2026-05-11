@@ -9,18 +9,15 @@ namespace Raptor.Test;
 
 /// <summary>
 /// Optional dump of every alive entity's (x, y, slib/kind) at each parity
-/// tick. One block of text per tick. Designed to be diff'd against a C
-/// dump in the same format for spatial-divergence debugging.
+/// tick. Mirrors C's parity.c dump_positions: emit at iter ends, with bucket-
+/// crossing detection (one emit per 70-frame window, snapped to bucket start).
+///
+/// In-game: subscribes to WaveController.OnIterEnd. Each iter end triggers a
+/// possible emit if a new 70-frame bucket was crossed since the last emit.
+/// Menu/dialog windows: falls back to per-frame _PhysicsProcess polling since
+/// they don't have iter ends.
 ///
 /// Activate: RAPTOR_POS_DUMP=path/to/file.txt
-///
-/// Output format (one block per parity tick, blank line between):
-///   fc=<MISSION_1 fc> abs=<SimClock.Frame> win=<state>
-///   player x=<x> y=<y> shield=<s> score=<u>
-///   enemy slib=<i> x=<x> y=<y> alive=<bool>
-///   enemy ...
-///   ebullet x=<x> y=<y> dx=<f> dy=<f> alive=<bool>
-///   pbullet ...
 /// </summary>
 public partial class PositionDumper : Node
 {
@@ -39,21 +36,41 @@ public partial class PositionDumper : Node
         _wave = GetNodeOrNull<Sim.WaveController>("../WaveController");
         var menuCtrl = GetNodeOrNull<Sim.MenuController>("../MenuController");
         if (menuCtrl != null) _menu = menuCtrl.Menu;
+
+        if (_wave != null) _wave.OnIterEnd += OnIterEnd;
+    }
+
+    public override void _ExitTree()
+    {
+        if (_wave != null) _wave.OnIterEnd -= OnIterEnd;
+        _out?.Flush();
+        _out?.Dispose();
+        _out = null;
+    }
+
+    private void OnIterEnd()
+    {
+        // In-game iter-end emit (mirrors C's parity_tick at end of each
+        // legacy_pump loop iteration).
+        if (_out == null || _wave == null || _menu == null || !_menu.InGame) return;
+        TryEmit(_menu.GameEnteredFrame, "MISSION_1");
     }
 
     public override void _PhysicsProcess(double _)
     {
-        if (_out == null || _wave == null || _menu == null) return;
+        // Menu/dialog windows have no game loop iters; fall back to per-frame
+        // polling so we still get fc=0/70/... emits in those contexts.
+        if (_out == null || _menu == null || _menu.InGame) return;
+        TryEmit(_menu.StateEnteredFrame, _menu.State.ToParityString());
+    }
 
-        int anchor = _menu.InGame ? _menu.GameEnteredFrame : _menu.StateEnteredFrame;
+    private void TryEmit(int anchor, string win)
+    {
         if (anchor != _lastAnchor) { _lastEmitSec = -1; _lastAnchor = anchor; }
-
         int relFc  = Sim.SimClock.Frame - anchor;
         int curSec = relFc / 70;
         if (curSec <= _lastEmitSec) return;
         _lastEmitSec = curSec;
-
-        string win = _menu.InGame ? "MISSION_1" : _menu.State.ToParityString();
         Dump(curSec * 70, win);
     }
 
@@ -82,12 +99,5 @@ public partial class PositionDumper : Node
         }
         sb.Append('\n');
         _out.Write(sb.ToString());
-    }
-
-    public override void _ExitTree()
-    {
-        _out?.Flush();
-        _out?.Dispose();
-        _out = null;
     }
 }

@@ -83,12 +83,17 @@ public partial class WaveController : Node
     // ── Wave state ────────────────────────────────────────────────────────────
     private bool _waveActive = false;
     private int  _gameEnterFc = 0;
-    // C's GFX_FadeIn(gpal, 64) runs at the start of Do_Game before the first
-    // ENEMY_Think, blocking the game loop for ~64 PIT frames (one
-    // pump_events call per palette step). Sim ticks must be paused for the
-    // same span so movement starts from the same fc anchor as C.
-    private const int FadeInHoldFrames = 64;
+    // C's GFX_FadeIn(gpal, 64) runs at the start of Do_Game AFTER iter 0's
+    // ENEMY_Think, blocking the game loop for ~120 PIT framecount frames
+    // (60 Hz vsync + 70 Hz framecount). Position dumps show C iter 1 ends at
+    // rel=133 (after iter 0 at rel~14 + 119 frames of fade-in + 3 wait).
+    // Hold=131 puts Godot iter 1 at frame 134 (after subTick cycle of 3).
+    private const int FadeInHoldFrames = 131;
     private int  _waveNum    = 1;
+
+    // Fired right after _gameLoopIter advances; PositionDumper subscribes to
+    // emit at iter ends, mirroring C's parity_tick semantics.
+    public event Action? OnIterEnd;
 
     // ── Game-loop rate throttle ──────────────────────────────────────────────
     // The C game loop has `while (FRAME_COUNT - local_cnt < 3) legacy_pump();`
@@ -260,6 +265,14 @@ public partial class WaveController : Node
         LoadWave(_waveNum);
         _gameEnterFc = SimClock.Frame;
         _waveActive  = true;
+
+        // Fire iter 0 immediately, mirroring C: in RAP.C the first ENEMY_Think
+        // (and full loop body) runs BEFORE GFX_FadeIn(64) blocks. Position
+        // dumps confirm C captures iter-0-done state at fc=0 (sprite->y=-148
+        // = pre-move snapshot from iter 0's ENEMY_Think).
+        _scheduler.Tick();
+        _gameLoopIter++;
+        OnIterEnd?.Invoke();
     }
 
     /// <summary>
@@ -365,25 +378,18 @@ public partial class WaveController : Node
     {
         if (!_waveActive) return;
 
-        // C runs iter 0 (ENEMY_Think + parity emit at MISSION_1 fc=0) BEFORE
-        // the GFX_FadeIn(64) call. So in C, iter 0 happens at fc~0, then a
-        // ~64 fc fade-in delay, then iters 1+ proceed at the steady rate.
-        // We mirror that by firing iter 0 immediately when the wave activates
-        // (subTick path below handles it), then holding subsequent iters for
-        // FadeInHoldFrames frames after game entry.
-        if (_gameLoopIter >= 1 && SimClock.Frame - _gameEnterFc < FadeInHoldFrames)
-            return;
+        // Iter 0 fires synchronously in OnGameEnter (matches C: ENEMY_Think
+        // runs before GFX_FadeIn). After iter 0, hold for FadeInHoldFrames
+        // frames to mirror C's blocking palette fade-in. Then run at strict
+        // 3 fc/iter (the C steady-state cadence confirmed by position dumps).
+        if (SimClock.Frame - _gameEnterFc < FadeInHoldFrames) return;
 
         _subTick++;
-        // 3,3,4,3,4 pattern. Average = 17/5 = 3.4 fc/iter — empirically
-        // matches the C iter count at fc=630 (~166 iters, including iter 0
-        // at fc=0 + 165 post-fade-in iters in 563 fc = 3.41 fc/iter).
-        int phase = _gameLoopIter % 5;
-        int target = (phase == 0 || phase == 1 || phase == 3) ? 3 : 4;
-        if (_subTick < target) return;
+        if (_subTick < 3) return;
         _subTick = 0;
         _scheduler.Tick();
         _gameLoopIter++;
+        OnIterEnd?.Invoke();
     }
 
     // ── Phase implementations (called by GamePhaseScheduler) ──────────────────
