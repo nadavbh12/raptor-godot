@@ -24,6 +24,8 @@ public partial class DebugRenderer : Node2D
     private string? _tilesRoot;
     private Texture2D? _enemyBulletTex;
     private Texture2D? _playerBulletTex;
+    // Score-digit sprites: numbers[0..9] = N0..N9, numbers[10] = N$.
+    private readonly Texture2D?[] _digitTex = new Texture2D?[11];
 
     public override void _Ready()
     {
@@ -48,6 +50,12 @@ public partial class DebugRenderer : Node2D
         string bulletsRoot = ProjectSettings.GlobalizePath("res://assets/bullets");
         _enemyBulletTex  = LoadSpriteFromPath(Path.Combine(bulletsRoot, "ESHOT_BLK_00.png"));
         _playerBulletTex = LoadSpriteFromPath(Path.Combine(bulletsRoot, "NMSHOT_BLK_00.png"));
+
+        // Score-digit sprite array (RAP.C: numbers[0..10] = N0..N9 + $).
+        string spritesRoot = ProjectSettings.GlobalizePath("res://assets/sprites");
+        for (int i = 0; i <= 9; i++)
+            _digitTex[i] = LoadSpriteFromPath(Path.Combine(spritesRoot, $"{i + 1:D4}_N{i}_PIC.png"));
+        _digitTex[10] = LoadSpriteFromPath(Path.Combine(spritesRoot, "0011_N$_PIC.png"));
         // Player has 7 LPLAYER_PIC frames (0058..0064) for the bank angles
         // when steering left/right. Index 3 (0061) is the neutral straight-
         // ahead pose, which is the right default while we don't model bank.
@@ -303,10 +311,37 @@ public partial class DebugRenderer : Node2D
                 DrawRect(new Rect2(b.X, b.Y, 4, 4), new Color(0, 1, 1));
         }
 
+        DrawScoreHud();
+
         var sf = SimClock.Frame;
         var win = _menu?.State.ToString() ?? "?";
         var hud = $"fc={sf}  win={win}  shield={_wave.PlayerLogic.Shield}  score={_wave.Score}  E={_wave.GetEnemies().Count}  EB={_wave.GetEnemyBullets().Count}  PB={_wave.GetPlayerBullets().Count}";
         var font = ThemeDB.FallbackFont;
         DrawString(font, new Vector2(4, 195), hud, HorizontalAlignment.Left, -1, 8, new Color(1, 1, 1));
+    }
+
+    /// <summary>
+    /// Draw the "$NNNNNNNN" score readout. Mirrors RAP.C lines 661-662:
+    ///   sprintf(temp, "%08u", plr.score);
+    ///   RAP_PrintNum(119, MAP_TOP, temp);
+    /// RAP_PrintNum draws the $ sprite (numbers[10]) at (x, y) then steps +9
+    /// pixels, then each digit advances +8 pixels.
+    /// </summary>
+    private void DrawScoreHud()
+    {
+        if (_wave == null) return;
+        const int MapTop = 2;  // SOURCE/MAP.H
+        int x = 119;
+        // "$" prefix.
+        if (_digitTex[10] != null) DrawTexture(_digitTex[10]!, new Vector2(x, MapTop));
+        x += 9;
+        string score = _wave.Score.ToString("D8");
+        foreach (char c in score)
+        {
+            int d = c - '0';
+            if (d >= 0 && d <= 9 && _digitTex[d] != null)
+                DrawTexture(_digitTex[d]!, new Vector2(x, MapTop));
+            x += 8;
+        }
     }
 }
