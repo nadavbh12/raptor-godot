@@ -67,8 +67,9 @@ public partial class PlaythroughDriver : Node
 
         _pt.OnDump = label =>
         {
-            // Stage 4: no-op. Stage 8 will capture framebuffers.
-            GD.Print($"PlaythroughDriver: dump {label} (stub)");
+            GD.Print($"PlaythroughDriver: dump {label}");
+            var renderer = GetNodeOrNull<View.DebugRenderer>("../DebugRenderer");
+            renderer?.RequestScriptDump(label);
         };
 
         _pt.OnQuit = () =>

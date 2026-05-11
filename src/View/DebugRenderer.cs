@@ -14,6 +14,8 @@ public partial class DebugRenderer : Node2D
     private MenuStateMachine? _menu;
     private string? _shotDir;
     private int _lastShotSec = -1;
+    private int _scriptDumpSeq = 0;
+    private string? _pendingScriptDumpLabel;
 
     private readonly Dictionary<string, Texture2D> _spriteCache = new();
     private readonly Dictionary<string, string> _spritePaths = new();
@@ -101,8 +103,34 @@ public partial class DebugRenderer : Node2D
     {
         var img = GetViewport().GetTexture().GetImage();
         if (img == null) return;
-        string path = $"{_shotDir}/fc{fc:D5}_sec{sec:D3}.png";
+        string path;
+        if (_pendingScriptDumpLabel != null)
+        {
+            // Playthrough script-triggered dump: use the C-style numbered label so
+            // C's `00033_05_after_sector_select.png` and Godot's lookalike pair
+            // up by filename for side-by-side visual diffing.
+            _scriptDumpSeq++;
+            path = $"{_shotDir}/{_scriptDumpSeq:D5}_{_pendingScriptDumpLabel}.png";
+            _pendingScriptDumpLabel = null;
+        }
+        else
+        {
+            path = $"{_shotDir}/fc{fc:D5}_sec{sec:D3}.png";
+        }
         img.SavePng(path);
+    }
+
+    /// <summary>
+    /// Called by PlaythroughDriver when a `dump LABEL` script command fires.
+    /// Defers the actual capture to the next frame end (CallDeferred), matching
+    /// C's behaviour where the dump fires during legacy_pump after the current
+    /// iter's render has already painted the screen buffer.
+    /// </summary>
+    public void RequestScriptDump(string label)
+    {
+        if (string.IsNullOrEmpty(_shotDir)) return;
+        _pendingScriptDumpLabel = label;
+        CallDeferred(nameof(WriteShot), SimClock.Frame / 70, SimClock.Frame);
     }
 
     public override void _Draw()
