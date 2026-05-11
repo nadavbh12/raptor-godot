@@ -22,6 +22,8 @@ public partial class DebugRenderer : Node2D
     private Texture2D? _playerTex;
     private readonly Dictionary<int, Texture2D?> _tileCache = new();
     private string? _tilesRoot;
+    private Texture2D? _enemyBulletTex;
+    private Texture2D? _playerBulletTex;
 
     public override void _Ready()
     {
@@ -39,6 +41,13 @@ public partial class DebugRenderer : Node2D
 
         BuildSpriteIndex();
         _tilesRoot = ProjectSettings.GlobalizePath("res://assets/tiles");
+        // Bullet sprites: first frame of each animated _BLK sequence.
+        // ESHOT.C ESHOT_Init: enemy "ES_ATPLAYER/ATDOWN/ANGLELEFT/ANGLERIGHT"
+        // bullets all use cur->item = ESHOT_BLK. Player forward gun uses NMSHOT_BLK
+        // (SHOTS.C: slib[S_FORWARD_GUNS].lumpnum = NMSHOT_BLK).
+        string bulletsRoot = ProjectSettings.GlobalizePath("res://assets/bullets");
+        _enemyBulletTex  = LoadSpriteFromPath(Path.Combine(bulletsRoot, "ESHOT_BLK_00.png"));
+        _playerBulletTex = LoadSpriteFromPath(Path.Combine(bulletsRoot, "NMSHOT_BLK_00.png"));
         // Player has 7 LPLAYER_PIC frames (0058..0064) for the bank angles
         // when steering left/right. Index 3 (0061) is the neutral straight-
         // ahead pose, which is the right default while we don't model bank.
@@ -279,13 +288,19 @@ public partial class DebugRenderer : Node2D
         foreach (var b in _wave.GetEnemyBullets())
         {
             if (!b.Alive) continue;
-            DrawRect(new Rect2(b.X, b.Y, 4, 4), new Color(1, 1, 0));
+            if (_enemyBulletTex != null)
+                DrawTexture(_enemyBulletTex, new Vector2(b.X, b.Y));
+            else
+                DrawRect(new Rect2(b.X, b.Y, 4, 4), new Color(1, 1, 0));
         }
 
         foreach (var b in _wave.GetPlayerBullets())
         {
             if (!b.Alive) continue;
-            DrawRect(new Rect2(b.X, b.Y, 4, 4), new Color(0, 1, 1));
+            if (_playerBulletTex != null)
+                DrawTexture(_playerBulletTex, new Vector2(b.X, b.Y));
+            else
+                DrawRect(new Rect2(b.X, b.Y, 4, 4), new Color(0, 1, 1));
         }
 
         var sf = SimClock.Frame;
