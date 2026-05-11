@@ -84,6 +84,42 @@ public partial class DebugRenderer : Node2D
     {
         QueueRedraw();
         MaybeShoot();
+        MaybeFirePendingScriptDump();
+    }
+
+    private void MaybeFirePendingScriptDump()
+    {
+        if (_pendingScriptDumpLabel == null || _pendingShotFireFrame < 0) return;
+        if (SimClock.Frame < _pendingShotFireFrame) return;
+        // Bump sequence on first frame (offset 0) so all bursts share the seq.
+        if (_burstFrameOffset == 0) _scriptDumpSeq++;
+        // Capture all needed state NOW; CallDeferred runs later but receives
+        // these values directly so it can't race with later burst ticks.
+        string label = _pendingScriptDumpLabel;
+        int seq = _scriptDumpSeq;
+        int off = _burstFrameOffset;
+        CallDeferred(nameof(WriteShotBurst), seq, off, label);
+        if (_burstRemaining > 0)
+        {
+            _burstRemaining--;
+            _burstFrameOffset++;
+            _pendingShotFireFrame = SimClock.Frame + 1;
+        }
+        else
+        {
+            _pendingShotFireFrame = -1;
+            _pendingScriptDumpLabel = null;
+        }
+    }
+
+    private void WriteShotBurst(int seq, int off, string label)
+    {
+        var img = GetViewport().GetTexture().GetImage();
+        if (img == null) return;
+        string path = off == 0
+            ? $"{_shotDir}/{seq:D5}_{label}.png"
+            : $"{_shotDir}/{seq:D5}_{label}_p{off:D2}.png";
+        img.SavePng(path);
     }
 
     private void MaybeShoot()
@@ -103,35 +139,31 @@ public partial class DebugRenderer : Node2D
     {
         var img = GetViewport().GetTexture().GetImage();
         if (img == null) return;
-        string path;
-        if (_pendingScriptDumpLabel != null)
-        {
-            // Playthrough script-triggered dump: use the C-style numbered label so
-            // C's `00033_05_after_sector_select.png` and Godot's lookalike pair
-            // up by filename for side-by-side visual diffing.
-            _scriptDumpSeq++;
-            path = $"{_shotDir}/{_scriptDumpSeq:D5}_{_pendingScriptDumpLabel}.png";
-            _pendingScriptDumpLabel = null;
-        }
-        else
-        {
-            path = $"{_shotDir}/fc{fc:D5}_sec{sec:D3}.png";
-        }
+        string path = $"{_shotDir}/fc{fc:D5}_sec{sec:D3}.png";
         img.SavePng(path);
     }
 
     /// <summary>
     /// Called by PlaythroughDriver when a `dump LABEL` script command fires.
-    /// Defers the actual capture to the next frame end (CallDeferred), matching
-    /// C's behaviour where the dump fires during legacy_pump after the current
-    /// iter's render has already painted the screen buffer.
+    /// With RAPTOR_SHOT_BURST=N, dumps every sim frame for N frames after the
+    /// command (and N before, retroactively impossible, so just after). Use
+    /// the burst to find which frame best matches C visually.
     /// </summary>
     public void RequestScriptDump(string label)
     {
         if (string.IsNullOrEmpty(_shotDir)) return;
         _pendingScriptDumpLabel = label;
-        CallDeferred(nameof(WriteShot), SimClock.Frame / 70, SimClock.Frame);
+        int burst = 0;
+        var b = OS.GetEnvironment("RAPTOR_SHOT_BURST");
+        if (!string.IsNullOrEmpty(b) && int.TryParse(b, out var n) && n > 0) burst = n;
+        _burstRemaining = burst;
+        _burstFrameOffset = 0;
+        _pendingShotFireFrame = SimClock.Frame;
     }
+
+    private int _pendingShotFireFrame = -1;
+    private int _burstRemaining = 0;
+    private int _burstFrameOffset = 0;
 
     public override void _Draw()
     {
