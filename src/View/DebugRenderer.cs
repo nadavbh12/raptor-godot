@@ -313,11 +313,17 @@ public partial class DebugRenderer : Node2D
 
         DrawScoreHud();
 
-        var sf = SimClock.Frame;
-        var win = _menu?.State.ToString() ?? "?";
-        var hud = $"fc={sf}  win={win}  shield={_wave.PlayerLogic.Shield}  score={_wave.Score}  E={_wave.GetEnemies().Count}  EB={_wave.GetEnemyBullets().Count}  PB={_wave.GetPlayerBullets().Count}";
-        var font = ThemeDB.FallbackFont;
-        DrawString(font, new Vector2(4, 195), hud, HorizontalAlignment.Left, -1, 8, new Color(1, 1, 1));
+        // Bottom debug overlay is only useful for visual-parity debugging;
+        // it intrudes on the rendered scene in screenshots. Set
+        // RAPTOR_VIEW_DEBUG_HUD=1 to enable it.
+        if (OS.GetEnvironment("RAPTOR_VIEW_DEBUG_HUD") == "1")
+        {
+            var sf = SimClock.Frame;
+            var win = _menu?.State.ToString() ?? "?";
+            var hud = $"fc={sf}  win={win}  shield={_wave.PlayerLogic.Shield}  score={_wave.Score}  E={_wave.GetEnemies().Count}  EB={_wave.GetEnemyBullets().Count}  PB={_wave.GetPlayerBullets().Count}";
+            var font = ThemeDB.FallbackFont;
+            DrawString(font, new Vector2(4, 195), hud, HorizontalAlignment.Left, -1, 8, new Color(1, 1, 1));
+        }
     }
 
     /// <summary>
