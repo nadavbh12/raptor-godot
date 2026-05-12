@@ -451,7 +451,11 @@ public partial class DebugRenderer : Node2D
         float sx2 = Scale * (ox + w - 1 - ViewX) + ViewX;
         float sy2 = Scale * (oy + h - 1 - ViewY) + ViewY;
         var rect = new Rect2(sx, sy, sx2 - sx + 1, sy2 - sy + 1);
-        DrawTextureRect(tex, rect, false, new Color(0, 0, 0, 0.5f));
+        // C's SHADOW_Draw uses a 6-step palette light table (GFX_MakeLightTable
+        // with -6 intensity) — a fairly subtle darkening. 0.3 alpha approximates
+        // that better than the original 0.5 which made enemies look like solid
+        // black blobs on screen.
+        DrawTextureRect(tex, rect, false, new Color(0, 0, 0, 0.3f));
     }
 
     /// <summary>
@@ -467,7 +471,10 @@ public partial class DebugRenderer : Node2D
         for (int row = 0; row < height; row++)
         {
             float t = 1f - row / (float)height;  // 1 at top, 0 at bottom
-            var col = new Color(1.0f, 0.4f + 0.6f * t, 0.0f, 0.85f * t + 0.15f);
+            // C uses palette light tables producing a dim orange/red trail.
+            // Stay in the red-orange range (G stops at 0.35) and keep alpha low
+            // so the flame reads as a glow rather than a solid yellow bar.
+            var col = new Color(0.95f, 0.15f + 0.20f * t, 0.0f, 0.45f * t + 0.10f);
             DrawRect(new Rect2(ix, iy + row, width, 1), col);
         }
     }
@@ -491,11 +498,13 @@ public partial class DebugRenderer : Node2D
             int bx = e.X + meta.EngX[i];
             int by = e.Y + meta.EngY[i];
             int topY = by - (height - 1);  // mirrors C: iy -= (height-1)
-            // Draw rows top→bottom: top row dim, bottom row bright.
+            // Draw rows top→bottom: top row dim, bottom row bright. Same dim
+            // red-orange palette as DrawFlameDown — C's flame trails are subtle
+            // not solid yellow stripes.
             for (int row = 0; row < height; row++)
             {
                 float t = (row + 1) / (float)height;  // 0 → 1, brightest at base
-                var col = new Color(1.0f, 0.4f + 0.6f * t, 0.0f, 0.85f * t + 0.15f);
+                var col = new Color(0.95f, 0.15f + 0.20f * t, 0.0f, 0.45f * t + 0.10f);
                 DrawRect(new Rect2(bx, topY + row, width, 1), col);
             }
         }
