@@ -350,6 +350,19 @@ public partial class DebugRenderer : Node2D
         var playerTex = _playerTex[pic];
         const int PlayerW = 32, PlayerH = 32;
 
+        // Ground shadows: SHADOW_GAdd in C (SHADOWS.C:177-193) stores at
+        // (x-3, y+4) and SHADOW_DisplayGround draws via GFX_ShadeShape(DARK,...).
+        // Unlike sky shadows, the ground variant has no 3D projection — the
+        // shadow is the sprite silhouette darkened at a small offset.
+        foreach (var e in _wave.GetEnemies())
+        {
+            if (!e.Alive) continue;
+            if (e.Meta.Shadow == 0 || e.Meta.Ground == 0) continue;
+            var tex = LoadSprite(e.Meta.IName);
+            if (tex == null) continue;
+            DrawGroundShadow(tex, e.X, e.Y);
+        }
+
         // Sky shadows mirror C's render order: TILE_Display → SHADOW_DisplaySky
         // → ENEMY_DisplaySky → player. RAP.C also adds the player shadow with
         // SHADOW_Add before the sky pass (RAP.C:1060), so we draw it here too.
@@ -522,6 +535,17 @@ public partial class DebugRenderer : Node2D
         // dark silhouette is the closest approximation without a shader.
         var shadowTex = GetOrCreateShadow(tex);
         DrawTextureRect(shadowTex, rect, false, new Color(1, 1, 1, 0.3f));
+    }
+
+    /// <summary>
+    /// Ground enemy shadow at (x-3, y+4) — no 3D projection. Mirrors
+    /// SHADOW_GAdd + SHADOW_DisplayGround (SHADOWS.C:177-241) which call
+    /// GFX_ShadeShape(DARK, pic, x-3, y+4) at the original sprite size.
+    /// </summary>
+    private void DrawGroundShadow(Texture2D tex, int x, int y)
+    {
+        var shadowTex = GetOrCreateShadow(tex);
+        DrawTexture(shadowTex, new Vector2(x - 3, y + 4), new Color(1, 1, 1, 0.35f));
     }
 
     /// <summary>
