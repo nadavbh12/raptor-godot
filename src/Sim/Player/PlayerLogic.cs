@@ -25,7 +25,12 @@ public sealed class PlayerLogic
     // Shield starts at 0 (no pilot); Reset() sets it to InitShield when pilot is created.
     public int Shield { get; private set; } = 0;
     public bool Alive => Shield > 0;
-    public int Pic { get; private set; } = 4;   // pic 4 = centered banking frame
+    // Banking frame index — mirrors C SOURCE/RAP.C playerpic / playerbasepic.
+    // 0..6 spans 7 LPLAYER_PIC frames (0058..0064); 3 is neutral (playerbasepic).
+    // Initial value 4 matches C's RAP.C:81 — it recenters to 3 on tick 1 with no input.
+    public const int BasePic = 3;
+    public int Pic { get; private set; } = 4;
+    private int _oldX = InitX;
 
     public void Reset()
     {
@@ -33,6 +38,7 @@ public sealed class PlayerLogic
         Y = InitY;
         Shield = InitShield;
         Pic = 4;
+        _oldX = InitX;
     }
 
     /// <summary>
@@ -59,10 +65,10 @@ public sealed class PlayerLogic
     /// <summary>
     /// Apply input for one tick. dx/dy are -1, 0, or 1.
     /// Position is clamped to [MinX, MaxX] x [MinY, MaxY].
-    /// Pic represents banking based on horizontal direction:
-    ///   dx == 0  -> pic 4 (center)
-    ///   dx > 0   -> pic 5 (slight right) … this can be refined later;
-    ///              Stage 3 just keeps pic 4 for all and animates in View.
+    /// Pic mirrors C INPUT.C:806-828: bankRange = |X - oldX| >> 2, clamped to
+    /// [0, 3]; moving left increments Pic toward base+bankRange, moving right
+    /// decrements toward base-bankRange, no movement recenters by ±1 toward
+    /// base.
     /// </summary>
     public void Tick(int dx, int dy)
     {
@@ -77,5 +83,22 @@ public sealed class PlayerLogic
         if (newY > MaxY) newY = MaxY;
         X = newX;
         Y = newY;
+
+        int bankRange = System.Math.Abs(X - _oldX) >> 2;
+        if (bankRange > 3) bankRange = 3;
+        if (X < _oldX)
+        {
+            if (Pic < BasePic + bankRange) Pic++;
+        }
+        else if (X > _oldX)
+        {
+            if (Pic > BasePic - bankRange) Pic--;
+        }
+        else
+        {
+            if (Pic > BasePic) Pic--;
+            else if (Pic < BasePic) Pic++;
+        }
+        _oldX = X;
     }
 }

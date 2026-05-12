@@ -19,7 +19,12 @@ public partial class DebugRenderer : Node2D
 
     private readonly Dictionary<string, Texture2D> _spriteCache = new();
     private readonly Dictionary<string, string> _spritePaths = new();
-    private Texture2D? _playerTex;
+    // _playerTex[0..6] corresponds to playerpic 0..6 (LPLAYER_PIC 0058..0064).
+    // Index 3 is neutral (playerbasepic).
+    private readonly Texture2D?[] _playerTex = new Texture2D?[7];
+    // o_engine[7] from C RAP.C:67. Maps playerpic → engine-x offset from
+    // player_cx; used by FLAME_Down placement (RAP.C:1075-1076).
+    private static readonly int[] OEngine = { 0, 1, 2, 3, 2, 1, 0 };
     private readonly Dictionary<int, Texture2D?> _tileCache = new();
     private string? _tilesRoot;
     private Texture2D? _enemyBulletTex;
@@ -57,11 +62,10 @@ public partial class DebugRenderer : Node2D
             _digitTex[i] = LoadSpriteFromPath(Path.Combine(spritesRoot, $"{i + 1:D4}_N{i}_PIC.png"));
         _digitTex[10] = LoadSpriteFromPath(Path.Combine(spritesRoot, "0011_N$_PIC.png"));
         // Player has 7 LPLAYER_PIC frames (0058..0064) for the bank angles
-        // when steering left/right. Index 3 (0061) is the neutral straight-
-        // ahead pose, which is the right default while we don't model bank.
-        _playerTex = LoadSpriteFromPath(
-            Path.Combine(ProjectSettings.GlobalizePath("res://assets/sprites"),
-                         "0061_LPLAYER_PIC.png"));
+        // when steering left/right. Index 3 (0061) is neutral (playerbasepic).
+        for (int i = 0; i < 7; i++)
+            _playerTex[i] = LoadSpriteFromPath(
+                Path.Combine(spritesRoot, $"{58 + i:D4}_LPLAYER_PIC.png"));
 
         ZIndex = 100;
     }
@@ -264,6 +268,9 @@ public partial class DebugRenderer : Node2D
 
         var px = _wave.PlayerLogic.X;
         var py = _wave.PlayerLogic.Y;
+        int pic = _wave.PlayerLogic.Pic;
+        if (pic < 0) pic = 0; else if (pic > 6) pic = 6;
+        var playerTex = _playerTex[pic];
         const int PlayerW = 32, PlayerH = 32;
 
         // Sky shadows mirror C's render order: TILE_Display → SHADOW_DisplaySky
@@ -277,8 +284,8 @@ public partial class DebugRenderer : Node2D
             if (tex == null) continue;
             DrawSkyShadow(tex, e.X, e.Y, e.HalfW * 2, e.HalfH * 2);
         }
-        if (_playerTex != null)
-            DrawSkyShadow(_playerTex, px, py, PlayerW, PlayerH);
+        if (playerTex != null)
+            DrawSkyShadow(playerTex, px, py, PlayerW, PlayerH);
 
         // C's eframe ^= 1 per ENEMY_DisplaySky call (one per sim tick).
         // Derive from SimClock.Frame parity so the view doesn't mutate sim state.
@@ -307,17 +314,16 @@ public partial class DebugRenderer : Node2D
         // comments in WaveController). C's GFX_PutSprite renders at top-left, so
         // we draw directly at (X, Y) without subtracting half-size. The player
         // is drawn AFTER enemies in C (RAP.C:1077), so it occludes them.
-        if (_playerTex != null)
+        if (playerTex != null)
         {
             // Player engine flames — FLAME_Down at (player_cx ± o_engine[pic] - {3,2},
-            // player_cy + 15) in C (RAP.C:1075-1076). o_engine for the neutral pose
-            // (LPLAYER_PIC frame 3) is 11 (see RAP.C o_engine[]); fixed for now since
-            // banking frames aren't wired yet.
+            // player_cy + 15) in C (RAP.C:1075-1076).
             int pcx = px + PlayerW / 2;
             int pcy = py + PlayerH / 2;
-            DrawFlameDown(pcx - 11 - 3, pcy + 15, 4, eframe);
-            DrawFlameDown(pcx + 11 - 2, pcy + 15, 4, eframe);
-            DrawTexture(_playerTex, new Vector2(px, py));
+            int oeng = OEngine[pic];
+            DrawFlameDown(pcx - oeng - 3, pcy + 15, 4, eframe);
+            DrawFlameDown(pcx + oeng - 2, pcy + 15, 4, eframe);
+            DrawTexture(playerTex, new Vector2(px, py));
         }
         else
         {
