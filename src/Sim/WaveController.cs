@@ -587,14 +587,40 @@ public partial class WaveController : Node
     private const int ExpAirLarge  = 2;   // EXP_AIRLARGE → LGFLAK_BLK
     private const int ExpAirSmall2 = 10;  // EXP_AIRSMALL2 → SMFLAK_BLK
 
-    // Spawn explosion at the enemy's center (mirrors ENEMY.C:1066-1115 — the
-    // switch on curlib->exptype that calls ANIMS_StartAnim at sprite->x+hlx,
-    // y+hly).
+    // Spawn explosion(s) at the enemy's death position. Mirrors ENEMY.C:1066-1115
+    // — primary explosion at (x+hlx, y+hly), and for EXP_AIRLARGE the C code
+    // also fires (width/16 * height/16) medium explosions at random offsets
+    // inside the sprite bounds. We use a deterministic pattern (no RNG) so
+    // we never consume sim entropy.
+    private const int ExpAirLargeCode = 2;  // EXP_AIRLARGE (SOURCE/MAP.H)
     private void SpawnExplosion(EnemyLogic e)
     {
         int cx = e.X + e.Meta.HalfX;
         int cy = e.Y + e.Meta.HalfY;
-        _explosions.Add(new Explosion(e.Meta.ExpType, cx, cy, SimClock.Frame));
+        int fc = SimClock.Frame;
+        _explosions.Add(new Explosion(e.Meta.ExpType, cx, cy, fc));
+        if (e.Meta.ExpType == ExpAirLargeCode)
+        {
+            int w = e.Meta.Width;
+            int h = e.Meta.Height;
+            int count = (w >> 4) * (h >> 4);
+            // Deterministic pseudo-random offsets so successive explosions land
+            // at distinct positions inside the sprite. Mixing hash uses prime
+            // multipliers — no RNG state mutated.
+            uint hash = (uint)(e.X * 73856093 ^ e.Y * 19349663 ^ fc * 83492791);
+            for (int i = 0; i < count; i++)
+            {
+                hash = hash * 1103515245u + 12345u;
+                int ox = (int)((hash >> 8) % (uint)System.Math.Max(1, w));
+                hash = hash * 1103515245u + 12345u;
+                int oy = (int)((hash >> 8) % (uint)System.Math.Max(1, h));
+                int t = (i & 1) == 1 ? 1 /* EXP_AIRMED → A_MED_AIR_EXPLO */
+                                     : 10 /* EXP_AIRSMALL2 → A_MED_AIR_EXPLO2 */;
+                // Stagger start frame slightly so the cascade doesn't appear
+                // all at once (matches C's per-loop ANIMS_StartAnim spacing).
+                _explosions.Add(new Explosion(t, e.X + ox, e.Y + oy, fc + (i % 4)));
+            }
+        }
     }
 
     internal void PhaseCleanup()
