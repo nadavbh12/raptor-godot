@@ -264,18 +264,21 @@ public partial class DebugRenderer : Node2D
 
         var px = _wave.PlayerLogic.X;
         var py = _wave.PlayerLogic.Y;
+        const int PlayerW = 32, PlayerH = 32;
 
-        // Sim X/Y are TOP-LEFT (matching C's sprite->x/y semantics — see ENEMY_Add
-        // comments in WaveController). C's GFX_PutSprite renders at top-left, so
-        // we draw directly at (X, Y) without subtracting half-size.
+        // Sky shadows mirror C's render order: TILE_Display → SHADOW_DisplaySky
+        // → ENEMY_DisplaySky → player. RAP.C also adds the player shadow with
+        // SHADOW_Add before the sky pass (RAP.C:1060), so we draw it here too.
+        foreach (var e in _wave.GetEnemies())
+        {
+            if (!e.Alive) continue;
+            if (e.Meta.Shadow == 0 || e.Meta.Ground != 0) continue;
+            var tex = LoadSprite(e.Meta.IName);
+            if (tex == null) continue;
+            DrawSkyShadow(tex, e.X, e.Y, e.HalfW * 2, e.HalfH * 2);
+        }
         if (_playerTex != null)
-        {
-            DrawTexture(_playerTex, new Vector2(px, py));
-        }
-        else
-        {
-            DrawRect(new Rect2(px, py, 32, 32), new Color(0, 1, 0, 0.7f));
-        }
+            DrawSkyShadow(_playerTex, px, py, PlayerW, PlayerH);
 
         // C's eframe ^= 1 per ENEMY_DisplaySky call (one per sim tick).
         // Derive from SimClock.Frame parity so the view doesn't mutate sim state.
@@ -298,6 +301,27 @@ public partial class DebugRenderer : Node2D
             // never call FLAME_Up in C.
             if (e.Meta.Ground == 0 && e.Meta.NumEngs > 0)
                 DrawEngineFlames(e, eframe);
+        }
+
+        // Sim X/Y are TOP-LEFT (matching C's sprite->x/y semantics — see ENEMY_Add
+        // comments in WaveController). C's GFX_PutSprite renders at top-left, so
+        // we draw directly at (X, Y) without subtracting half-size. The player
+        // is drawn AFTER enemies in C (RAP.C:1077), so it occludes them.
+        if (_playerTex != null)
+        {
+            // Player engine flames — FLAME_Down at (player_cx ± o_engine[pic] - {3,2},
+            // player_cy + 15) in C (RAP.C:1075-1076). o_engine for the neutral pose
+            // (LPLAYER_PIC frame 3) is 11 (see RAP.C o_engine[]); fixed for now since
+            // banking frames aren't wired yet.
+            int pcx = px + PlayerW / 2;
+            int pcy = py + PlayerH / 2;
+            DrawFlameDown(pcx - 11 - 3, pcy + 15, 4, eframe);
+            DrawFlameDown(pcx + 11 - 2, pcy + 15, 4, eframe);
+            DrawTexture(_playerTex, new Vector2(px, py));
+        }
+        else
+        {
+            DrawRect(new Rect2(px, py, 32, 32), new Color(0, 1, 0, 0.7f));
         }
 
         // Bullet sim X/Y are also top-left (ESHOT_Shoot: cur->move.x -= xoff).
@@ -331,6 +355,45 @@ public partial class DebugRenderer : Node2D
             var hud = $"fc={sf}  win={win}  shield={_wave.PlayerLogic.Shield}  score={_wave.Score}  E={_wave.GetEnemies().Count}  EB={_wave.GetEnemyBullets().Count}  PB={_wave.GetPlayerBullets().Count}";
             var font = ThemeDB.FallbackFont;
             DrawString(font, new Vector2(4, 195), hud, HorizontalAlignment.Left, -1, 8, new Color(1, 1, 1));
+        }
+    }
+
+    /// <summary>
+    /// Project an air-sprite to its shadow position on the ground and draw a
+    /// darkened silhouette. Mirrors SHADOW_Draw (SOURCE/SHADOWS.C) which uses
+    /// GFX_3DPoint with viewx=160, viewy=100, viewz=1000, G3D_DIST=200, and
+    /// shadow plane z=MAXZ=1280. Effective scale = 200/(1280-1000) = 5/7.
+    /// Pre-projection offset: x-=10, y+=20.
+    /// </summary>
+    private void DrawSkyShadow(Texture2D tex, int x, int y, int w, int h)
+    {
+        const float Scale = 200f / 280f;   // G3D_DIST / (MAXZ - viewz)
+        const int ViewX = 160, ViewY = 100;
+        int ox = x - 10;
+        int oy = y + 20;
+        float sx = Scale * (ox - ViewX) + ViewX;
+        float sy = Scale * (oy - ViewY) + ViewY;
+        float sx2 = Scale * (ox + w - 1 - ViewX) + ViewX;
+        float sy2 = Scale * (oy + h - 1 - ViewY) + ViewY;
+        var rect = new Rect2(sx, sy, sx2 - sx + 1, sy2 - sy + 1);
+        DrawTextureRect(tex, rect, false, new Color(0, 0, 0, 0.5f));
+    }
+
+    /// <summary>
+    /// Player engine flame trailing downward. Mirrors FLAME_Down
+    /// (SOURCE/FLAME.C): height 8 (frame 0) / 12 (frame 1); brightest at top
+    /// (engine exit), dimming downward. The (ix, iy) point is the top-left of
+    /// the flame in C.
+    /// </summary>
+    private void DrawFlameDown(int ix, int iy, int width, int frame)
+    {
+        if (width <= 0) return;
+        int height = frame == 0 ? 8 : 12;
+        for (int row = 0; row < height; row++)
+        {
+            float t = 1f - row / (float)height;  // 1 at top, 0 at bottom
+            var col = new Color(1.0f, 0.4f + 0.6f * t, 0.0f, 0.85f * t + 0.15f);
+            DrawRect(new Rect2(ix, iy + row, width, 1), col);
         }
     }
 
