@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.IO;
 using Godot;
 using Raptor.Sim;
@@ -35,6 +36,14 @@ internal class ParityEmitWorker : IDisposable
     public Func<int>?  GetEnemies  { get; set; }
     public Func<int>?  GetPbullets { get; set; }
     public Func<int>?  GetEbullets { get; set; }
+    /// <summary>Game-loop iters completed since game-enter. Wired by
+    /// WaveController; used as the primary alignment key for in-game
+    /// checkpoint emission (iter-bucket boundaries, not fc-bucket).</summary>
+    public Func<int>?  GetGameIter { get; set; }
+
+    // Iter-bucket size for in-game emission. Must match parity.c's ITER_BUCKET.
+    // 18 iters ≈ 70 fc in C-time at C's variable ~3.89 fc/iter cadence.
+    private const int IterBucket = 18;
 
     // Stub fallback fields — used when Menu is null or before in-game starts.
     public string WinState  { get; set; } = "UNKNOWN";
@@ -63,17 +72,15 @@ internal class ParityEmitWorker : IDisposable
     /// </summary>
     public void OnStateChanged() { /* anchor-change detection in Tick() handles reset */ }
 
-    // When the game enters, the C version's Do_Game init (GFX_FadeIn) consumes
-    // ~65+ frames before the second parity_tick fires. This causes the C golden
-    // to skip fc=70 and jump from fc=0 directly to fc=140 (curSec=2 not 1).
-    // We replicate this by pre-advancing _lastEmitSec by 1 on the first in-game
-    // emission (effectively skipping the fc=70 bucket).
-    private bool _inGameFirstEmitDone = false;
-
     /// <summary>
     /// Called every physics tick. Emits a checkpoint line whenever we cross
-    /// into a new 70-frame "second" bucket relative to the current context anchor.
-    /// Mirrors the boundary-crossing detection in parity.c:raptor_parity_tick.
+    /// a bucket boundary:
+    ///   In-game: every IterBucket game-loop iters since game enter. Iter
+    ///            count is read from WaveController via GetGameIter so the
+    ///            alignment is robust to fc-per-iter cadence drift between
+    ///            the C dosraptor and this port.
+    ///   Menu:    every 70 fc since the win-state was entered. Menus are
+    ///            event-driven, no iter loop, so fc remains the alignment key.
     /// </summary>
     public void Tick()
     {
@@ -112,35 +119,45 @@ internal class ParityEmitWorker : IDisposable
             {
                 _lastEmitSec = -1;
                 _lastAnchor  = anchor;
-                if (isInGame)
-                    _inGameFirstEmitDone = false;
             }
         }
         else
         {
-            // Legacy mode: emit at absolute frame multiples of 70.
+            // Legacy stub mode (used by xUnit tests): emit at absolute frame
+            // multiples of 70 with iter=-1 since there's no real game loop.
             if (Sim.SimClock.Frame % 70 != 0) return;
-            Emit(Sim.SimClock.Frame, WinState);
+            Emit(Sim.SimClock.Frame, -1, WinState);
             return;
         }
 
-        int relFc  = Sim.SimClock.Frame - anchor;
-        int curSec = relFc / 70;
-        if (curSec <= _lastEmitSec) return;
-        _lastEmitSec = curSec;
-        Emit(curSec * 70, win);
-
-        // After the first in-game emission (fc=0), skip one bucket to simulate
-        // the C version's GFX_FadeIn delay that causes the second parity_tick
-        // to land at curSec=2 (fc=140) rather than curSec=1 (fc=70).
-        if (isInGame && !_inGameFirstEmitDone)
+        int curSec, reportFc, reportIter;
+        if (isInGame)
         {
-            _inGameFirstEmitDone = true;
-            _lastEmitSec = 1;  // pre-fill curSec=1 → next emit is curSec=2 = fc=140
+            // WaveController.GameLoopIter increments AFTER scheduler.Tick, so
+            // it reads as "1 + iters_completed". C's g_game_iter is read
+            // BEFORE increment so it's "iters_completed". Match C's semantics
+            // by subtracting 1 — both then represent "after N iters of work".
+            int iter = (GetGameIter?.Invoke() ?? 1) - 1;
+            if (iter < 0) return;  // game just entered, no iter yet
+            curSec = iter / IterBucket;
+            if (curSec <= _lastEmitSec) return;
+            _lastEmitSec = curSec;
+            reportIter = curSec * IterBucket;
+            reportFc   = Sim.SimClock.Frame - anchor;
         }
+        else
+        {
+            int relFc = Sim.SimClock.Frame - anchor;
+            curSec = relFc / 70;
+            if (curSec <= _lastEmitSec) return;
+            _lastEmitSec = curSec;
+            reportIter = -1;
+            reportFc   = curSec * 70;
+        }
+        Emit(reportFc, reportIter, win);
     }
 
-    private void Emit(int fc, string win)
+    private void Emit(int fc, int iter, string win)
     {
         // Read live values if delegates are wired, else fall back to stub fields.
         int    px  = GetPlayerX  != null ? GetPlayerX()  : PlayerX;
@@ -162,16 +179,10 @@ internal class ParityEmitWorker : IDisposable
         // obj_hash: emit FNV offset basis (empty list) — advisory field only.
         const string ObjHash = "cbf29ce484222325";
 
-        var line = $"{{\"fc\":{fc}," +
-                   $"\"win\":\"{win}\"," +
-                   $"\"player_x\":{px}," +
-                   $"\"player_y\":{py}," +
-                   $"\"score\":{sc}," +
-                   $"\"shield\":{sh}," +
-                   $"\"enemies\":{en}," +
-                   $"\"pbullets\":{pb}," +
-                   $"\"ebullets\":{eb}," +
-                   $"\"obj_hash\":\"{ObjHash}\"}}";
+        // InvariantCulture: keeps negative ints (e.g. iter=-1 for menus) from
+        // getting a U+200E LRM inserted on RTL-aware locales, which would
+        // otherwise break the JSON parser in the comparator.
+        var line = string.Create(CultureInfo.InvariantCulture, $"{{\"fc\":{fc},\"iter\":{iter},\"win\":\"{win}\",\"player_x\":{px},\"player_y\":{py},\"score\":{sc},\"shield\":{sh},\"enemies\":{en},\"pbullets\":{pb},\"ebullets\":{eb},\"obj_hash\":\"{ObjHash}\"}}");
         _out!.WriteLine(line);
     }
 
@@ -204,6 +215,7 @@ public partial class ParityEmitter : Node
     public Func<int>?  GetEnemies  { get => _worker.GetEnemies;   set => _worker.GetEnemies  = value; }
     public Func<int>?  GetPbullets { get => _worker.GetPbullets;  set => _worker.GetPbullets = value; }
     public Func<int>?  GetEbullets { get => _worker.GetEbullets;  set => _worker.GetEbullets = value; }
+    public Func<int>?  GetGameIter { get => _worker.GetGameIter;  set => _worker.GetGameIter = value; }
 
     // Legacy stub fields (used when Menu is null).
     public string WinState { get => _worker.WinState; set => _worker.WinState = value; }

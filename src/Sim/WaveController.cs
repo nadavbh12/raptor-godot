@@ -269,6 +269,7 @@ public partial class WaveController : Node
             _emitter.GetEnemies  = () => _enemies.Count;
             _emitter.GetPbullets = () => _playerBullets.Count;
             _emitter.GetEbullets = () => _enemyBullets.Count;
+            _emitter.GetGameIter = () => GameLoopIter;
         }
     }
 

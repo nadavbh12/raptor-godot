@@ -53,9 +53,10 @@ if [[ "${REUSE_C:-0}" -ne 1 ]]; then
     timeout 120 "$CBIN" >"$C_DIR/log.txt" 2>&1 || true
     echo "[compare]   BMPs: $(ls "$C_DIR"/*.bmp 2>/dev/null | wc -l | xargs)"
     # Convert BMP -> PNG in parallel (sips, 8 concurrent).
+    # macOS ships bash 3 which lacks `wait -n`; poll the job count instead.
     for f in "$C_DIR"/*.bmp; do
         sips -s format png "$f" --out "${f%.bmp}.png" >/dev/null 2>&1 &
-        if [[ $(jobs -r -p | wc -l) -ge 8 ]]; then wait -n; fi
+        while [[ $(jobs -r -p | wc -l) -ge 8 ]]; do sleep 0.05; done
     done
     wait
     rm -f "$C_DIR"/*.bmp

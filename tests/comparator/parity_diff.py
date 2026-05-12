@@ -33,9 +33,13 @@ def _abs_or_pct(abs_tol, pct_tol):
         return diff <= abs(b) * pct_tol
     return cmp
 
+# iter is the primary in-game alignment key (exact); fc is advisory under
+# iter-based alignment because C and Godot reach the same iter at different
+# fc due to game-loop cadence drift. For menu rows iter == -1 on both sides,
+# so the _exact check passes trivially and fc carries the alignment.
 # obj_hash is exact-but-advisory: mismatches are logged, not counted as failures.
 TOLERANCES = {
-    "fc":       _exact,
+    "iter":     _exact,
     "win":      _exact,
     "player_x": _abs(8),
     "player_y": _abs(8),
@@ -45,7 +49,7 @@ TOLERANCES = {
     "pbullets": _abs_or_pct(0, 0.20),
     "ebullets": _abs_or_pct(0, 0.25),
 }
-ADVISORY_FIELDS = {"obj_hash"}
+ADVISORY_FIELDS = {"obj_hash", "fc"}
 
 PASS_PCT = 0.95
 
