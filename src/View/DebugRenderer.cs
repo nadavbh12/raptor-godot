@@ -25,6 +25,32 @@ public partial class DebugRenderer : Node2D
     // o_engine[7] from C RAP.C:67. Maps playerpic → engine-x offset from
     // player_cx; used by FLAME_Down placement (RAP.C:1075-1076).
     private static readonly int[] OEngine = { 0, 1, 2, 3, 2, 1, 0 };
+
+    // Explosion BLK family + frame count keyed by C exptype (SOURCE/MAP.H).
+    // The handle mapping mirrors ENEMY.C:1066-1115's switch on curlib->exptype,
+    // resolved through ANIMS.C:187-199's ANIMS_Register table:
+    //   EXP_AIRSMALL1 → A_MED_AIR_EXPLO  → EXPLO2_BLK (13)
+    //   EXP_AIRMED    → A_LARGE_AIR_EXPLO→ LGFLAK_BLK (12)
+    //   EXP_AIRLARGE  → A_LARGE_AIR_EXPLO→ LGFLAK_BLK (12)
+    //   EXP_AIRSMALL2 → A_MED_AIR_EXPLO2 → SMFLAK_BLK (14)
+    //   EXP_ENERGY    → A_ENERGY_AIR_EXPLO→ NRGBANG_BLK (12)
+    // Ground exptypes fall back to EXPLO2_BLK for now (no _PIC anim coverage).
+    private static readonly (string Family, int Frames)[] ExpAnim = new (string, int)[]
+    {
+        ("EXPLO2_BLK",  13),  // 0 EXP_AIRSMALL1
+        ("LGFLAK_BLK",  12),  // 1 EXP_AIRMED
+        ("LGFLAK_BLK",  12),  // 2 EXP_AIRLARGE
+        ("EXPLO2_BLK",  13),  // 3 EXP_GRDSMALL  (fallback)
+        ("EXPLO2_BLK",  13),  // 4 EXP_GRDMED    (fallback)
+        ("EXPLO2_BLK",  13),  // 5 EXP_GRDLARGE  (fallback)
+        ("EXPLO2_BLK",  13),  // 6 (unused)
+        ("EXPLO2_BLK",  13),  // 7 (unused)
+        ("NRGBANG_BLK", 12),  // 8 EXP_ENERGY
+        ("EXPLO2_BLK",  13),  // 9 (unused)
+        ("SMFLAK_BLK",  14),  // 10 EXP_AIRSMALL2
+    };
+    private readonly Dictionary<(string, int), Texture2D?> _blkCache = new();
+    private string? _blkRoot;
     private readonly Dictionary<int, Texture2D?> _tileCache = new();
     private string? _tilesRoot;
     private Texture2D? _enemyBulletTex;
@@ -55,6 +81,7 @@ public partial class DebugRenderer : Node2D
         string bulletsRoot = ProjectSettings.GlobalizePath("res://assets/bullets");
         _enemyBulletTex  = LoadSpriteFromPath(Path.Combine(bulletsRoot, "ESHOT_BLK_00.png"));
         _playerBulletTex = LoadSpriteFromPath(Path.Combine(bulletsRoot, "NMSHOT_BLK_00.png"));
+        _blkRoot = bulletsRoot;  // _BLK sprite frames live under assets/bullets/
 
         // Score-digit sprite array (RAP.C: numbers[0..10] = N0..N9 + $).
         string spritesRoot = ProjectSettings.GlobalizePath("res://assets/sprites");
@@ -349,6 +376,7 @@ public partial class DebugRenderer : Node2D
                 DrawRect(new Rect2(b.X, b.Y, 4, 4), new Color(0, 1, 1));
         }
 
+        DrawExplosions();
         DrawScoreHud();
 
         // Bottom debug overlay is only useful for visual-parity debugging;
@@ -362,6 +390,47 @@ public partial class DebugRenderer : Node2D
             var font = ThemeDB.FallbackFont;
             DrawString(font, new Vector2(4, 195), hud, HorizontalAlignment.Left, -1, 8, new Color(1, 1, 1));
         }
+    }
+
+    /// <summary>
+    /// Render all active sim-side explosions. Mirrors C ANIMS_DisplaySky:
+    /// each explosion's current frame is (SimClock.Frame - StartFc); the BLK
+    /// family + frame count is resolved from ExpAnim[ExpType]. C drew at the
+    /// pre-offset (x - xoff, y - yoff) from ANIMS_StartAnim; since our table
+    /// doesn't track those offsets we center the texture on the death point.
+    /// </summary>
+    private void DrawExplosions()
+    {
+        if (_wave == null || _blkRoot == null) return;
+        int fc = SimClock.Frame;
+        foreach (var ex in _wave.GetExplosions())
+        {
+            int idx = (ex.ExpType >= 0 && ex.ExpType < ExpAnim.Length)
+                ? ex.ExpType : 0;
+            var (family, total) = ExpAnim[idx];
+            int frame = fc - ex.StartFc;
+            if (frame < 0 || frame >= total) continue;
+            var tex = LoadBlkFrame(family, frame);
+            if (tex == null) continue;
+            int dw = (int)tex.GetWidth();
+            int dh = (int)tex.GetHeight();
+            DrawTexture(tex, new Vector2(ex.X - dw / 2, ex.Y - dh / 2));
+        }
+    }
+
+    private Texture2D? LoadBlkFrame(string family, int frame)
+    {
+        var key = (family, frame);
+        if (_blkCache.TryGetValue(key, out var cached)) return cached;
+        string path = Path.Combine(_blkRoot!, $"{family}_{frame:D2}.png");
+        Texture2D? tex = null;
+        if (File.Exists(path))
+        {
+            var img = Image.LoadFromFile(path);
+            if (img != null) tex = ImageTexture.CreateFromImage(img);
+        }
+        _blkCache[key] = tex;  // cache misses too
+        return tex;
     }
 
     /// <summary>

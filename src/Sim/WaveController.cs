@@ -171,10 +171,18 @@ public partial class WaveController : Node
     private readonly List<BulletLogic>  _playerBullets = new();
     private readonly List<BulletLogic>  _enemyBullets  = new();
 
+    // Active explosion animations spawned when an enemy dies. Each entry
+    // records the C exptype (SOURCE/MAP.H), the center position, and the sim
+    // frame at which it was started; the view renders the right BLK frame as
+    // SimClock.Frame - StartFc.
+    public readonly record struct Explosion(int ExpType, int X, int Y, int StartFc);
+    private readonly List<Explosion> _explosions = new();
+
     // Read-only accessors for debug rendering only — not parity-affecting.
     public IReadOnlyList<EnemyLogic>  GetEnemies()       => _enemies;
     public IReadOnlyList<BulletLogic> GetEnemyBullets()  => _enemyBullets;
     public IReadOnlyList<BulletLogic> GetPlayerBullets() => _playerBullets;
+    public IReadOnlyList<Explosion>   GetExplosions()    => _explosions;
 
     // ── Collision scratch ─────────────────────────────────────────────────────
     private readonly List<(EnemyLogic enemy, int dmg)> _hitEnemies = new();
@@ -298,6 +306,7 @@ public partial class WaveController : Node
         _playerBullets.Clear();
         _enemyBullets.Clear();
         _hitEnemies.Clear();
+        _explosions.Clear();
         _playerHit = false;
         _endWaveFlag = false;
         _subTick = 0;
@@ -541,7 +550,10 @@ public partial class WaveController : Node
         {
             enemy.TakeDamage(dmg);
             if (!enemy.Alive)
+            {
                 Score += (uint)enemy.Meta.Money;
+                SpawnExplosion(enemy);
+            }
         }
 
         // Body collision: enemy hits player (mirrors ENEMY.C lines 1039-1057).
@@ -554,8 +566,21 @@ public partial class WaveController : Node
             int bodyDmg = e.Meta.BodyCrashDamage;
             PlayerLogic.TakeDamage(bodyDmg);
             if (!e.Alive)
+            {
                 Score += (uint)e.Meta.Money;
+                SpawnExplosion(e);
+            }
         }
+    }
+
+    // Spawn explosion at the enemy's center (mirrors ENEMY.C:1066-1115 — the
+    // switch on curlib->exptype that calls ANIMS_StartAnim at sprite->x+hlx,
+    // y+hly).
+    private void SpawnExplosion(EnemyLogic e)
+    {
+        int cx = e.X + e.Meta.HalfX;
+        int cy = e.Y + e.Meta.HalfY;
+        _explosions.Add(new Explosion(e.Meta.ExpType, cx, cy, SimClock.Frame));
     }
 
     internal void PhaseCleanup()
@@ -566,6 +591,13 @@ public partial class WaveController : Node
         // Remove out-of-bounds bullets.
         _playerBullets.RemoveAll(b => !b.Alive);
         _enemyBullets.RemoveAll(b => !b.Alive);
+
+        // Drop finished explosions. Frames-per-animation is determined by the
+        // view's BlkInfo table; we cap at a conservative 50 frames so a missing
+        // mapping can't leak an explosion forever.
+        const int MaxAnimFrames = 50;
+        int fc = SimClock.Frame;
+        _explosions.RemoveAll(x => fc - x.StartFc >= MaxAnimFrames);
     }
 
     internal void PhaseHud()
