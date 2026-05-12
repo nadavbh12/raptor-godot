@@ -559,19 +559,33 @@ public partial class WaveController : Node
         // Body collision: enemy hits player (mirrors ENEMY.C lines 1039-1057).
         // sprite->hits -= PLAYERWIDTH/2 = 16. If hits ≤ 0, enemy dies → add money.
         // Player takes OBJS_SubEnergy(max(width,height) >> 2) = BodyCrashDamage.
+        // C also fires A_SMALL_AIR_EXPLO at the collision point regardless of
+        // whether the enemy dies (ENEMY.C:1054).
+        bool playerWasAlive = PlayerLogic.Alive;
         foreach (var e in _bodyCrashEnemies)
         {
             if (!e.Alive) continue;
             e.TakeDamage(playerWidth2);
             int bodyDmg = e.Meta.BodyCrashDamage;
             PlayerLogic.TakeDamage(bodyDmg);
+            _explosions.Add(new Explosion(ExpAirSmall2, PlayerLogic.X + 16, PlayerLogic.Y + 16, SimClock.Frame));
             if (!e.Alive)
             {
                 Score += (uint)e.Meta.Money;
                 SpawnExplosion(e);
             }
         }
+        // Player just died this tick — spawn one large death explosion at the
+        // player's center (mirrors RAP.C:583 A_LARGE_AIR_EXPLO at player_cx/cy).
+        if (playerWasAlive && !PlayerLogic.Alive)
+        {
+            _explosions.Add(new Explosion(ExpAirLarge, PlayerLogic.X + 16, PlayerLogic.Y + 16, SimClock.Frame));
+        }
     }
+
+    // C exptype constants used for cosmetic-only explosion events (SOURCE/MAP.H).
+    private const int ExpAirLarge  = 2;   // EXP_AIRLARGE → LGFLAK_BLK
+    private const int ExpAirSmall2 = 10;  // EXP_AIRSMALL2 → SMFLAK_BLK
 
     // Spawn explosion at the enemy's center (mirrors ENEMY.C:1066-1115 — the
     // switch on curlib->exptype that calls ANIMS_StartAnim at sprite->x+hlx,
