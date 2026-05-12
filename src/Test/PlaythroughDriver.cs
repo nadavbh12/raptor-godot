@@ -19,6 +19,20 @@ public partial class PlaythroughDriver : Node
     private Sim.MenuStateMachine? _menu;
     private ParityEmitter? _emitter;
 
+    // Key dispatched by the script on the previous tick, applied to
+    // MenuStateMachine on the current tick. The 1-frame delay mirrors the
+    // wall-clock lag C has between SDL keypress injection (in the timer
+    // thread) and the menu_exit code on the main thread actually calling
+    // set_win_state. Without it, atomic same-tick state changes can wipe
+    // the OLD anchor before its final bucket boundary gets emitted —
+    // mission_long's MENU fc=630 boundary falls exactly on Return #4's
+    // frame, and was getting dropped that way.
+    //
+    // For the deferred apply to run AFTER ParityEmitter's emit on the
+    // transition tick, this node must sit BELOW ParityEmitter in the
+    // scene tree (Main.tscn order).
+    private string? _pendingKey;
+
     public override void _Ready()
     {
         var scriptPath = OS.GetEnvironment("RAPTOR_PLAYTHROUGH");
@@ -47,11 +61,8 @@ public partial class PlaythroughDriver : Node
 
         _pt.OnKeyPress = key =>
         {
-            if (_menu == null) return;
-            bool transitioned = _menu.HandleInput(key, Sim.SimClock.Frame);
-            // OnStateChanged is wired via event in MenuController._Ready;
-            // no manual notify needed here. Transition is handled by the event.
-            _ = transitioned;
+            // Queue for next-tick application; see _pendingKey docs.
+            _pendingKey = key;
         };
 
         _pt.OnKeyDown = key =>
@@ -89,6 +100,15 @@ public partial class PlaythroughDriver : Node
 
     public override void _PhysicsProcess(double _)
     {
+        // Apply any key queued by last tick's Tick(). ParityEmitter has
+        // already emitted for the current frame (we sit below it in the
+        // scene tree), so the OLD state's bucket — if its boundary lies
+        // on this frame — gets emitted before the state changes here.
+        if (_pendingKey != null && _menu != null)
+        {
+            _menu.HandleInput(_pendingKey, Sim.SimClock.Frame);
+            _pendingKey = null;
+        }
         _pt?.Tick(Sim.SimClock.Frame);
     }
 }

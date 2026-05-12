@@ -16,11 +16,11 @@ script = ExtResource("2_menu")
 [node name="WaveController" type="Node" parent="."]
 script = ExtResource("4_wave")
 
-[node name="PlaythroughDriver" type="Node" parent="."]
-script = ExtResource("3_playthrough")
-
 [node name="ParityEmitter" type="Node" parent="."]
 script = ExtResource("1_parity")
+
+[node name="PlaythroughDriver" type="Node" parent="."]
+script = ExtResource("3_playthrough")
 
 [node name="DebugRenderer" type="Node2D" parent="."]
 script = ExtResource("5_debug")
