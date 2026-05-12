@@ -466,8 +466,21 @@ public partial class WaveController : Node
         // Tick enemy bullets (includes newly fired ones from this frame, matching C's
         // ESHOT_Think which runs after ENEMY_Think in the same game-loop iteration).
         foreach (var b in _enemyBullets)
+        {
             b.Tick();
+            // ESHOT.C:534-539: shot->cnt++ then if (smokeflag && cnt&1) spawn
+            // A_SMALL_SMOKE_UP at (shot->x + xoff, shot->y). For us the smoke
+            // is a sentinel Explosion record with the dedicated SmokeExpType
+            // so the view can age its SMOKTRAL_BLK frames over time.
+            if (b.Alive && b.ShotType == EnemyShotType.Missile && (b.FrameCounter & 1) != 0)
+                _explosions.Add(new Explosion(SmokeExpType, b.X + 4, b.Y, SimClock.Frame));
+        }
     }
+
+    // Sentinel exptype used only for missile smoke trails; the view maps it
+    // to SMOKTRAL_BLK (ANIMS.C:203 A_SMALL_SMOKE_UP). Out of the EXP_ enum
+    // range so it never collides with a real EXP_ value.
+    private const int SmokeExpType = 100;
 
     internal void PhaseCollisionCollect()
     {
@@ -638,10 +651,13 @@ public partial class WaveController : Node
 
         // Drop finished explosions. Frames-per-animation is determined by the
         // view's BlkInfo table; we cap at a conservative 50 frames so a missing
-        // mapping can't leak an explosion forever.
+        // mapping can't leak an explosion forever. Smoke trails are short-
+        // lived (SMOKTRAL_BLK has 4 frames) so we cull them aggressively.
         const int MaxAnimFrames = 50;
+        const int MaxSmokeFrames = 4;
         int fc = SimClock.Frame;
-        _explosions.RemoveAll(x => fc - x.StartFc >= MaxAnimFrames);
+        _explosions.RemoveAll(x =>
+            fc - x.StartFc >= (x.ExpType == SmokeExpType ? MaxSmokeFrames : MaxAnimFrames));
     }
 
     internal void PhaseHud()

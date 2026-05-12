@@ -491,8 +491,6 @@ public partial class DebugRenderer : Node2D
             // Smoke trail for missiles (ESHOT.C:536 — every other tick when
             // smokeflag is set). Approximate by stacking 4 SMOKTRAL frames
             // above the missile with fading alpha.
-            if (b.ShotType == EnemyShotType.Missile)
-                DrawMissileSmoke(b);
         }
 
         foreach (var b in _wave.GetPlayerBullets())
@@ -527,12 +525,30 @@ public partial class DebugRenderer : Node2D
     /// pre-offset (x - xoff, y - yoff) from ANIMS_StartAnim; since our table
     /// doesn't track those offsets we center the texture on the death point.
     /// </summary>
+    // Sentinel ExpType used only for missile smoke trails — matches the
+    // SmokeExpType constant in WaveController. Maps to SMOKTRAL_BLK (4 frames).
+    private const int SmokeExpType = 100;
+
     private void DrawExplosions()
     {
         if (_wave == null || _blkRoot == null) return;
         int fc = SimClock.Frame;
         foreach (var ex in _wave.GetExplosions())
         {
+            if (ex.ExpType == SmokeExpType)
+            {
+                int age = fc - ex.StartFc;
+                if (age < 0 || age >= 4) continue;
+                var stex = _smokeFrames[age];
+                if (stex == null) continue;
+                // C ANIMS A_MOVEUP shifts smoke up by 1 px/tick. Replicate that
+                // drift so older puffs end up further behind the missile, even
+                // though we never updated their stored Y.
+                int sx = ex.X - (int)stex.GetWidth() / 2;
+                int sy = ex.Y - age - (int)stex.GetHeight() / 2;
+                DrawTexture(stex, new Vector2(sx, sy), new Color(1, 1, 1, 0.55f));
+                continue;
+            }
             int idx = (ex.ExpType >= 0 && ex.ExpType < ExpAnim.Length)
                 ? ex.ExpType : 0;
             var (family, total) = ExpAnim[idx];
