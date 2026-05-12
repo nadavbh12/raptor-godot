@@ -198,35 +198,94 @@ public sealed class EnemyLogic
     {
         if (!_pathInitialised) return;
 
-        // C ENEMY_Think: sprite->x/y is set from move.x/y BEFORE MoveEobj runs.
-        // We capture the pre-move position here so collision checks see the same
-        // position that C does.
+        // C ENEMY_Think (ENEMY.C:813-814): sprite->x/y is set from move.x/y
+        // BEFORE MoveEobj runs. We capture the pre-move position here so
+        // collision checks see the same position that C does.
         X = _mx;
         Y = _my;
 
         int speed = Meta.MoveSpeed > 0 ? Meta.MoveSpeed : 1;
 
-        // Move `speed` pixels along the current Bresenham line.
-        for (int s = 0; s < speed; s++)
+        // C ENEMY_Think (ENEMY.C:820): speed = MoveEobj(&sprite->move, speed).
+        int leftover = MoveEobjSteps(speed);
+
+        // C ENEMY_Think (ENEMY.C:822-853): if move.done, snap to old target,
+        // advance to the next flight segment, do one free MoveMobj step, then
+        // consume the leftover speed via MoveEobj on the new segment.
+        if (_moveDone)
         {
-            if (_moveDone || _maxloop <= 0)
-            {
-                // Current step is complete; advance to next flight index.
-                AdvanceFlightIndex();
-                if (Done) return;
-            }
-            MoveOneStep();
+            _mx = _tgtX;
+            _my = _tgtY;
+            if (!AdvanceFlightSegment()) return;
+            MoveMobjStep();
+            MoveEobjSteps(leftover);
         }
 
         // C removes enemies only when the flight path completes (doneflag after
-        // movepos > numflight), not on out-of-bounds position.
-        // We only remove if VERY far off-screen to prevent memory leak from
-        // stray enemies that somehow never complete their path.
+        // movepos > numflight), not on out-of-bounds position. We only remove
+        // if VERY far off-screen to prevent leaking stray enemies.
         if (_my < -500 || _my > 500 || _mx < -500 || _mx > 800)
             Done = true;
     }
 
-    private void AdvanceFlightIndex()
+    /// <summary>
+    /// Mirrors C's MoveEobj (ENEMY.C:50-111). Walks the current Bresenham
+    /// segment by up to <paramref name="speed"/> steps. Returns the unused
+    /// speed; sets <see cref="_moveDone"/> when maxloop reaches 0.
+    /// </summary>
+    private int MoveEobjSteps(int speed)
+    {
+        if (speed <= 0) return 0;
+        while (speed > 0)
+        {
+            speed--;
+            _maxloop--;
+            if (_maxloop == 0)
+            {
+                _moveDone = true;
+                return speed;
+            }
+            BresenhamStep();
+        }
+        if (_maxloop < 1) _moveDone = true;
+        return speed;
+    }
+
+    /// <summary>
+    /// Mirrors C's MoveMobj (RAP.C:374-411). Takes exactly one Bresenham
+    /// step regardless of speed; sets <see cref="_moveDone"/> if maxloop
+    /// is already 0 (no movement in that case).
+    /// </summary>
+    private void MoveMobjStep()
+    {
+        if (_maxloop == 0) { _moveDone = true; return; }
+        BresenhamStep();
+        _maxloop--;
+    }
+
+    private void BresenhamStep()
+    {
+        if (_delX >= _delY)
+        {
+            _mx  += _addX;
+            _err += _delY;
+            if (_err > 0) { _my += _addY; _err -= _delX; }
+        }
+        else
+        {
+            _my  += _addY;
+            _err += _delX;
+            if (_err > 0) { _mx += _addX; _err -= _delY; }
+        }
+    }
+
+    /// <summary>
+    /// Set up the next flight segment. Mirrors C's F_REPEAT/F_LINEAR branches
+    /// in ENEMY_Think (ENEMY.C:836-853): bump movepos, compute new
+    /// move.x2/y2 from sx + flightx, sy + flighty, then InitMobj.
+    /// Returns false if the path completed (Done = true).
+    /// </summary>
+    private bool AdvanceFlightSegment()
     {
         int n = Math.Min(Meta.NumFlight,
                 Math.Min(Meta.FlightX.Length, Meta.FlightY.Length));
@@ -238,17 +297,15 @@ public sealed class EnemyLogic
             else  // LINEAR (1) or other: done after last segment
             {
                 Done = true;
-                return;
+                return false;
             }
         }
 
-        // For REPEAT/LINEAR, next target = _sy + flighty[_flightIdx], _sx + flightx[_flightIdx].
-        // This mirrors C's F_REPEAT: move.x2 = sx + flightx[movepos], move.y2 = sy + flighty[movepos].
-        // And F_LINEAR:             move.x2 = sx + flightx[movepos], move.y2 = sy + flighty[movepos].
         int newTgtX = _sx + Meta.FlightX[_flightIdx];
         int newTgtY = _sy + Meta.FlightY[_flightIdx];
         _flightIdx++;
         InitBresenhamForTarget(_mx, _my, newTgtX, newTgtY);
+        return true;
     }
 
     private void InitBresenhamForTarget(int fromX, int fromY, int toX, int toY)
@@ -278,26 +335,12 @@ public sealed class EnemyLogic
         _moveDone = (_maxloop == 0);
     }
 
-    private void MoveOneStep()
-    {
-        // Mirrors C's MoveEobj: decrement maxloop first; if it reaches 0,
-        // mark done WITHOUT advancing position (C: "if maxloop==0 { done; return; }").
-        _maxloop--;
-        if (_maxloop <= 0) { _moveDone = true; return; }
-
-        if (_delX >= _delY)
-        {
-            _mx  += _addX;
-            _err += _delY;
-            if (_err > 0) { _my += _addY; _err -= _delX; }
-        }
-        else
-        {
-            _my  += _addY;
-            _err += _delX;
-            if (_err > 0) { _mx += _addX; _err -= _delY; }
-        }
-    }
+    /// <summary>
+    /// Legacy single-step helper used by <see cref="InitFlight"/> (mirroring
+    /// C's MoveMobj after the initial InitMobj). Identical to
+    /// <see cref="MoveMobjStep"/>.
+    /// </summary>
+    private void MoveOneStep() => MoveMobjStep();
 
     // Mirrors C's #define values for shootagain state machine.
     private const int ShootAgainNorm  = -1;  // NORM_SHOOT in ENEMY.C
@@ -364,9 +407,14 @@ public sealed class EnemyLogic
                 break;
 
             case EshotType.ES_MISSLE:
-                // Fires straight down at higher speed (enemy.speed+1, max=lib->speed).
+                // Fires straight down. C ESHOT.C:369: cur->speed = enemy->speed+1.
+                // enemy->speed is set in ENEMY_Add to curlib->movespeed, so the
+                // missile's initial speed is the firing enemy's movespeed + 1
+                // (max = LIB_MISSLE.speed = 10).
                 b = new BulletLogic(BulletKind.Enemy, sx, sy,
-                    dx: 0, dy: 1, initSpeed: 3, maxSpeed: 10, damage: HitsMissile);
+                    dx: 0, dy: 1,
+                    initSpeed: (Meta.MoveSpeed > 0 ? Meta.MoveSpeed : 1) + 1,
+                    maxSpeed: 10, damage: HitsMissile);
                 break;
 
             case EshotType.ES_ATPLAYER:

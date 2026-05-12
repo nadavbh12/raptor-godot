@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.IO;
 using System.Text;
 using Godot;
@@ -5,13 +6,13 @@ using Godot;
 namespace Raptor.Test;
 
 /// <summary>
-/// Per-iter enemy-bullet position dump. Mirrors C's raptor_bullet_dump_iter
-/// (port/platform/parity.c) so we can run mission_start.txt on both sides
-/// and compare bullets at the same logical game-loop iteration index.
+/// Per-iter enemy + enemy-bullet position dump. Mirrors C's
+/// raptor_bullet_dump_iter (port/platform/parity.c) so we can run
+/// mission_start.txt on both sides and compare entities at the same
+/// logical game-loop iteration.
 ///
-/// One line per live ESHOT per game-loop iteration; emits on OnIterEnd
-/// (after movement + collision + cleanup phases). Line format matches the
-/// C version's ESHOT_DumpForParity exactly:
+/// Emits two kinds of lines per iter (one per entity):
+///   i=&lt;iter&gt; en idx=&lt;idx&gt; iname=&lt;N&gt; x=&lt;X&gt; y=&lt;Y&gt; hits=&lt;H&gt;
 ///   i=&lt;iter&gt; eb idx=&lt;idx&gt; type=&lt;T&gt; x=&lt;X&gt; y=&lt;Y&gt; mx=&lt;MX&gt; my=&lt;MY&gt; speed=&lt;S&gt; curframe=&lt;CF&gt; cnt=&lt;CNT&gt;
 ///
 /// Activate: RAPTOR_BULLET_DUMP=/path/to/dump.txt
@@ -40,25 +41,32 @@ public partial class BulletDumper : Node
         _out = null;
     }
 
+    // Use InvariantCulture for integer formatting so negative numbers do not
+    // get a LRM (U+200E) inserted on locales that use directional marks.
+    // Without this the dump emits "y=‎-148" which downstream regex parsers
+    // fail to match against the C output "y=-148".
+    private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
+
     private void OnIterEnd()
     {
         if (_out == null || _wave == null) return;
         var sb = new StringBuilder();
         int idx = 0;
+        foreach (var e in _wave.GetEnemies())
+        {
+            if (!e.Alive) continue;
+            sb.AppendFormat(Inv, "i={0} en idx={1} iname={2} x={3} y={4} hits={5}\n",
+                _iter, idx, e.Meta.IName, e.X, e.Y, e.Hits);
+            idx++;
+        }
+        idx = 0;
         foreach (var b in _wave.GetEnemyBullets())
         {
             if (!b.Alive) continue;
-            sb.Append("i=").Append(_iter)
-              .Append(" eb idx=").Append(idx)
-              .Append(" type=").Append((int)b.ShotType)
-              .Append(" x=").Append(b.X)
-              .Append(" y=").Append(b.Y)
-              .Append(" mx=").Append(b.X)
-              .Append(" my=").Append(b.Y)
-              .Append(" speed=").Append(b.CurSpeed)
-              .Append(" curframe=").Append(b.FrameCounter % b.NumFrames)
-              .Append(" cnt=").Append(b.FrameCounter)
-              .Append('\n');
+            sb.AppendFormat(Inv,
+                "i={0} eb idx={1} type={2} x={3} y={4} mx={3} my={4} speed={5} curframe={6} cnt={7}\n",
+                _iter, idx, (int)b.ShotType, b.X, b.Y, b.CurSpeed,
+                b.FrameCounter % b.NumFrames, b.FrameCounter);
             idx++;
         }
         _out.Write(sb.ToString());
