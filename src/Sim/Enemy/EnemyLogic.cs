@@ -304,36 +304,33 @@ public sealed class EnemyLogic
         int sx = bx - BulletXOff;
         int sy = by - BulletYOff;
 
+        BulletLogic b;
         switch ((EshotType)shootType)
         {
             case EshotType.ES_ATDOWN:
                 // Fires straight down: x2=x, y2=200. speed = lib->speed>>1 = 6>>1 = 3.
-                return new BulletLogic(BulletKind.Enemy, sx, sy,
+                b = new BulletLogic(BulletKind.Enemy, sx, sy,
                     dx: 0, dy: 1, initSpeed: 3, maxSpeed: 6, damage: HitsNormal);
+                break;
 
             case EshotType.ES_ANGLELEFT:
-                // Diagonal left-down: target=(x-32, y+32), speed=3. Fixed velocity.
-                return new BulletLogic(BulletKind.Enemy, sx, sy,
+                b = new BulletLogic(BulletKind.Enemy, sx, sy,
                     velX: -3, velY: 3, damage: HitsNormal);
+                break;
 
             case EshotType.ES_ANGLERIGHT:
-                // Diagonal right-down: target=(x+32, y+32), speed=3.
-                return new BulletLogic(BulletKind.Enemy, sx, sy,
+                b = new BulletLogic(BulletKind.Enemy, sx, sy,
                     velX: 3, velY: 3, damage: HitsNormal);
+                break;
 
             case EshotType.ES_MISSLE:
                 // Fires straight down at higher speed (enemy.speed+1, max=lib->speed).
-                // Approximate with speed 3 for now.
-                return new BulletLogic(BulletKind.Enemy, sx, sy,
+                b = new BulletLogic(BulletKind.Enemy, sx, sy,
                     dx: 0, dy: 1, initSpeed: 3, maxSpeed: 10, damage: HitsMissile);
+                break;
 
             case EshotType.ES_ATPLAYER:
             default:
-                // Aimed at player: speed starts at 1, accelerates to 6.
-                // Direction is the normalized vector toward (playerX, playerY).
-                // Pass float components so sub-integer aim doesn't collapse to
-                // cardinal directions (which would make bullets miss whenever
-                // |dx/dist| < 0.5 — most common at typical engagement distances).
                 {
                     int ddx = playerX - sx;
                     int ddy = playerY - sy;
@@ -345,10 +342,13 @@ public sealed class EnemyLogic
                         vy = (float)(ddy / dist);
                     }
                     int dmg = (shootType == (int)EshotType.ES_ATPLAYER) ? HitsAtPlay : HitsNormal;
-                    return new BulletLogic(BulletKind.Enemy, sx, sy,
+                    b = new BulletLogic(BulletKind.Enemy, sx, sy,
                         dx: vx, dy: vy, initSpeed: 1, maxSpeed: 6, accelerating: true, damage: dmg);
                 }
+                break;
         }
+        b.ShotType = (EnemyShotType)shootType;
+        return b;
     }
 
     private enum EshotType

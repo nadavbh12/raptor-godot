@@ -3,6 +3,23 @@ namespace Raptor.Sim.Bullet;
 public enum BulletKind { Player, Enemy }
 
 /// <summary>
+/// C SOURCE/ESHOT.H ESHOT_TYPE enum. Determines the bullet's BLK sprite for
+/// view rendering (e.g. ES_MISSLE → EMISLE_BLK; the rest → ESHOT_BLK).
+/// </summary>
+public enum EnemyShotType
+{
+    AtPlayer  = 0,
+    AtDown    = 1,
+    AngleLeft = 2,
+    AngleRight= 3,
+    Missile   = 4,
+    Laser     = 5,
+    Mines     = 6,
+    Plasma    = 7,
+    Coconuts  = 8,
+}
+
+/// <summary>
 /// Pure-C# bullet. Position advances each Tick by current speed in the given direction.
 /// Speed accelerates from _initSpeed to _maxSpeed by 1 per tick (mirrors ESHOT.C).
 ///
@@ -15,6 +32,12 @@ public enum BulletKind { Player, Enemy }
 public sealed class BulletLogic
 {
     public BulletKind Kind { get; }
+    /// <summary>
+    /// Enemy shot type for view rendering. Defaults to AtPlayer (0) which uses
+    /// the ESHOT_BLK sprite. Set explicitly by EnemyLogic.MakeBullet so the
+    /// view can pick the right BLK family (EMISLE_BLK, ELASER_BLK, ...).
+    /// </summary>
+    public EnemyShotType ShotType { get; set; } = EnemyShotType.AtPlayer;
     public int X { get; private set; }
     public int Y { get; private set; }
 

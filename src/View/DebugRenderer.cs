@@ -71,6 +71,10 @@ public partial class DebugRenderer : Node2D
     private string? _tilesRoot;
     private Texture2D? _enemyBulletTex;
     private Texture2D? _playerBulletTex;
+    // Per-EnemyShotType bullet textures. Index = (int)EnemyShotType, value = first
+    // frame of the BLK animation registered in ESHOT.C ESHOT_Init. Null entries
+    // fall back to _enemyBulletTex (ESHOT_BLK_00).
+    private readonly Texture2D?[] _shotTypeTex = new Texture2D?[9];
     // Score-digit sprites: numbers[0..9] = N0..N9, numbers[10] = N$.
     private readonly Texture2D?[] _digitTex = new Texture2D?[11];
 
@@ -98,6 +102,19 @@ public partial class DebugRenderer : Node2D
         _enemyBulletTex  = LoadSpriteFromPath(Path.Combine(bulletsRoot, "ESHOT_BLK_00.png"));
         _playerBulletTex = LoadSpriteFromPath(Path.Combine(bulletsRoot, "NMSHOT_BLK_00.png"));
         _blkRoot = bulletsRoot;  // _BLK sprite frames live under assets/bullets/
+        // ESHOT.C ESHOT_Init: each shoot type binds to a specific BLK library:
+        //   ES_ATPLAYER/ATDOWN/ANGLELEFT/ANGLERIGHT → ESHOT_BLK (ATPLAY uses
+        //     LIB_ATPLAY, the others LIB_NORMAL, but both store ESHOT_BLK).
+        //   ES_MISSLE → EMISLE_BLK, ES_MINES → MINE_BLK, ES_LASER → ELASER_BLK.
+        // ES_PLASMA/ES_COCONUTS use _PIC items rather than _BLK; we fall back
+        // to ESHOT for them (mission_start doesn't fire either).
+        _shotTypeTex[(int)EnemyShotType.AtPlayer]  = _enemyBulletTex;
+        _shotTypeTex[(int)EnemyShotType.AtDown]    = _enemyBulletTex;
+        _shotTypeTex[(int)EnemyShotType.AngleLeft] = _enemyBulletTex;
+        _shotTypeTex[(int)EnemyShotType.AngleRight]= _enemyBulletTex;
+        _shotTypeTex[(int)EnemyShotType.Missile]   = LoadSpriteFromPath(Path.Combine(bulletsRoot, "EMISLE_BLK_00.png"));
+        _shotTypeTex[(int)EnemyShotType.Mines]     = LoadSpriteFromPath(Path.Combine(bulletsRoot, "MINE_BLK_00.png"));
+        _shotTypeTex[(int)EnemyShotType.Laser]     = LoadSpriteFromPath(Path.Combine(bulletsRoot, "ELASER_BLK_00.png"));
 
         // Score-digit sprite array (RAP.C: numbers[0..10] = N0..N9 + $).
         string spritesRoot = ProjectSettings.GlobalizePath("res://assets/sprites");
@@ -391,11 +408,17 @@ public partial class DebugRenderer : Node2D
         }
 
         // Bullet sim X/Y are also top-left (ESHOT_Shoot: cur->move.x -= xoff).
+        // Pick a per-type sprite so missiles, mines and lasers don't all render
+        // as the small yellow ESHOT diamond — that mismatch was visible at C
+        // frame 0330 where transport drops appear as narrow vertical missiles.
         foreach (var b in _wave.GetEnemyBullets())
         {
             if (!b.Alive) continue;
-            if (_enemyBulletTex != null)
-                DrawTexture(_enemyBulletTex, new Vector2(b.X, b.Y));
+            int ti = (int)b.ShotType;
+            var tex = (ti >= 0 && ti < _shotTypeTex.Length) ? _shotTypeTex[ti] : null;
+            tex ??= _enemyBulletTex;
+            if (tex != null)
+                DrawTexture(tex, new Vector2(b.X, b.Y));
             else
                 DrawRect(new Rect2(b.X, b.Y, 4, 4), new Color(1, 1, 0));
         }
