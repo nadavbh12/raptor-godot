@@ -41,8 +41,14 @@ public sealed class SpriteMeta
     [JsonPropertyName("ground")]     public int    Ground      { get; set; }
     [JsonPropertyName("shadow")]     public int    Shadow      { get; set; }
     [JsonPropertyName("exptype")]    public int    ExpType     { get; set; }
+    // Multi-frame sprite animation (e.g. SHIP07G1_PIC helicopter rotor).
+    // C ENEMY.C:727-774: frame advances when frame_rate timer hits 0, then
+    // resets; wraps with curframe -= rewind when curframe >= num_frames.
+    [JsonPropertyName("num_frames")] public int    NumFrames   { get; set; } = 1;
+    [JsonPropertyName("frame_rate")] public int    FrameRate   { get; set; }
+    [JsonPropertyName("rewind")]     public int    Rewind      { get; set; } = 1;
     // Additional fields present in JSON but not consumed:
-    // suck, frame_rate, num_frames, rewind, animtype, bossflag, repos, sfx, song, bonus.
+    // suck, animtype, bossflag, repos, sfx, song, bonus.
 
     // ── Sprite image dimensions (populated by SpriteMetaLibrary from PNG files) ──
     // Not in JSON; set after deserialisation.

@@ -19,6 +19,11 @@ public partial class DebugRenderer : Node2D
 
     private readonly Dictionary<string, Texture2D> _spriteCache = new();
     private readonly Dictionary<string, string> _spritePaths = new();
+    // Multi-frame enemy sprites keyed by iname. The PNG extractor writes each
+    // consecutive GLB item with the same iname under sequential indices, e.g.
+    // 0309_SHIP07G1_PIC.png and 0310_SHIP07G1_PIC.png for the helicopter's
+    // two rotor frames. We collect all paths sharing an iname here.
+    private readonly Dictionary<string, List<string>> _spritePathsAll = new();
     // Flat-silhouette shadow textures, keyed by source Texture2D. Each is a
     // black image whose alpha tracks the source sprite's mask, replicating the
     // C SHADOW_Draw behaviour where shadows are solid dark patches with no
@@ -155,8 +160,9 @@ public partial class DebugRenderer : Node2D
 
     private void BuildSpriteIndex()
     {
-        // Files look like "0303_SHIP01G1_PIC.png". Map iname → first PNG path
-        // (lowest sequential prefix becomes the canonical first frame).
+        // Files look like "0303_SHIP01G1_PIC.png". Sequential numeric prefixes
+        // for the same iname are successive frames of that sprite's animation
+        // (e.g. SHIP07G1_PIC has frame 0 at index 309 and frame 1 at 310).
         string root = ProjectSettings.GlobalizePath("res://assets/sprites");
         if (!Directory.Exists(root)) return;
 
@@ -167,6 +173,12 @@ public partial class DebugRenderer : Node2D
             if (u < 0) continue;
             string iname = name.Substring(u + 1);
             if (!_spritePaths.ContainsKey(iname)) _spritePaths[iname] = path;
+            if (!_spritePathsAll.TryGetValue(iname, out var list))
+            {
+                list = new List<string>();
+                _spritePathsAll[iname] = list;
+            }
+            list.Add(path);
         }
     }
 
@@ -175,6 +187,40 @@ public partial class DebugRenderer : Node2D
         if (_spriteCache.TryGetValue(iname, out var cached)) return cached;
         if (!_spritePaths.TryGetValue(iname, out var path)) return null;
         return LoadSpriteFromPath(path);
+    }
+
+    /// <summary>
+    /// Load the Nth frame of a multi-frame enemy sprite (e.g. helicopter rotor
+    /// animation). Falls back to frame 0 if the requested frame doesn't exist.
+    /// </summary>
+    private Texture2D? LoadSpriteFrame(string iname, int frame)
+    {
+        if (!_spritePathsAll.TryGetValue(iname, out var list) || list.Count == 0)
+            return LoadSprite(iname);
+        if (frame < 0 || frame >= list.Count) frame = 0;
+        return LoadSpriteFromPath(list[frame]);
+    }
+
+    /// <summary>
+    /// Pick the current animation frame for a multi-frame enemy sprite.
+    /// Mirrors C ENEMY.C:727-774 frame-rate timer + curframe advance + rewind.
+    /// Derived from SimClock.Frame so all enemies of the same type animate in
+    /// sync — adequate for the helicopter rotor effect.
+    /// </summary>
+    private static int EnemyFrameIndex(SpriteMeta meta)
+    {
+        if (meta.NumFrames <= 1) return 0;
+        int period = meta.FrameRate + 1;             // ticks per frame
+        int step = SimClock.Frame / System.Math.Max(1, period);
+        // C ENEMY.C:740 — when curframe >= num_frames, curframe -= rewind.
+        // For most enemies rewind==num_frames so this is plain modulo.
+        // For rewind < num_frames the cycle has a tail that holds the last
+        // (num_frames - rewind) frames; the simple modulo is the common case.
+        int rewind = System.Math.Max(1, meta.Rewind);
+        if (rewind >= meta.NumFrames) return step % meta.NumFrames;
+        // General case: a frame sequence of length (num_frames + rewind*k)
+        // doesn't repeat cleanly — approximate with modulo on num_frames.
+        return step % meta.NumFrames;
     }
 
     /// <summary>
@@ -426,7 +472,12 @@ public partial class DebugRenderer : Node2D
         foreach (var e in _wave.GetEnemies())
         {
             if (!e.Alive) continue;
-            var tex = LoadSprite(e.Meta.IName);
+            // Multi-frame sprites (helicopter rotor, etc.) cycle frames per C
+            // ENEMY.C:727 logic — pick the right one for this tick.
+            int frameIdx = EnemyFrameIndex(e.Meta);
+            var tex = frameIdx > 0
+                ? LoadSpriteFrame(e.Meta.IName, frameIdx)
+                : LoadSprite(e.Meta.IName);
             if (tex != null)
             {
                 DrawTexture(tex, new Vector2(e.X, e.Y));
