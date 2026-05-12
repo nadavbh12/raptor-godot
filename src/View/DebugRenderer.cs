@@ -26,6 +26,15 @@ public partial class DebugRenderer : Node2D
     // the sprite, but a flat-color silhouette is the closest CanvasItem-only
     // approximation without a shader).
     private readonly Dictionary<Texture2D, Texture2D> _shadowCache = new();
+
+    // C's FLAME_Up/FLAME_Down call GFX_Shade with a light table built by
+    // GFX_MakeLightTable at positive intensity, which BRIGHTENS the underlying
+    // pixels (no fixed colour). Over teal water the flame trail reads as light
+    // blue; over brown tiles as warm tan. To replicate that, we draw flames on
+    // an additive-blend child Node2D so a white quad lightens whatever is
+    // behind it instead of painting a fixed colour over it.
+    private Node2D? _flameLayer;
+    private readonly List<(Rect2 Rect, Color Col)> _flameQuads = new();
     // _playerTex[0..6] corresponds to playerpic 0..6 (LPLAYER_PIC 0058..0064).
     // Index 3 is neutral (playerbasepic).
     private readonly Texture2D?[] _playerTex = new Texture2D?[7];
@@ -102,6 +111,21 @@ public partial class DebugRenderer : Node2D
                 Path.Combine(spritesRoot, $"{58 + i:D4}_LPLAYER_PIC.png"));
 
         ZIndex = 100;
+
+        // Additive-blend layer for engine flames. Drawing white quads here
+        // brightens the underlying scene rather than overwriting it.
+        _flameLayer = new Node2D { Name = "FlameLayer", ZIndex = 50 };
+        var mat = new CanvasItemMaterial { BlendMode = CanvasItemMaterial.BlendModeEnum.Add };
+        _flameLayer.Material = mat;
+        _flameLayer.Draw += OnFlameLayerDraw;
+        AddChild(_flameLayer);
+    }
+
+    private void OnFlameLayerDraw()
+    {
+        if (_flameLayer == null) return;
+        foreach (var (rect, col) in _flameQuads)
+            _flameLayer.DrawRect(rect, col);
     }
 
     private void BuildSpriteIndex()
@@ -162,6 +186,7 @@ public partial class DebugRenderer : Node2D
     public override void _Process(double delta)
     {
         QueueRedraw();
+        _flameLayer?.QueueRedraw();
         MaybeShoot();
         MaybeFirePendingScriptDump();
     }
@@ -298,6 +323,7 @@ public partial class DebugRenderer : Node2D
 
         if (_wave == null) return;
 
+        _flameQuads.Clear();
         DrawTileMap();
 
         var px = _wave.PlayerLogic.X;
@@ -463,7 +489,7 @@ public partial class DebugRenderer : Node2D
         // 6-step palette light table to the underlying screen pixels — a flat
         // dark silhouette is the closest approximation without a shader.
         var shadowTex = GetOrCreateShadow(tex);
-        DrawTextureRect(shadowTex, rect, false, new Color(1, 1, 1, 0.4f));
+        DrawTextureRect(shadowTex, rect, false, new Color(1, 1, 1, 0.3f));
     }
 
     /// <summary>
@@ -504,11 +530,11 @@ public partial class DebugRenderer : Node2D
         for (int row = 0; row < height; row++)
         {
             float t = 1f - row / (float)height;  // 1 at top, 0 at bottom
-            // C uses palette light tables producing a dim orange/red trail.
-            // Stay in the red-orange range (G stops at 0.35) and keep alpha low
-            // so the flame reads as a glow rather than a solid yellow bar.
-            var col = new Color(0.95f, 0.15f + 0.20f * t, 0.0f, 0.45f * t + 0.10f);
-            DrawRect(new Rect2(ix, iy + row, width, 1), col);
+            // Additive white that brightens the underlying background — matches
+            // C GFX_Shade with a positive-intensity light table. Alpha tuned so
+            // the brightest row lightens the bg ~30% (not washing to white).
+            var col = new Color(1f, 1f, 1f, 0.30f * t + 0.03f);
+            _flameQuads.Add((new Rect2(ix, iy + row, width, 1), col));
         }
     }
 
@@ -531,14 +557,14 @@ public partial class DebugRenderer : Node2D
             int bx = e.X + meta.EngX[i];
             int by = e.Y + meta.EngY[i];
             int topY = by - (height - 1);  // mirrors C: iy -= (height-1)
-            // Draw rows top→bottom: top row dim, bottom row bright. Same dim
-            // red-orange palette as DrawFlameDown — C's flame trails are subtle
-            // not solid yellow stripes.
+            // Same additive-white approach as DrawFlameDown — brightens
+            // background instead of painting orange. Brightest at the engine
+            // exit (bottom row).
             for (int row = 0; row < height; row++)
             {
                 float t = (row + 1) / (float)height;  // 0 → 1, brightest at base
-                var col = new Color(0.95f, 0.15f + 0.20f * t, 0.0f, 0.45f * t + 0.10f);
-                DrawRect(new Rect2(bx, topY + row, width, 1), col);
+                var col = new Color(1f, 1f, 1f, 0.30f * t + 0.03f);
+                _flameQuads.Add((new Rect2(bx, topY + row, width, 1), col));
             }
         }
     }
