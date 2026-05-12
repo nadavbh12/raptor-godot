@@ -71,10 +71,14 @@ public partial class DebugRenderer : Node2D
     private string? _tilesRoot;
     private Texture2D? _enemyBulletTex;
     private Texture2D? _playerBulletTex;
-    // Per-EnemyShotType bullet textures. Index = (int)EnemyShotType, value = first
-    // frame of the BLK animation registered in ESHOT.C ESHOT_Init. Null entries
-    // fall back to _enemyBulletTex (ESHOT_BLK_00).
-    private readonly Texture2D?[] _shotTypeTex = new Texture2D?[9];
+    // Per-EnemyShotType BLK animation. Each entry is the multi-frame sequence
+    // ESHOT.C ESHOT_Init builds (ESHOT_BLK has 2 frames, EMISLE_BLK has 2,
+    // ELASER_BLK has 4, MINE_BLK has 2). Null entries fall back to ESHOT_BLK_00.
+    private readonly Texture2D?[][] _shotTypeFrames = new Texture2D?[9][];
+    // Smoke-trail puffs trailing missile-type bullets. Sim doesn't emit
+    // smoke entities (would need a new collection); we synthesise a short
+    // history by drawing 4 SMOKTRAL_BLK frames stacked behind the missile.
+    private readonly Texture2D?[] _smokeFrames = new Texture2D?[4];
     // Score-digit sprites: numbers[0..9] = N0..N9, numbers[10] = N$.
     private readonly Texture2D?[] _digitTex = new Texture2D?[11];
 
@@ -102,19 +106,23 @@ public partial class DebugRenderer : Node2D
         _enemyBulletTex  = LoadSpriteFromPath(Path.Combine(bulletsRoot, "ESHOT_BLK_00.png"));
         _playerBulletTex = LoadSpriteFromPath(Path.Combine(bulletsRoot, "NMSHOT_BLK_00.png"));
         _blkRoot = bulletsRoot;  // _BLK sprite frames live under assets/bullets/
-        // ESHOT.C ESHOT_Init: each shoot type binds to a specific BLK library:
-        //   ES_ATPLAYER/ATDOWN/ANGLELEFT/ANGLERIGHT → ESHOT_BLK (ATPLAY uses
-        //     LIB_ATPLAY, the others LIB_NORMAL, but both store ESHOT_BLK).
-        //   ES_MISSLE → EMISLE_BLK, ES_MINES → MINE_BLK, ES_LASER → ELASER_BLK.
-        // ES_PLASMA/ES_COCONUTS use _PIC items rather than _BLK; we fall back
-        // to ESHOT for them (mission_start doesn't fire either).
-        _shotTypeTex[(int)EnemyShotType.AtPlayer]  = _enemyBulletTex;
-        _shotTypeTex[(int)EnemyShotType.AtDown]    = _enemyBulletTex;
-        _shotTypeTex[(int)EnemyShotType.AngleLeft] = _enemyBulletTex;
-        _shotTypeTex[(int)EnemyShotType.AngleRight]= _enemyBulletTex;
-        _shotTypeTex[(int)EnemyShotType.Missile]   = LoadSpriteFromPath(Path.Combine(bulletsRoot, "EMISLE_BLK_00.png"));
-        _shotTypeTex[(int)EnemyShotType.Mines]     = LoadSpriteFromPath(Path.Combine(bulletsRoot, "MINE_BLK_00.png"));
-        _shotTypeTex[(int)EnemyShotType.Laser]     = LoadSpriteFromPath(Path.Combine(bulletsRoot, "ELASER_BLK_00.png"));
+        // ESHOT.C ESHOT_Init: each shoot type binds to a specific BLK library.
+        // num_frames per library: ESHOT_BLK=2, EMISLE_BLK=2, MINE_BLK=2,
+        // ELASER_BLK=4. Per-tick shot->curframe++ → modulo num_frames gives
+        // the visible bullet animation (ESHOT_BLK is the visible size oscillation).
+        var eshotFrames = LoadBlkSeries(bulletsRoot, "ESHOT_BLK", 2);
+        _shotTypeFrames[(int)EnemyShotType.AtPlayer]  = eshotFrames;
+        _shotTypeFrames[(int)EnemyShotType.AtDown]    = eshotFrames;
+        _shotTypeFrames[(int)EnemyShotType.AngleLeft] = eshotFrames;
+        _shotTypeFrames[(int)EnemyShotType.AngleRight]= eshotFrames;
+        _shotTypeFrames[(int)EnemyShotType.Missile]   = LoadBlkSeries(bulletsRoot, "EMISLE_BLK", 2);
+        _shotTypeFrames[(int)EnemyShotType.Mines]     = LoadBlkSeries(bulletsRoot, "MINE_BLK",   2);
+        _shotTypeFrames[(int)EnemyShotType.Laser]     = LoadBlkSeries(bulletsRoot, "ELASER_BLK", 4);
+        // Smoke trail for ES_MISSLE — A_SMALL_SMOKE_UP = SMOKTRAL_BLK (4 frames,
+        // ANIMS.C:203). Drawn behind the missile to approximate the smoke
+        // entities C spawns every other tick via ANIMS_StartAAnim.
+        for (int i = 0; i < 4; i++)
+            _smokeFrames[i] = LoadSpriteFromPath(Path.Combine(bulletsRoot, $"SMOKTRAL_BLK_{i:D2}.png"));
 
         // Score-digit sprite array (RAP.C: numbers[0..10] = N0..N9 + $).
         string spritesRoot = ProjectSettings.GlobalizePath("res://assets/sprites");
@@ -188,6 +196,41 @@ public partial class DebugRenderer : Node2D
         }
         _tileCache[key] = tex;  // cache misses too — avoid retrying every frame
         return tex;
+    }
+
+    /// <summary>
+    /// Smoke trail behind a missile bullet. Mirrors ESHOT.C:536 — when
+    /// smokeflag is set and cnt&amp;1, the C version calls ANIMS_StartAAnim(
+    /// A_SMALL_SMOKE_UP, shot->x+xoff, shot->y). The actual ANIMS would
+    /// spawn a SMOKTRAL_BLK that ages 4 frames upward. We approximate by
+    /// stacking the 4 frames in place every tick — fixed positions behind
+    /// the missile, fading alpha — so the trail reads correctly without
+    /// porting the full ANIMS smoke system.
+    /// </summary>
+    private void DrawMissileSmoke(BulletLogic b)
+    {
+        // Smoke puffs sit behind the missile (toward the top of screen,
+        // since missiles fall downward). Step of 4 px between puffs. C's
+        // ANIMS_StartAAnim renders SMOKTRAL_BLK with GFX_ShadeShape(LIGHT,...)
+        // — a faint transparent puff. Keep alpha low so the trail reads as
+        // a hint of exhaust, not a stack of mini-missiles.
+        for (int i = 0; i < 4; i++)
+        {
+            var tex = _smokeFrames[i];
+            if (tex == null) continue;
+            float alpha = 0.22f - 0.05f * i;
+            int sx = b.X + 4 - (int)tex.GetWidth() / 2;
+            int sy = b.Y - 6 - i * 4;
+            DrawTexture(tex, new Vector2(sx, sy), new Color(1, 1, 1, alpha));
+        }
+    }
+
+    private Texture2D?[] LoadBlkSeries(string root, string family, int count)
+    {
+        var frames = new Texture2D?[count];
+        for (int i = 0; i < count; i++)
+            frames[i] = LoadSpriteFromPath(Path.Combine(root, $"{family}_{i:D2}.png"));
+        return frames;
     }
 
     private Texture2D? LoadSpriteFromPath(string path)
@@ -421,19 +464,21 @@ public partial class DebugRenderer : Node2D
         }
 
         // Bullet sim X/Y are also top-left (ESHOT_Shoot: cur->move.x -= xoff).
-        // Pick a per-type sprite so missiles, mines and lasers don't all render
-        // as the small yellow ESHOT diamond — that mismatch was visible at C
-        // frame 0330 where transport drops appear as narrow vertical missiles.
-        // Sim uses a fixed BulletXOff/YOff = 2, but C uses h->width>>1 / h->height>>1
-        // which for 8×8 sprites is 4, 4 and for the 8×16 EMISLE is 4, 8. The
-        // view compensates by shifting the draw position by the half-size
-        // delta so the sprite's centre lines up with where C would draw it.
+        // Pick a per-type sprite + per-tick animation frame so the yellow
+        // ESHOT diamond visibly oscillates (ESHOT_BLK has 2 frames cycling).
+        // Sim uses a fixed BulletXOff/YOff = 2, but C uses h->width>>1 /
+        // h->height>>1 (= 4 for 8×8 sprites, 4×8 for the 8×16 EMISLE). The
+        // view compensates with a half-size delta so each sprite's centre
+        // lines up with where C would draw it.
         const int SimBulletXOff = 2, SimBulletYOff = 2;
         foreach (var b in _wave.GetEnemyBullets())
         {
             if (!b.Alive) continue;
             int ti = (int)b.ShotType;
-            var tex = (ti >= 0 && ti < _shotTypeTex.Length) ? _shotTypeTex[ti] : null;
+            var frames = (ti >= 0 && ti < _shotTypeFrames.Length) ? _shotTypeFrames[ti] : null;
+            Texture2D? tex = null;
+            if (frames != null && frames.Length > 0)
+                tex = frames[b.FrameCounter % frames.Length];
             tex ??= _enemyBulletTex;
             if (tex != null)
             {
@@ -443,6 +488,11 @@ public partial class DebugRenderer : Node2D
             }
             else
                 DrawRect(new Rect2(b.X, b.Y, 4, 4), new Color(1, 1, 0));
+            // Smoke trail for missiles (ESHOT.C:536 — every other tick when
+            // smokeflag is set). Approximate by stacking 4 SMOKTRAL frames
+            // above the missile with fading alpha.
+            if (b.ShotType == EnemyShotType.Missile)
+                DrawMissileSmoke(b);
         }
 
         foreach (var b in _wave.GetPlayerBullets())

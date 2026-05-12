@@ -38,6 +38,12 @@ public sealed class BulletLogic
     /// view can pick the right BLK family (EMISLE_BLK, ELASER_BLK, ...).
     /// </summary>
     public EnemyShotType ShotType { get; set; } = EnemyShotType.AtPlayer;
+    /// <summary>
+    /// Per-bullet animation counter (mirrors ESHOT.C: shot->curframe++ each tick).
+    /// View modulos by num_frames per shot type to pick the BLK frame; ESHOT_BLK
+    /// has 2 frames so the bullet visibly oscillates in size.
+    /// </summary>
+    public int FrameCounter { get; private set; }
     public int X { get; private set; }
     public int Y { get; private set; }
 
@@ -115,6 +121,7 @@ public sealed class BulletLogic
         Y = (int)_fy;
         if (_accelerating && _curSpeed < _maxSpeed)
             _curSpeed++;
+        FrameCounter++;
         // C ESHOT_Think: doneflag when y >= 200 or y < 0 or x >= 320 or x < 0.
         if (X < 0 || X >= 320 || Y < 0 || Y >= 200) Alive = false;
     }
