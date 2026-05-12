@@ -61,6 +61,20 @@ public class EnemyLogicTests
     }
 
     [Fact]
+    public void Shoot_countdown_matches_C_ENEMY_Add_formula()
+    {
+        // ENEMY.C:408: new->countdown = lib->countdown + (-new->move.y)
+        // where new->move.y is the post-correction screen Y (mapY in our pipeline).
+        // For a sprite with lib->countdown=50 spawned at mapY=-148 the countdown
+        // initial value is 50 - (-148) = 198.
+        Assert.Equal(198, EnemyLogic.InitialShootCountdown(50, -148));
+        // mapY = 0 (on the top edge) → countdown = lib->countdown.
+        Assert.Equal(10, EnemyLogic.InitialShootCountdown(10, 0));
+        // mapY > 0 (already on-screen) → countdown shorter than lib->countdown.
+        Assert.Equal(40, EnemyLogic.InitialShootCountdown(100, 60));
+    }
+
+    [Fact]
     public void Enemy_with_zero_guns_never_fires()
     {
         var meta = SyntheticPath((50, 50), (60, 60), (70, 70));

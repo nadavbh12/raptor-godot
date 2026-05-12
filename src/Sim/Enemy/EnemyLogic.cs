@@ -77,6 +77,17 @@ public sealed class EnemyLogic
     ///   InitMobj(&new->move)   // from (mapX, mapY) to (mapX, sy_home + flighty[0])
     ///   MoveMobj(&new->move)   // one step
     /// </summary>
+    /// <summary>
+    /// Compute the initial shoot countdown the way C's ENEMY_Add does:
+    ///   new->countdown = lib->countdown + (-new->move.y)
+    /// where new->move.y is the post-correction screen Y assigned at ENEMY_Add
+    /// time (already includes the +16 - hly shift). In our pipeline,
+    /// WaveController.SpawnForTiley supplies the post-correction value as
+    /// mapY, so the countdown is simply lib.countdown - mapY.
+    /// </summary>
+    public static int InitialShootCountdown(int libCountdown, int mapY) =>
+        libCountdown - mapY;
+
     public EnemyLogic(SpriteMeta meta, int spawnX, int mapY)
     {
         Meta = meta;
@@ -85,10 +96,11 @@ public sealed class EnemyLogic
         _sx = spawnX;
         _sy = 100 - meta.HalfY;   // C: sy = 100 - new->hly (uses actual sprite half-height)
 
-        // Countdown mirrors C's: countdown = lib->countdown + (-new->move.y)
-        // where new->move.y = mapY_raw + 16 - hly. Our mapY == mapY_raw (no corrections),
-        // so: countdown = lib->countdown + (-(mapY + 16 - hly)).
-        _shootCountdown = meta.Countdown + (-(mapY + 16 - meta.HalfY));
+        // Countdown mirrors C's ENEMY_Add (ENEMY.C:408): countdown = lib->countdown
+        // + (-new->move.y) where new->move.y is the corrected screen Y. Our
+        // caller (WaveController.SpawnForTiley) already applied the +16 - hly
+        // correction, so mapY IS new->move.y and we do not re-apply it here.
+        _shootCountdown = InitialShootCountdown(meta.Countdown, mapY);
         _shootOn    = false;
         _shootFlag  = meta.ShootStart;
         _shootCount = meta.ShootCnt > 0 ? meta.ShootCnt : 1;
@@ -298,11 +310,16 @@ public sealed class EnemyLogic
     private const int ES_ANGLERIGHT= 3;
     private const int ES_MISSLE    = 4;
 
-    // Bullet image half-dimensions (mirrors C's ESHOT_LIB xoff/yoff = image_width>>1).
-    // LIB_NORMAL (ESHOT_BLK sprite) and LIB_ATPLAY use the same sprite; typical size is 4×4.
-    // Applying xoff=2, yoff=2 centres the bullet on the gun position.
-    private const int BulletXOff = 2;
-    private const int BulletYOff = 2;
+    // Bullet image half-dimensions (mirrors C's ESHOT_LIB xoff/yoff = image_width>>1
+    // and ditto for yoff, set in ESHOT_Init from each lib's pic[0] dimensions).
+    // ESHOT_BLK, ELASER_BLK, MINE_BLK, PLASMA_BLK, COCONUT_PIC are all 8x8 → 4,4.
+    // EMISLE_BLK is 8x16 → xoff=4 only (ESHOT.C:366 omits the yoff subtraction
+    // for ES_MISSLE so the missile's move.y starts exactly at gunY).
+    private static (int xoff, int yoff) BulletOffsets(EshotType t) => t switch
+    {
+        EshotType.ES_MISSLE => (4, 0),   // missile: anchor y at gunY (no yoff)
+        _ => (4, 4),                      // all other ESHOT_BLK family bullets
+    };
 
     // ESHOT_LIB.hits values (from ESHOT.C ESHOT_Init):
     private const int HitsNormal  = 2;  // LIB_NORMAL  — ES_ATDOWN, ES_ANGLELEFT, ES_ANGLERIGHT
@@ -323,8 +340,9 @@ public sealed class EnemyLogic
     private BulletLogic MakeBullet(int shootType, int bx, int by, int playerX, int playerY)
     {
         // Apply bullet-centre offset (mirrors: cur->move.x -= xoff; cur->move.y -= yoff;).
-        int sx = bx - BulletXOff;
-        int sy = by - BulletYOff;
+        var (xoff, yoff) = BulletOffsets((EshotType)shootType);
+        int sx = bx - xoff;
+        int sy = by - yoff;
 
         BulletLogic b;
         switch ((EshotType)shootType)

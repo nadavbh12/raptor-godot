@@ -73,6 +73,17 @@ public sealed class BulletLogic
     private readonly int _maxSpeed;
     private readonly bool _accelerating;  // true for axis-aligned bullets (ATDOWN, ATPLAY)
 
+    /// <summary>Current per-tick speed (used by BulletDumper for parity comparison).</summary>
+    public int CurSpeed => _curSpeed;
+    /// <summary>Number of animation frames in this bullet's sprite (mirrors ESHOT_LIB.num_frames).</summary>
+    public int NumFrames => ShotType switch
+    {
+        EnemyShotType.Laser => 4,
+        EnemyShotType.Plasma => 1,
+        EnemyShotType.Coconuts => 4,
+        _ => 2,
+    };
+
     public bool Alive { get; private set; } = true;
 
     /// <summary>
@@ -97,15 +108,21 @@ public sealed class BulletLogic
     /// <summary>
     /// Create a bullet with float per-axis velocity (used for ATPLAYER aim
     /// where dx/dy is a normalized unit vector with sub-integer components).
+    ///
+    /// Mirrors C ESHOT_Shoot ending with InitMobj + MoveSobj(&amp;move, 1):
+    /// the move-position is pre-advanced by 1 step so that the first
+    /// ESHOT_Think iter snapshots a one-step-from-spawn displayed position.
     /// </summary>
     public BulletLogic(BulletKind kind, int x, int y, float dx, float dy,
                        int initSpeed, int maxSpeed, bool accelerating, int damage = 2)
     {
         Kind = kind;
         X = x; Y = y;
-        _fx = x; _fy = y;
         _dx = dx;
         _dy = dy;
+        // Pre-advance the move position by 1 step (C: MoveSobj(&move, 1) in ESHOT_Shoot).
+        _fx = x + dx;
+        _fy = y + dy;
         _curSpeed = initSpeed;
         _maxSpeed = maxSpeed;
         _accelerating = accelerating;
@@ -115,14 +132,20 @@ public sealed class BulletLogic
     public void Tick()
     {
         if (!Alive) return;
-        _fx += _dx * _curSpeed;
-        _fy += _dy * _curSpeed;
+        // C ESHOT_Think order (ESHOT.C:476-485):
+        //   shot->x = shot->move.x;   // snapshot displayed pos BEFORE movement
+        //   shot->y = shot->move.y;
+        //   MoveSobj(&shot->move, shot->speed);
+        //   if (shot->speed < lib->speed) shot->speed++;
         X = (int)_fx;
         Y = (int)_fy;
+        _fx += _dx * _curSpeed;
+        _fy += _dy * _curSpeed;
         if (_accelerating && _curSpeed < _maxSpeed)
             _curSpeed++;
         FrameCounter++;
-        // C ESHOT_Think: doneflag when y >= 200 or y < 0 or x >= 320 or x < 0.
+        // C ESHOT_Think (ESHOT.C:510-514): doneflag when shot->y (the
+        // just-snapped displayed pos) is out of bounds.
         if (X < 0 || X >= 320 || Y < 0 || Y >= 200) Alive = false;
     }
 
