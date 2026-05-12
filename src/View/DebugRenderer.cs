@@ -19,6 +19,13 @@ public partial class DebugRenderer : Node2D
 
     private readonly Dictionary<string, Texture2D> _spriteCache = new();
     private readonly Dictionary<string, string> _spritePaths = new();
+    // Flat-silhouette shadow textures, keyed by source Texture2D. Each is a
+    // black image whose alpha tracks the source sprite's mask, replicating the
+    // C SHADOW_Draw behaviour where shadows are solid dark patches with no
+    // interior detail (the C version shades the underlying screen pixels, not
+    // the sprite, but a flat-color silhouette is the closest CanvasItem-only
+    // approximation without a shader).
+    private readonly Dictionary<Texture2D, Texture2D> _shadowCache = new();
     // _playerTex[0..6] corresponds to playerpic 0..6 (LPLAYER_PIC 0058..0064).
     // Index 3 is neutral (playerbasepic).
     private readonly Texture2D?[] _playerTex = new Texture2D?[7];
@@ -451,11 +458,37 @@ public partial class DebugRenderer : Node2D
         float sx2 = Scale * (ox + w - 1 - ViewX) + ViewX;
         float sy2 = Scale * (oy + h - 1 - ViewY) + ViewY;
         var rect = new Rect2(sx, sy, sx2 - sx + 1, sy2 - sy + 1);
-        // C's SHADOW_Draw uses a 6-step palette light table (GFX_MakeLightTable
-        // with -6 intensity) — a fairly subtle darkening. 0.3 alpha approximates
-        // that better than the original 0.5 which made enemies look like solid
-        // black blobs on screen.
-        DrawTextureRect(tex, rect, false, new Color(0, 0, 0, 0.3f));
+        // Use a flat-silhouette shadow texture so internal sprite detail
+        // (engines, stripes) doesn't bleed through. C's SHADOW_Draw applies a
+        // 6-step palette light table to the underlying screen pixels — a flat
+        // dark silhouette is the closest approximation without a shader.
+        var shadowTex = GetOrCreateShadow(tex);
+        DrawTextureRect(shadowTex, rect, false, new Color(1, 1, 1, 0.4f));
+    }
+
+    /// <summary>
+    /// Return a cached flat-black silhouette texture matching the given
+    /// sprite's alpha mask. The result is solid black where the source has
+    /// alpha &gt; 0 and transparent elsewhere — used for sky shadows.
+    /// </summary>
+    private Texture2D GetOrCreateShadow(Texture2D src)
+    {
+        if (_shadowCache.TryGetValue(src, out var cached)) return cached;
+        var img = src.GetImage();
+        int w = img.GetWidth();
+        int h = img.GetHeight();
+        var shadow = Image.CreateEmpty(w, h, false, Image.Format.Rgba8);
+        for (int y = 0; y < h; y++)
+        {
+            for (int x = 0; x < w; x++)
+            {
+                float a = img.GetPixel(x, y).A;
+                shadow.SetPixel(x, y, new Color(0, 0, 0, a));
+            }
+        }
+        var tex = ImageTexture.CreateFromImage(shadow);
+        _shadowCache[src] = tex;
+        return tex;
     }
 
     /// <summary>
