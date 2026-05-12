@@ -411,6 +411,11 @@ public partial class DebugRenderer : Node2D
         // Pick a per-type sprite so missiles, mines and lasers don't all render
         // as the small yellow ESHOT diamond — that mismatch was visible at C
         // frame 0330 where transport drops appear as narrow vertical missiles.
+        // Sim uses a fixed BulletXOff/YOff = 2, but C uses h->width>>1 / h->height>>1
+        // which for 8×8 sprites is 4, 4 and for the 8×16 EMISLE is 4, 8. The
+        // view compensates by shifting the draw position by the half-size
+        // delta so the sprite's centre lines up with where C would draw it.
+        const int SimBulletXOff = 2, SimBulletYOff = 2;
         foreach (var b in _wave.GetEnemyBullets())
         {
             if (!b.Alive) continue;
@@ -418,7 +423,11 @@ public partial class DebugRenderer : Node2D
             var tex = (ti >= 0 && ti < _shotTypeTex.Length) ? _shotTypeTex[ti] : null;
             tex ??= _enemyBulletTex;
             if (tex != null)
-                DrawTexture(tex, new Vector2(b.X, b.Y));
+            {
+                int dx = (int)tex.GetWidth()  / 2 - SimBulletXOff;
+                int dy = (int)tex.GetHeight() / 2 - SimBulletYOff;
+                DrawTexture(tex, new Vector2(b.X - dx, b.Y - dy));
+            }
             else
                 DrawRect(new Rect2(b.X, b.Y, 4, 4), new Color(1, 1, 0));
         }
