@@ -457,6 +457,11 @@ public partial class WaveController : Node
             var fired = enemy.Tick(px, py);
             if (fired != null)
                 _enemyBullets.Add(fired);
+            // Multi-gun enemies (helicopters numguns=2, bosses up to 13) fire
+            // one bullet per gun per shot tick — collect the extras.
+            var extras = enemy.ExtraBulletsThisTick;
+            if (extras != null)
+                foreach (var b in extras) _enemyBullets.Add(b);
         }
 
         // Tick player bullets.

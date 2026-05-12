@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Raptor.Sim.Bullet;
 
 namespace Raptor.Sim.Enemy;
@@ -104,14 +105,35 @@ public sealed class EnemyLogic
 
     /// <summary>
     /// One tick. Returns a BulletLogic if a bullet was fired, else null.
-    /// playerX/playerY are the player's current position (for aimed shots).
+    /// Use Fire (out var bullets) for multi-gun enemies that fire several
+    /// bullets per tick.
     /// </summary>
     public BulletLogic? Tick(int playerX = 144, int playerY = 160)
     {
+        _firedThisTick = null;  // reset every tick so extras aren't re-emitted
         if (!Alive) return null;
         AdvancePath();
-        return MaybeFire(playerX, playerY);
+        var fired = MaybeFireAll(playerX, playerY);
+        if (fired == null || fired.Count == 0) return null;
+        _firedThisTick = fired.Count > 1 ? fired : null;
+        return fired[0];
     }
+
+    /// <summary>
+    /// Returns extra bullets fired this tick beyond the first one returned
+    /// by Tick. Mirrors ENEMY.C:993 — for (loop=0; loop<numguns; loop++)
+    /// ESHOT_Shoot(sprite, loop). Helicopters with numguns=2 should drop
+    /// two missiles per shot frame.
+    /// </summary>
+    public IReadOnlyList<BulletLogic>? ExtraBulletsThisTick
+    {
+        get
+        {
+            if (_firedThisTick == null || _firedThisTick.Count <= 1) return null;
+            return _firedThisTick.GetRange(1, _firedThisTick.Count - 1);
+        }
+    }
+    private List<BulletLogic>? _firedThisTick;
 
     public void TakeDamage(int dmg)
     {
@@ -364,7 +386,7 @@ public sealed class EnemyLogic
         ES_COCONUTS  = 8,
     }
 
-    private BulletLogic? MaybeFire(int playerX, int playerY)
+    private List<BulletLogic>? MaybeFireAll(int playerX, int playerY)
     {
         if (Meta.NumGuns <= 0 || Meta.ShootFrame <= 0) return null;
 
@@ -385,51 +407,40 @@ public sealed class EnemyLogic
         }
 
         // Shooting state machine (mirrors ENEMY.C lines 980-1011).
-        // shootagain == NORM_SHOOT (-1): active firing mode.
-        // shootagain == START_SHOOT (0): one-tick re-init after inter-burst wait.
-        // shootagain > 0: inter-burst delay countdown.
-        BulletLogic? fired = null;
-
         if (_shootAgain == ShootAgainStart)
         {
-            // START_SHOOT: re-initialise for next burst.
             _shootAgain = ShootAgainNorm;
             _shootCount = Meta.ShootCnt > 0 ? Meta.ShootCnt : 1;
             _shootFlag  = Meta.ShotSpace;
+            return null;
         }
-        else if (_shootAgain == ShootAgainNorm)
+        if (_shootAgain != ShootAgainNorm)
         {
-            // NORM_SHOOT: count down shootflag; fire when it goes negative.
-            _shootFlag--;
-            if (_shootFlag < 0)
-            {
-                _shootFlag = Meta.ShotSpace;
-
-                // Fire one bullet per gun (gun 0 only for now).
-                // X/Y here are top-left corner coordinates (= C's sprite->x/y after ENEMY_Add).
-                // Gun position = sprite top-left + shootx/shooty offset (same as C's
-                //   gun_x = enemy->x + enemy->lib->shootx[gun_num]).
-                const int gunIdx = 0;
-                int bx = X + (gunIdx < Meta.ShootX.Length ? Meta.ShootX[gunIdx] : 0);
-                int by = Y + (gunIdx < Meta.ShootY.Length ? Meta.ShootY[gunIdx] : 0);
-
-                // Determine bullet trajectory based on shoot_type (mirrors ESHOT.C).
-                int shootType = (gunIdx < Meta.ShootType.Length) ? Meta.ShootType[gunIdx] : 0;
-                fired = MakeBullet(shootType, bx, by, playerX, playerY);
-
-                _shootCount--;
-                if (_shootCount < 1)
-                    _shootAgain = Meta.ShootFrame;  // start inter-burst wait
-            }
-        }
-        else
-        {
-            // default: inter-burst delay (shootagain > 0), count down.
+            // inter-burst delay (shootagain > 0), count down.
             _shootAgain--;
-            if (_shootAgain == 0)
-                _shootAgain = ShootAgainStart;  // transition to START_SHOOT next tick
+            if (_shootAgain == 0) _shootAgain = ShootAgainStart;
+            return null;
         }
 
+        // NORM_SHOOT: count down shootflag; fire when it goes negative.
+        _shootFlag--;
+        if (_shootFlag >= 0) return null;
+        _shootFlag = Meta.ShotSpace;
+
+        // Fire one bullet per gun (mirrors ENEMY.C:993 — for loop=0..numguns-1
+        // ESHOT_Shoot(sprite, loop)). For helicopters numguns=2 this drops
+        // two missiles from the wing mounts in a single tick.
+        var fired = new List<BulletLogic>(Meta.NumGuns);
+        for (int gunIdx = 0; gunIdx < Meta.NumGuns; gunIdx++)
+        {
+            int bx = X + (gunIdx < Meta.ShootX.Length ? Meta.ShootX[gunIdx] : 0);
+            int by = Y + (gunIdx < Meta.ShootY.Length ? Meta.ShootY[gunIdx] : 0);
+            int shootType = (gunIdx < Meta.ShootType.Length) ? Meta.ShootType[gunIdx] : 0;
+            fired.Add(MakeBullet(shootType, bx, by, playerX, playerY));
+        }
+        _shootCount--;
+        if (_shootCount < 1)
+            _shootAgain = Meta.ShootFrame;
         return fired;
     }
 }
