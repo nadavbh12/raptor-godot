@@ -32,9 +32,17 @@ public sealed class SpriteMeta
     [JsonPropertyName("shotspace")]  public int    ShotSpace   { get; set; } = 4;
     [JsonPropertyName("shootstart")] public int    ShootStart  { get; set; }
     [JsonPropertyName("shoot_type")] public int[]  ShootType   { get; set; } = Array.Empty<int>();
-    // Additional fields present in JSON but not consumed by sim logic:
-    // ground, suck, frame_rate, num_frames, rewind, animtype, shadow, bossflag,
-    // repos, numengs, sfx, song, bonus, exptype, engx, engy, englx.
+    // Engine-flame placement (rendered via View/DebugRenderer.DrawEngineFlames,
+    // mirroring C ENEMY_DisplaySky's FLAME_Up loop in SOURCE/ENEMY.C:1211).
+    [JsonPropertyName("numengs")]    public int    NumEngs     { get; set; }
+    [JsonPropertyName("engx")]       public int[]  EngX        { get; set; } = Array.Empty<int>();
+    [JsonPropertyName("engy")]       public int[]  EngY        { get; set; } = Array.Empty<int>();
+    [JsonPropertyName("englx")]      public int[]  EngLx       { get; set; } = Array.Empty<int>();
+    [JsonPropertyName("ground")]     public int    Ground      { get; set; }
+    [JsonPropertyName("shadow")]     public int    Shadow      { get; set; }
+    [JsonPropertyName("exptype")]    public int    ExpType     { get; set; }
+    // Additional fields present in JSON but not consumed:
+    // suck, frame_rate, num_frames, rewind, animtype, bossflag, repos, sfx, song, bonus.
 
     // ── Sprite image dimensions (populated by SpriteMetaLibrary from PNG files) ──
     // Not in JSON; set after deserialisation.

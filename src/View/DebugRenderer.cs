@@ -277,6 +277,9 @@ public partial class DebugRenderer : Node2D
             DrawRect(new Rect2(px, py, 32, 32), new Color(0, 1, 0, 0.7f));
         }
 
+        // C's eframe ^= 1 per ENEMY_DisplaySky call (one per sim tick).
+        // Derive from SimClock.Frame parity so the view doesn't mutate sim state.
+        int eframe = SimClock.Frame & 1;
         foreach (var e in _wave.GetEnemies())
         {
             if (!e.Alive) continue;
@@ -290,6 +293,11 @@ public partial class DebugRenderer : Node2D
                 DrawRect(new Rect2(e.X, e.Y, e.HalfW * 2, e.HalfH * 2),
                     new Color(1, 0.3f, 0.3f, 0.7f));
             }
+            // Sky enemies get engine-flame puffs trailing upward (toward top of
+            // screen, since ships fly downward). Ground enemies (groundflag != 0)
+            // never call FLAME_Up in C.
+            if (e.Meta.Ground == 0 && e.Meta.NumEngs > 0)
+                DrawEngineFlames(e, eframe);
         }
 
         // Bullet sim X/Y are also top-left (ESHOT_Shoot: cur->move.x -= xoff).
@@ -323,6 +331,35 @@ public partial class DebugRenderer : Node2D
             var hud = $"fc={sf}  win={win}  shield={_wave.PlayerLogic.Shield}  score={_wave.Score}  E={_wave.GetEnemies().Count}  EB={_wave.GetEnemyBullets().Count}  PB={_wave.GetPlayerBullets().Count}";
             var font = ThemeDB.FallbackFont;
             DrawString(font, new Vector2(4, 195), hud, HorizontalAlignment.Left, -1, 8, new Color(1, 1, 1));
+        }
+    }
+
+    /// <summary>
+    /// Engine-flame puff under a sky enemy. Mirrors FLAME_Up (SOURCE/FLAME.C):
+    /// height alternates 5 px (frame 0) and 10 px (frame 1); the row at the
+    /// bottom is the brightest and the top row is the dimmest. The flame's
+    /// bottom-row baseline sits at (engine_x, engine_y) where the engine point
+    /// is enemy.(X, Y) + (engx[i], engy[i]). The C version uses palette light
+    /// tables; the view approximates with a vertical orange→yellow gradient.
+    /// </summary>
+    private void DrawEngineFlames(EnemyLogic e, int frame)
+    {
+        int height = frame == 0 ? 5 : 10;
+        var meta = e.Meta;
+        for (int i = 0; i < meta.NumEngs; i++)
+        {
+            int width = meta.EngLx[i];
+            if (width <= 0) continue;
+            int bx = e.X + meta.EngX[i];
+            int by = e.Y + meta.EngY[i];
+            int topY = by - (height - 1);  // mirrors C: iy -= (height-1)
+            // Draw rows top→bottom: top row dim, bottom row bright.
+            for (int row = 0; row < height; row++)
+            {
+                float t = (row + 1) / (float)height;  // 0 → 1, brightest at base
+                var col = new Color(1.0f, 0.4f + 0.6f * t, 0.0f, 0.85f * t + 0.15f);
+                DrawRect(new Rect2(bx, topY + row, width, 1), col);
+            }
         }
     }
 
