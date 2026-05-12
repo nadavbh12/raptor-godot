@@ -493,6 +493,10 @@ public partial class WaveController : Node
                 b.Kill();
                 _playerHit = true;
                 _playerHitDmg += b.Damage;  // use per-bullet damage from ESHOT_LIB
+                // Mirror ESHOT.C:521: ANIMS_StartAnim(A_SMALL_AIR_EXPLO, shot->x, shot->y).
+                // A small orange flash appears at the impact point — visible in C
+                // wherever a bullet clips the player ship.
+                _explosions.Add(new Explosion(ExpAirSmall2, b.X, b.Y, SimClock.Frame));
             }
         }
 
