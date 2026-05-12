@@ -603,7 +603,7 @@ public partial class DebugRenderer : Node2D
                 // result is a spread-out trail either way.)
                 int sx = ex.X - (int)stex.GetWidth() / 2;
                 int sy = ex.Y - age * 8 - (int)stex.GetHeight() / 2;
-                DrawTexture(stex, new Vector2(sx, sy), new Color(1, 1, 1, 0.45f));
+                DrawTexture(stex, new Vector2(sx, sy), new Color(1, 1, 1, 0.20f));
                 continue;
             }
             int idx = (ex.ExpType >= 0 && ex.ExpType < ExpAnim.Length)
