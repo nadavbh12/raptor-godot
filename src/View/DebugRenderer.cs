@@ -592,12 +592,18 @@ public partial class DebugRenderer : Node2D
                 if (age < 0 || age >= 4) continue;
                 var stex = _smokeFrames[age];
                 if (stex == null) continue;
-                // C ANIMS A_MOVEUP shifts smoke up by 1 px/tick. Replicate that
-                // drift so older puffs end up further behind the missile, even
-                // though we never updated their stored Y.
+                // SMOKTRAL_BLK frames are 8×16. Smoke is spawned every 2 ticks
+                // and the missile only moves ~6 px in that span — naively
+                // overlapping each puff by 10 px gives a single bright blob
+                // rather than a trail. Drift each older puff up by 8 px per
+                // age so consecutive puffs sit just above one another, giving
+                // a properly extended column. (C technically only drifts 1
+                // px/tick via A_MOVEUP, but it also uses GFX_ShadeShape's LIGHT
+                // table which produces a much subtler blend — the visible
+                // result is a spread-out trail either way.)
                 int sx = ex.X - (int)stex.GetWidth() / 2;
-                int sy = ex.Y - age - (int)stex.GetHeight() / 2;
-                DrawTexture(stex, new Vector2(sx, sy), new Color(1, 1, 1, 0.55f));
+                int sy = ex.Y - age * 8 - (int)stex.GetHeight() / 2;
+                DrawTexture(stex, new Vector2(sx, sy), new Color(1, 1, 1, 0.45f));
                 continue;
             }
             int idx = (ex.ExpType >= 0 && ex.ExpType < ExpAnim.Length)
