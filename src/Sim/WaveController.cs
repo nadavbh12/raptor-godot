@@ -78,6 +78,7 @@ public partial class WaveController : Node
     // Set by _Ready via GetNodeOrNull; the scheduler reads these.
     private MenuStateMachine?   _menu;
     private ParityEmitter?      _emitter;
+    private Raptor.Test.PlaythroughDriver? _playthrough;
     private string?             _assetsRoot;
 
     // ── Wave state ────────────────────────────────────────────────────────────
@@ -89,7 +90,24 @@ public partial class WaveController : Node
     // rel=133 (after iter 0 at rel~14 + 119 frames of fade-in + 3 wait).
     // Hold=131 puts Godot iter 1 at frame 134 (after subTick cycle of 3).
     private const int FadeInHoldFrames = 131;
+
+    // C: between Return-on-shipcomp (raptor_parity_set_win_state(0) inside
+    // menu_exit) and raptor_parity_game_enter being called, the main thread
+    // runs WIN_LoadComp + RAP_LoadMap. Position-dump alignment under
+    // mission_long places `down Up` arriving at iter 157 in C, which works
+    // out to a ~102 fc lag between Return #6's apply tick and game_enter
+    // here. Without this lag iter 0 fires in the same tick as the Return
+    // application, and the player input pipeline picks up the held throttle
+    // ~30 iters later than C does.
+    private const int LoadCompFrames = 102;
     private int  _waveNum    = 1;
+
+    // When MenuStateMachine.EnterGame fires we defer the iter-0 body and
+    // _gameEnterFc anchoring to a future frame to mirror the C LoadComp
+    // window above. -1 = no pending; otherwise the frame at which the wave
+    // becomes active and iter 0 runs.
+    private int  _pendingGameEnterFrame = -1;
+    private int  _pendingGameNum = 0;
 
     // Fired right after _gameLoopIter advances; PositionDumper subscribes to
     // emit at iter ends, mirroring C's parity_tick semantics.
@@ -257,6 +275,10 @@ public partial class WaveController : Node
             _menu.OnGameEnter    += OnGameEnter;
         }
 
+        // Found only when running under a parity playthrough; PhaseInput uses
+        // PlayerInputX/Y to feed the player.
+        _playthrough = GetNodeOrNull<Raptor.Test.PlaythroughDriver>("../PlaythroughDriver");
+
         _emitter = GetNodeOrNull<ParityEmitter>("../ParityEmitter");
         if (_emitter != null)
         {
@@ -283,10 +305,24 @@ public partial class WaveController : Node
 
     private void OnGameEnter(int gameNum)
     {
-        _waveNum    = gameNum + 1;  // gameNum is 0-based; wave files are 1-based.
+        // Defer the iter-0 body and wave activation by LoadCompFrames.
+        // Concrete setup happens in _PhysicsProcess once the deferred frame
+        // arrives. See LoadCompFrames docs for the C-side rationale.
+        _pendingGameNum = gameNum;
+        _pendingGameEnterFrame = SimClock.Frame + LoadCompFrames;
+    }
+
+    /// <summary>
+    /// Fires the deferred iter-0 body and arms the wave. Splits out of the
+    /// hot path so _PhysicsProcess stays readable.
+    /// </summary>
+    private void ApplyPendingGameEnter()
+    {
+        _waveNum    = _pendingGameNum + 1;  // gameNum is 0-based; wave files are 1-based.
         LoadWave(_waveNum);
         _gameEnterFc = SimClock.Frame;
         _waveActive  = true;
+        _pendingGameEnterFrame = -1;
 
         // Fire iter 0 immediately, mirroring C: in RAP.C the first ENEMY_Think
         // (and full loop body) runs BEFORE GFX_FadeIn(64) blocks. Position
@@ -400,6 +436,9 @@ public partial class WaveController : Node
 
     public override void _PhysicsProcess(double _)
     {
+        if (_pendingGameEnterFrame >= 0 && SimClock.Frame >= _pendingGameEnterFrame)
+            ApplyPendingGameEnter();
+
         if (!_waveActive) return;
 
         // Iter 0 fires synchronously in OnGameEnter (matches C: ENEMY_Think
@@ -420,9 +459,14 @@ public partial class WaveController : Node
 
     internal void PhaseInput()
     {
-        // Passive mission: player doesn't move or fire.
-        // (PlayerInputBuffer would supply dx/dy/fire in a full implementation.)
-        PlayerLogic.Tick(0, 0);
+        // Under a parity playthrough, scripted `down NAME`/`up NAME` lines
+        // populate PlaythroughDriver's held-key set; read it as the player's
+        // key state and let PlayerLogic.Tick run C's IPT_GetKeyBoard ramp.
+        // No playthrough → idle (the default for a real interactive run; a
+        // future stage will swap this for the Godot InputMap wiring).
+        int dx = _playthrough?.PlayerInputX ?? 0;
+        int dy = _playthrough?.PlayerInputY ?? 0;
+        PlayerLogic.Tick(dx, dy);
     }
 
     internal void PhaseSpawn()

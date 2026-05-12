@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.IO;
 using Godot;
 
@@ -33,6 +34,19 @@ public partial class PlaythroughDriver : Node
     // scene tree (Main.tscn order).
     private string? _pendingKey;
 
+    // Keys currently held by `down NAME` until matching `up NAME`. Game-side
+    // input (WaveController.PhaseInput) reads this to drive in-game player
+    // movement. mission_long uses `down Up` to hold the throttle.
+    private readonly HashSet<string> _heldKeys = new();
+
+    /// <summary>Returns -1 if Up is held, +1 if Down is held, else 0.</summary>
+    public int PlayerInputY =>
+        (_heldKeys.Contains("Down") ? 1 : 0) - (_heldKeys.Contains("Up") ? 1 : 0);
+
+    /// <summary>Returns -1 if Left is held, +1 if Right is held, else 0.</summary>
+    public int PlayerInputX =>
+        (_heldKeys.Contains("Right") ? 1 : 0) - (_heldKeys.Contains("Left") ? 1 : 0);
+
     public override void _Ready()
     {
         var scriptPath = OS.GetEnvironment("RAPTOR_PLAYTHROUGH");
@@ -67,13 +81,12 @@ public partial class PlaythroughDriver : Node
 
         _pt.OnKeyDown = key =>
         {
-            // Stage 4: stub. Later stages will inject into Godot's InputEvent pipeline.
-            GD.Print($"PlaythroughDriver: down {key} (stub)");
+            _heldKeys.Add(key);
         };
 
         _pt.OnKeyUp = key =>
         {
-            GD.Print($"PlaythroughDriver: up {key} (stub)");
+            _heldKeys.Remove(key);
         };
 
         _pt.OnDump = label =>
