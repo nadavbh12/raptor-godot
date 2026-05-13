@@ -11,9 +11,15 @@ namespace Raptor.Test;
 /// mission_start.txt on both sides and compare entities at the same
 /// logical game-loop iteration.
 ///
-/// Emits two kinds of lines per iter (one per entity):
+/// Emits three kinds of lines per iter (one per entity):
 ///   i=&lt;iter&gt; en idx=&lt;idx&gt; iname=&lt;N&gt; x=&lt;X&gt; y=&lt;Y&gt; hits=&lt;H&gt;
 ///   i=&lt;iter&gt; eb idx=&lt;idx&gt; type=&lt;T&gt; x=&lt;X&gt; y=&lt;Y&gt; mx=&lt;MX&gt; my=&lt;MY&gt; speed=&lt;S&gt; curframe=&lt;CF&gt; cnt=&lt;CNT&gt;
+///   i=&lt;iter&gt; pb idx=&lt;idx&gt; wpn=&lt;W&gt; x=&lt;X&gt; y=&lt;Y&gt; mx=&lt;MX&gt; my=&lt;MY&gt; speed=&lt;S&gt; cnt=&lt;CNT&gt; beam=&lt;B&gt; reached=&lt;R&gt;
+///
+/// `wpn` is the WeaponType integer (S_FORWARD_GUNS=0..S_DEATH_RAY=14, or
+/// -1 for untagged bullets like the player-straight stream). `beam` is 1 if
+/// the bullet is a stationary line/vertical beam, else 0. `reached` is 1
+/// after the Bresenham loop completes (mirrors C `shot->move.done`).
 ///
 /// Activate: RAPTOR_BULLET_DUMP=/path/to/dump.txt
 /// </summary>
@@ -67,6 +73,19 @@ public partial class BulletDumper : Node
                 "i={0} eb idx={1} type={2} x={3} y={4} mx={5} my={6} speed={7} curframe={8} cnt={9}\n",
                 _iter, idx, (int)b.ShotType, b.X, b.Y, b.Mx, b.My, b.CurSpeed,
                 b.FrameCounter % b.NumFrames, b.FrameCounter);
+            idx++;
+        }
+        idx = 0;
+        foreach (var b in _wave.GetPlayerBullets())
+        {
+            if (!b.Alive) continue;
+            int wpn   = b.PlayerWeapon is { } w ? (int)w : -1;
+            int beam  = b.IsBeam ? 1 : 0;
+            int reach = b.ReachedTarget ? 1 : 0;
+            sb.AppendFormat(Inv,
+                "i={0} pb idx={1} wpn={2} x={3} y={4} mx={5} my={6} speed={7} cnt={8} beam={9} reached={10}\n",
+                _iter, idx, wpn, b.X, b.Y, b.Mx, b.My, b.CurSpeed,
+                b.FrameCounter, beam, reach);
             idx++;
         }
         _out.Write(sb.ToString());
