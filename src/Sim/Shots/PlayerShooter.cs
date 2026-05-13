@@ -35,6 +35,33 @@ public sealed class PlayerShooter
         for (int i = 0; i < _curShoot.Length; i++) _curShoot[i] = 0;
     }
 
+    /// <summary>
+    /// Apply the weapon-grant side of a bonus pickup. Mirrors C OBJS_Add for
+    /// weapon-type OBJ_TYPE values (SOURCE/OBJECTS.C). Returns true iff this
+    /// type was a weapon and the inventory changed. Non-weapon bonus types
+    /// (S_ENERGY, S_SUPER_SHIELD, S_ITEMBUY*) are out of scope here — those
+    /// affect player shield/score and the caller handles them.
+    /// </summary>
+    public bool GrantWeapon(int objType)
+    {
+        switch (objType)
+        {
+            case 0:   // S_FORWARD_GUNS — always owned; no-op.
+                return false;
+            case 1:   // S_PLASMA_GUNS
+                HasPlasmaGuns = true;
+                return true;
+            case 2:   // S_MICRO_MISSLE
+                HasMicroMissile = true;
+                return true;
+            case >= 3 and <= 14:   // specials S_DUMB_MISSLE..S_DEATH_RAY
+                SpecialWeapon = (WeaponType)objType;
+                return true;
+            default:
+                return false;
+        }
+    }
+
     /// <summary>Per-tick cooldown decrement (SHOTS.C:1035-1040).</summary>
     public void TickCooldowns()
     {

@@ -212,6 +212,61 @@ public class PlayerShooterTests
         b.Tick(); Assert.Equal(142, b.Y);
     }
 
+    // ── Bonus → inventory wiring (GrantWeapon dispatch) ──────────────────────
+
+    [Fact]
+    public void GrantWeapon_FORWARD_GUNS_is_noop_returns_false()
+    {
+        var ps = new PlayerShooter();
+        // FORWARD_GUNS always owned; picking it up is invisible (lib->forever).
+        Assert.False(ps.GrantWeapon(0 /* S_FORWARD_GUNS */));
+        Assert.False(ps.HasPlasmaGuns);
+        Assert.False(ps.HasMicroMissile);
+        Assert.Null(ps.SpecialWeapon);
+    }
+
+    [Fact]
+    public void GrantWeapon_PLASMA_sets_HasPlasmaGuns()
+    {
+        var ps = new PlayerShooter();
+        Assert.True(ps.GrantWeapon(1 /* S_PLASMA_GUNS */));
+        Assert.True(ps.HasPlasmaGuns);
+    }
+
+    [Fact]
+    public void GrantWeapon_MICRO_MISSLE_sets_HasMicroMissile()
+    {
+        var ps = new PlayerShooter();
+        Assert.True(ps.GrantWeapon(2 /* S_MICRO_MISSLE */));
+        Assert.True(ps.HasMicroMissile);
+    }
+
+    [Fact]
+    public void GrantWeapon_specials_replace_SpecialWeapon()
+    {
+        var ps = new PlayerShooter();
+        Assert.True(ps.GrantWeapon(3 /* S_DUMB_MISSLE */));
+        Assert.Equal(WeaponType.DumbMissile, ps.SpecialWeapon);
+        // Picking up a different special weapon replaces it (C plr.sweapon).
+        Assert.True(ps.GrantWeapon(11 /* S_MEGA_BOMB */));
+        Assert.Equal(WeaponType.MegaBomb, ps.SpecialWeapon);
+    }
+
+    [Fact]
+    public void GrantWeapon_non_weapon_types_return_false()
+    {
+        // S_SUPER_SHIELD (15), S_ENERGY (16), S_DETECT (17), S_ITEMBUY1..6 (18..23)
+        // are not weapons; GrantWeapon must return false so the caller handles them.
+        var ps = new PlayerShooter();
+        Assert.False(ps.GrantWeapon(15));
+        Assert.False(ps.GrantWeapon(16));
+        Assert.False(ps.GrantWeapon(17));
+        Assert.False(ps.GrantWeapon(20));
+        Assert.False(ps.HasPlasmaGuns);
+        Assert.False(ps.HasMicroMissile);
+        Assert.Null(ps.SpecialWeapon);
+    }
+
     [Fact]
     public void PlayerStraight_dies_when_move_passes_top_edge()
     {

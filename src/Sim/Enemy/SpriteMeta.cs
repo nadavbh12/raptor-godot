@@ -47,8 +47,11 @@ public sealed class SpriteMeta
     [JsonPropertyName("num_frames")] public int    NumFrames   { get; set; } = 1;
     [JsonPropertyName("frame_rate")] public int    FrameRate   { get; set; }
     [JsonPropertyName("rewind")]     public int    Rewind      { get; set; } = 1;
+    // C SOURCE/MAP.H SPRITE.bonus — OBJ_TYPE value to drop when this enemy is
+    // destroyed (-1 = no drop). Consumed by WaveController's death handler.
+    [JsonPropertyName("bonus")]      public int    Bonus       { get; set; } = -1;
     // Additional fields present in JSON but not consumed:
-    // suck, animtype, bossflag, repos, sfx, song, bonus.
+    // suck, animtype, bossflag, repos, sfx, song.
 
     // ── Sprite image dimensions (populated by SpriteMetaLibrary from PNG files) ──
     // Not in JSON; set after deserialisation.

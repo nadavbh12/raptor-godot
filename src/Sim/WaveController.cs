@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using Godot;
+using Raptor.Sim.Bonus;
 using Raptor.Sim.Bullet;
 using Raptor.Sim.Enemy;
 using Raptor.Sim.MazeLevel;
@@ -195,6 +196,7 @@ public partial class WaveController : Node
     private readonly List<EnemyLogic>   _enemies     = new();
     private readonly List<BulletLogic>  _playerBullets = new();
     private readonly List<BulletLogic>  _enemyBullets  = new();
+    private readonly List<BonusLogic>   _bonuses       = new();
 
     // Active explosion animations spawned when an enemy dies. Each entry
     // records the C exptype (SOURCE/MAP.H), the center position, and the sim
@@ -208,12 +210,14 @@ public partial class WaveController : Node
     public IReadOnlyList<BulletLogic> GetEnemyBullets()  => _enemyBullets;
     public IReadOnlyList<BulletLogic> GetPlayerBullets() => _playerBullets;
     public IReadOnlyList<Explosion>   GetExplosions()    => _explosions;
+    public IReadOnlyList<BonusLogic>  GetBonuses()       => _bonuses;
 
     // ── Collision scratch ─────────────────────────────────────────────────────
     private readonly List<(EnemyLogic enemy, int dmg)> _hitEnemies = new();
     private bool _playerHit;
     private int  _playerHitDmg;
     private readonly List<EnemyLogic> _bodyCrashEnemies = new();  // enemies that collided with player
+    private readonly List<BonusLogic> _pickedUpBonuses  = new();  // bonuses overlapping player this tick
 
     // ── Shield recharge (OBJS_Think in C) ────────────────────────────────────
     // CHARGE_SHIELD = 24*4 = 96. When think_cnt > 96, heal 1 shield.
@@ -349,7 +353,9 @@ public partial class WaveController : Node
         _enemies.Clear();
         _playerBullets.Clear();
         _enemyBullets.Clear();
+        _bonuses.Clear();
         _hitEnemies.Clear();
+        _pickedUpBonuses.Clear();
         _explosions.Clear();
         _playerHit = false;
         _endWaveFlag = false;
@@ -544,6 +550,9 @@ public partial class WaveController : Node
         foreach (var b in _playerBullets)
             b.Tick();
 
+        // Tick bonuses (BONUS_Think — drift down 1 px/iter, despawn at y > 200).
+        foreach (var bn in _bonuses) bn.Tick();
+
         // Tick enemy bullets (includes newly fired ones from this frame, matching C's
         // ESHOT_Think which runs after ENEMY_Think in the same game-loop iteration).
         foreach (var b in _enemyBullets)
@@ -635,6 +644,47 @@ public partial class WaveController : Node
             if (px > ex && px < ex2 && py > ey && py < ey2)
                 _bodyCrashEnemies.Add(e);
         }
+
+        // Bonus pickup. BONUS.C:207 — `cur->x > playerx && cur->x < playerx+PW
+        // && cur->y > playery && cur->y < playery+PH`. The bonus CENTER (cur->x,
+        // cur->y) must be inside the player's top-left-anchored rect.
+        const int playerW = 32; const int playerH = 32;
+        int plx = PlayerLogic.X;
+        int ply = PlayerLogic.Y;
+        _pickedUpBonuses.Clear();
+        foreach (var bn in _bonuses)
+        {
+            if (!bn.Alive) continue;
+            if (bn.X > plx && bn.X < plx + playerW && bn.Y > ply && bn.Y < ply + playerH)
+                _pickedUpBonuses.Add(bn);
+        }
+    }
+
+    // OBJ_TYPE numeric constants for the non-weapon bonus types handled here.
+    // Weapon-type dispatch (0..14) lives in PlayerShooter.GrantWeapon.
+    private const int OBJ_SUPER_SHIELD  = 15;
+    private const int OBJ_ENERGY        = 16;
+    // S_DETECT (17) ignored — cosmetic. S_ITEMBUY1..6 (18..23) → money,
+    // amount per slot from the C obj_lib (deferred — not yet exposed here).
+
+    private void ApplyBonusEffect(int objType)
+    {
+        if (Shooter.GrantWeapon(objType)) return;
+        switch (objType)
+        {
+            case OBJ_SUPER_SHIELD:
+                PlayerLogic.Heal(PlayerLogic.MaxShield);   // full restore
+                break;
+            case OBJ_ENERGY:
+                // BONUS.C:214 — MAX_SHIELD/4. MaxShield=100 → +25.
+                PlayerLogic.Heal(PlayerLogic.MaxShield / 4);
+                break;
+            default:
+                // S_DETECT (17) and S_ITEMBUY1..6 (18..23) are not yet handled
+                // here. Money pickups in particular need the per-slot value
+                // table from obj_lib; deferring until a parity gap forces it.
+                break;
+        }
     }
 
     internal void PhaseCollisionResolve()
@@ -655,6 +705,7 @@ public partial class WaveController : Node
             {
                 Score += (uint)enemy.Meta.Money;
                 SpawnExplosion(enemy);
+                SpawnBonusFor(enemy);
             }
         }
 
@@ -675,8 +726,19 @@ public partial class WaveController : Node
             {
                 Score += (uint)e.Meta.Money;
                 SpawnExplosion(e);
+                SpawnBonusFor(e);
             }
         }
+        // Apply bonus pickup effects collected this tick (weapon → inventory,
+        // S_ENERGY → heal). C's BONUS.C:208-216 path; we batch in
+        // CollisionResolve so all death/pickup events fire after collection.
+        foreach (var b in _pickedUpBonuses)
+        {
+            ApplyBonusEffect(b.ObjType);
+            b.Kill();
+        }
+        _pickedUpBonuses.Clear();
+
         // Player just died this tick — spawn one large death explosion at the
         // player's center (mirrors RAP.C:583 A_LARGE_AIR_EXPLO at player_cx/cy).
         if (playerWasAlive && !PlayerLogic.Alive)
@@ -694,7 +756,18 @@ public partial class WaveController : Node
     // also fires (width/16 * height/16) medium explosions at random offsets
     // inside the sprite bounds. We use a deterministic pattern (no RNG) so
     // we never consume sim entropy.
+    //
+    // ENEMY.C:1154-1155 ALSO drops a BONUS if the sprite's lib->bonus field
+    // is set. That spawn happens here for cohesion: any path that called
+    // SpawnExplosion also wants the C drop side-effect.
     private const int ExpAirLargeCode = 2;  // EXP_AIRLARGE (SOURCE/MAP.H)
+    private void SpawnBonusFor(EnemyLogic e)
+    {
+        if (e.Meta.Bonus < 0) return;
+        // C: BONUS_Add(curlib->bonus, sprite->x, sprite->y). The bonus spawns
+        // at the enemy's TOP-LEFT corner (sprite->x/y), not center.
+        _bonuses.Add(new BonusLogic(e.Meta.Bonus, e.X, e.Y));
+    }
     private void SpawnExplosion(EnemyLogic e)
     {
         int cx = e.X + e.Meta.HalfX;
@@ -733,6 +806,7 @@ public partial class WaveController : Node
         // Remove out-of-bounds bullets.
         _playerBullets.RemoveAll(b => !b.Alive);
         _enemyBullets.RemoveAll(b => !b.Alive);
+        _bonuses.RemoveAll(b => !b.Alive);
 
         // Drop finished explosions. Frames-per-animation is determined by the
         // view's BlkInfo table; we cap at a conservative 50 frames so a missing
