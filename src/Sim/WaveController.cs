@@ -242,11 +242,12 @@ public partial class WaveController : Node
     private int _tiley     = 0;  // current spawn row: tilepos/MAP_COLS - 3
 
     // On-screen tile state slice (MAP_ONSCREEN * MAP_COLS = 72 entries).
-    // Mirrors C's tspots[]. Built in LoadWave from _mapTiles; the IsDestructible
-    // / Hits / Bounty fields are placeholders until the flatlib data is
-    // extracted from FILE0001.GLB. With placeholders all tiles are non-
-    // destructible — TileBomb / TileIsHit dispatch always returns Hit=false.
+    // Mirrors C's tspots[]. Rebuilt from _mapTiles + _flatLib in PhaseSpawn
+    // whenever the scroll crosses a row boundary; TileBomb / TileIsHit
+    // dispatches against this slice. Destructibility / Hits / Bounty are
+    // looked up by (MapTileEntry.FGame, MapTileEntry.Flats) in _flatLib.
     private readonly List<TileState> _tileSlice = new();
+    private FlatLibrary? _flatLib;
 
     // ── Map sprite list for spawning ──────────────────────────────────────────
     private List<MapSpriteEntry>? _mapSprites;
@@ -374,9 +375,15 @@ public partial class WaveController : Node
         _tilepos  = (MAP_ROWS - MAP_ONSCREEN) * MAP_COLS;
         _tileyoff = 200 - MAP_ONSCREEN * MAP_BLOCKSIZE;  // -56
         _tiley    = _tilepos / MAP_COLS - 3;             // = 139
-        _tileSlice.Clear();
-        for (int i = 0; i < MAP_ONSCREEN * MAP_COLS; i++)
-            _tileSlice.Add(new TileState { IsDestructible = false, Hits = 1, Bounty = 0 });
+        // Lazy-load the FLATSG1_ITM table on first wave (G1 only — DOS Raptor
+        // shipped one campaign; the FLATS struct is mission-independent).
+        if (_flatLib == null)
+        {
+            string flatsPath = Path.Combine(_assetsRoot ?? "assets", "flats", "FLATSG1_ITM.json");
+            if (File.Exists(flatsPath))
+                _flatLib = FlatLibrary.LoadFromFile(flatsPath);
+        }
+        RebuildTileSlice();
 
         // Reset player position.
         PlayerLogic.Reset();
@@ -539,6 +546,61 @@ public partial class WaveController : Node
             _tilepos  -= MAP_COLS;
             _tiley     = _tilepos / MAP_COLS - 3;
             if (_tilepos <= 0) _tilepos = 0;
+            // Tilepos advanced one row → re-populate _tileSlice. Hits / Bounty
+            // for any in-progress destruction get reset by this; in C the
+            // tspot slot tdead/hits arrays index by absolute mapspot rather
+            // than slice slot, so they survive scroll. Our simpler model
+            // re-derives per row; tile destruction only matters while the
+            // tile is on-screen anyway, so the reset is invisible.
+            RebuildTileSlice();
+        }
+        else
+        {
+            // No row crossing — just shift the ScreenY of each slot for sub-
+            // tile-height scroll. ScreenX is constant; only the y-offset
+            // moves between full-row rebuilds.
+            for (int i = 0; i < _tileSlice.Count; i++)
+                _tileSlice[i].ScreenY = _tileyoff + (i / MAP_COLS) * MAP_BLOCKSIZE;
+        }
+    }
+
+    /// <summary>
+    /// Rebuild the on-screen tile slice from _mapTiles, _tilepos, _tileyoff,
+    /// and _flatLib. Mirrors C TILE_Think's first pass (TILE.C:343-360) which
+    /// populates tspots[] with (mapspot, x, y, item) for each visible tile.
+    /// </summary>
+    private void RebuildTileSlice()
+    {
+        if (_tileSlice.Count == 0)
+        {
+            for (int i = 0; i < MAP_ONSCREEN * MAP_COLS; i++)
+                _tileSlice.Add(new TileState());
+        }
+        for (int row = 0; row < MAP_ONSCREEN; row++)
+        for (int col = 0; col < MAP_COLS;     col++)
+        {
+            int slot     = row * MAP_COLS + col;
+            int mapspot  = _tilepos + slot;
+            var t        = _tileSlice[slot];
+            t.ScreenX    = MAP_LEFT + col * MAP_BLOCKSIZE;
+            t.ScreenY    = _tileyoff + row * MAP_BLOCKSIZE;
+            t.Dead       = false;
+            if (_mapTiles == null || mapspot < 0 || mapspot >= _mapTiles.Count ||
+                _flatLib == null)
+            {
+                t.IsDestructible = false; t.Hits = 1; t.Bounty = 0;
+                continue;
+            }
+            var entry = _mapTiles[mapspot];
+            int flatIdx = entry.Flats;
+            if (flatIdx < 0 || flatIdx >= _flatLib.Count)
+            {
+                t.IsDestructible = false; t.Hits = 1; t.Bounty = 0;
+                continue;
+            }
+            t.IsDestructible = _flatLib.IsDestructible(flatIdx);
+            t.Hits           = _flatLib.HitsFor(flatIdx);
+            t.Bounty         = _flatLib.BountyFor(flatIdx);
         }
     }
 
