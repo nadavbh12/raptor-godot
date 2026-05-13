@@ -7,6 +7,7 @@ using Raptor.Sim.Bullet;
 using Raptor.Sim.Enemy;
 using Raptor.Sim.MazeLevel;
 using Raptor.Sim.Player;
+// TileDamageDispatcher and TileState are in MazeLevel namespace (above).
 using Raptor.Sim.Shots;
 using Raptor.Test;
 
@@ -240,6 +241,13 @@ public partial class WaveController : Node
     private int _tileyoff  = 200 - MAP_ONSCREEN * MAP_BLOCKSIZE;  // = -56
     private int _tiley     = 0;  // current spawn row: tilepos/MAP_COLS - 3
 
+    // On-screen tile state slice (MAP_ONSCREEN * MAP_COLS = 72 entries).
+    // Mirrors C's tspots[]. Built in LoadWave from _mapTiles; the IsDestructible
+    // / Hits / Bounty fields are placeholders until the flatlib data is
+    // extracted from FILE0001.GLB. With placeholders all tiles are non-
+    // destructible — TileBomb / TileIsHit dispatch always returns Hit=false.
+    private readonly List<TileState> _tileSlice = new();
+
     // ── Map sprite list for spawning ──────────────────────────────────────────
     private List<MapSpriteEntry>? _mapSprites;
     private List<MapTileEntry>?   _mapTiles;
@@ -366,6 +374,9 @@ public partial class WaveController : Node
         _tilepos  = (MAP_ROWS - MAP_ONSCREEN) * MAP_COLS;
         _tileyoff = 200 - MAP_ONSCREEN * MAP_BLOCKSIZE;  // -56
         _tiley    = _tilepos / MAP_COLS - 3;             // = 139
+        _tileSlice.Clear();
+        for (int i = 0; i < MAP_ONSCREEN * MAP_COLS; i++)
+            _tileSlice.Add(new TileState { IsDestructible = false, Hits = 1, Bounty = 0 });
 
         // Reset player position.
         PlayerLogic.Reset();
@@ -660,6 +671,28 @@ public partial class WaveController : Node
                     break;
                 }
             }
+        }
+
+        // Tile collision dispatch (SHOTS.C shot_done for S_GROUND, S_GTILE,
+        // S_GRALL — TILE_IsHit / TILE_Bomb). Bullets carry their HitType from
+        // PlayerShooter; we dispatch through the pure-C# TileDamageDispatcher.
+        // Without flatlib data all tiles are non-destructible so this fires
+        // but never lands; once flat data is extracted, _tileSlice will carry
+        // real destructibility and this branch becomes active.
+        foreach (var b in _playerBullets)
+        {
+            if (!b.Alive || b.IsBeam) continue;
+            if (b.HitType != HitType.GTile && b.HitType != HitType.Ground &&
+                b.HitType != HitType.GrAll) continue;
+            TileDamageDispatcher.DamageResult tr = b.HitType == HitType.GTile
+                ? TileDamageDispatcher.TileBomb(_tileSlice, b.X, b.Y, b.Damage, MAP_COLS)
+                : TileDamageDispatcher.TileIsHit(_tileSlice, b.X, b.Y, b.Damage);
+            if (!tr.Hit) continue;
+            // S_GTILE bombs continue after hit (move.done = TRUE leads to
+            // detonation effect handled by HandleShotDone). S_GROUND bullets
+            // die on tile hit (mirrors SHOTS.C:1208 setting move.done=TRUE).
+            if (b.HitType != HitType.GTile) b.Kill();
+            if (tr.Bounty > 0) Score += (uint)tr.Bounty;
         }
 
         // Beam-vs-enemy column damage. SHOTS.C:1068-1088 — for each VerticalBeam,
