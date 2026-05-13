@@ -723,12 +723,10 @@ public partial class WaveController : Node
         }
     }
 
-    // OBJ_TYPE numeric constants for the non-weapon bonus types handled here.
-    // Weapon-type dispatch (0..14) lives in PlayerShooter.GrantWeapon.
-    private const int OBJ_SUPER_SHIELD  = 15;
-    private const int OBJ_ENERGY        = 16;
-    // S_DETECT (17) ignored — cosmetic. S_ITEMBUY1..6 (18..23) → money,
-    // amount per slot from the C obj_lib (deferred — not yet exposed here).
+    /// <summary>True when the player has picked up an S_DETECT bonus.
+    /// Used by the view's secrets-locator UI. Persists across waves
+    /// (C's p_objs[S_DETECT] survives RAP_LoadMap).</summary>
+    public bool HasSecretsDetector { get; private set; }
 
     /// <summary>
     /// Returns true iff a bullet with the given HitType can damage this enemy.
@@ -755,22 +753,10 @@ public partial class WaveController : Node
 
     private void ApplyBonusEffect(int objType)
     {
-        if (Shooter.GrantWeapon(objType)) return;
-        switch (objType)
-        {
-            case OBJ_SUPER_SHIELD:
-                PlayerLogic.Heal(PlayerLogic.MaxShield);   // full restore
-                break;
-            case OBJ_ENERGY:
-                // BONUS.C:214 — MAX_SHIELD/4. MaxShield=100 → +25.
-                PlayerLogic.Heal(PlayerLogic.MaxShield / 4);
-                break;
-            default:
-                // S_DETECT (17) and S_ITEMBUY1..6 (18..23) are not yet handled
-                // here. Money pickups in particular need the per-slot value
-                // table from obj_lib; deferring until a parity gap forces it.
-                break;
-        }
+        var r = Bonus.BonusEffectDispatcher.Apply(objType, Shooter, PlayerLogic.MaxShield);
+        if (r.HealAmount > 0)       PlayerLogic.Heal(r.HealAmount);
+        if (r.ScoreAdd > 0)         Score += r.ScoreAdd;
+        if (r.DetectorActivated)    HasSecretsDetector = true;
     }
 
     internal void PhaseCollisionResolve()
