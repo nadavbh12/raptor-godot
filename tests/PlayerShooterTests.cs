@@ -357,6 +357,67 @@ public class PlayerShooterTests
         Assert.Null(ps.SpecialWeapon);
     }
 
+    // ── DUMB_MISSLE delayflag + MEGA_BOMB detonation (shot_done dispatch) ────
+
+    [Fact]
+    public void DumbMissile_bullets_are_delayed_and_tagged()
+    {
+        // SHOTS.C:739 sets cur->delayflag = lib->delayflag = TRUE for DUMB_MISSLE.
+        // WaveController.HandleShotDone uses both Delayed and PlayerWeapon.
+        var ps = new PlayerShooter();
+        var sink = new List<BulletLogic>();
+        var rng = new System.Random(42);
+        Assert.True(ps.Shoot(WeaponType.DumbMissile, 160, 176, 3, sink, rng: rng));
+        Assert.Equal(2, sink.Count);
+        Assert.All(sink, b => Assert.True(b.Delayed));
+        Assert.All(sink, b => Assert.Equal(WeaponType.DumbMissile, b.PlayerWeapon));
+    }
+
+    [Fact]
+    public void MegaBomb_bullet_is_tagged_with_PlayerWeapon()
+    {
+        // MegaBomb has lib->delayflag=FALSE; WaveController dispatches the
+        // detonation effect on PlayerWeapon==MegaBomb after reaching target.
+        var ps = new PlayerShooter();
+        var sink = new List<BulletLogic>();
+        Assert.True(ps.Shoot(WeaponType.MegaBomb, 160, 176, 3, sink));
+        Assert.Single(sink);
+        Assert.False(sink[0].Delayed);
+        Assert.Equal(WeaponType.MegaBomb, sink[0].PlayerWeapon);
+    }
+
+    [Fact]
+    public void Bresenham_bullet_sets_ReachedTarget_on_loop_completion()
+    {
+        // Aim at (105, 50) from (100, 50) → 5 horizontal steps + the pre-advance.
+        // After enough Ticks the bullet must report ReachedTarget=true and
+        // STAY alive (default-remove dispatch happens in WaveController).
+        var b = BulletLogic.AimedAt(BulletKind.Player, x: 100, y: 50,
+            x2: 105, y2: 50, initSpeed: 1, maxSpeed: 1, damage: 1);
+        Assert.False(b.ReachedTarget);
+        for (int i = 0; i < 10 && !b.ReachedTarget; i++) b.Tick();
+        Assert.True(b.ReachedTarget);
+        Assert.True(b.Alive);   // BulletLogic does NOT auto-kill on reach
+    }
+
+    [Fact]
+    public void ReInitBresenhamTarget_retargets_and_clears_done()
+    {
+        // After reach, ReInitBresenhamTarget continues toward a new target
+        // and clears the done flag (mirrors C InitMobj(&move) in shot_done).
+        var b = BulletLogic.AimedAt(BulletKind.Player, x: 100, y: 50,
+            x2: 100, y2: 55, initSpeed: 1, maxSpeed: 1, damage: 1);
+        for (int i = 0; i < 8 && !b.ReachedTarget; i++) b.Tick();
+        Assert.True(b.ReachedTarget);
+        int myAfterReach = b.My;
+        // Re-target upward.
+        b.ReInitBresenhamTarget(100, 0);
+        Assert.False(b.ReachedTarget);
+        b.Tick();
+        Assert.True(b.Alive);
+        Assert.True(b.My < myAfterReach);   // moving upward toward y=0
+    }
+
     [Fact]
     public void PlayerStraight_dies_when_move_passes_top_edge()
     {

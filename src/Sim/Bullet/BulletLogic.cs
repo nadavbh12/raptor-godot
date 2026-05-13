@@ -92,6 +92,45 @@ public sealed class BulletLogic
     private int _bdelX, _bdelY;    // absolute distance to target
     private int _berr;             // Bresenham error accumulator
     private int _bmaxloop;         // remaining steps until target reached
+    // Mirrors C `shot->move.done`. Set true when Bresenham completes
+    // (_bmaxloop hits 0 during the Tick that reaches the target). The
+    // SHOTS.C shot_done block (line 1218) reads this at the start of the
+    // NEXT iter; WaveController.PhaseMovement does the same.
+    private bool _bresenhamDone;
+    /// <summary>True after a Tick in which the Bresenham bullet reached its target.</summary>
+    public bool ReachedTarget => _bresenhamDone;
+    /// <summary>
+    /// Mirrors C `cur->delayflag` (initial true for DUMB_MISSLE only). When
+    /// true, the first ReachedTarget event re-targets the bullet to a new
+    /// (x2, y2) instead of removing it (SHOTS.C:1220-1227).
+    /// </summary>
+    public bool Delayed { get; set; }
+    /// <summary>
+    /// Identifies which player weapon spawned this bullet (null for enemy bullets
+    /// or generic constructions). WaveController reads this at the shot_done
+    /// step to dispatch MegaBomb detonation (SHOTS.C:1232-1241) and DumbMissile
+    /// scatter, mirroring the C `switch (lib->type)` branch.
+    /// </summary>
+    public Shots.WeaponType? PlayerWeapon { get; set; }
+    /// <summary>Clears the ReachedTarget flag after the controller dispatched its event.</summary>
+    public void ClearReachedTarget() => _bresenhamDone = false;
+    /// <summary>
+    /// Re-initialize the Bresenham target. Mirrors C `InitMobj(&shot->move)` in
+    /// the DUMB_MISSLE delayflag branch (SHOTS.C:1224). Keeps current position
+    /// (_bx, _by) as the new start; recomputes step direction toward (x2, y2).
+    /// </summary>
+    public void ReInitBresenhamTarget(int x2, int y2)
+    {
+        if (!_bresenham) return;
+        _baddX = 1; _baddY = 1;
+        _bdelX = x2 - _bx;
+        _bdelY = y2 - _by;
+        if (_bdelX < 0) { _bdelX = -_bdelX; _baddX = -1; }
+        if (_bdelY < 0) { _bdelY = -_bdelY; _baddY = -1; }
+        if (_bdelX >= _bdelY) { _berr = -(_bdelY >> 1); _bmaxloop = _bdelX + 1; }
+        else                  { _berr =  (_bdelX >> 1); _bmaxloop = _bdelY + 1; }
+        _bresenhamDone = false;
+    }
 
     // Player-straight mode (mirrors SHOTS.C SHOTS_Think for the S_SHOOT/!use_plot
     // path used by FORWARD_GUNS, PLASMA_GUNS, MICRO_MISSLE, MISSLE_PODS, etc.).
@@ -307,7 +346,7 @@ public sealed class BulletLogic
 
     private void BresenhamStep()
     {
-        if (_bmaxloop == 0) return;
+        if (_bmaxloop == 0) { _bresenhamDone = true; return; }
         if (_bdelX >= _bdelY)
         {
             _bx += _baddX;
@@ -321,6 +360,8 @@ public sealed class BulletLogic
             if (_berr > 0) { _bx += _baddX; _berr -= _bdelY; }
         }
         _bmaxloop--;
+        // Mirrors C MoveSobj: sets move.done=TRUE when loopcnt reaches 0.
+        if (_bmaxloop == 0) _bresenhamDone = true;
     }
 
     public void Tick()

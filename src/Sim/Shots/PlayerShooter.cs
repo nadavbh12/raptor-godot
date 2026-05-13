@@ -205,17 +205,27 @@ public sealed class PlayerShooter
                 // C's `cur->move.x2 = cur->x + random(16) + 10` etc; we mirror
                 // that with the provided RNG. Falls back to deterministic
                 // offsets if no RNG was supplied (tests).
+                //
+                // SHOTS.C:739 sets cur->delayflag = lib->delayflag (TRUE for
+                // DUMB_MISSLE). On move.done the SHOTS.C:1220 delayflag branch
+                // re-targets the bullet to (move.x + random(32)-16, 0) — i.e.
+                // it transitions to flying straight UP after the initial
+                // outward scatter. WaveController.PhaseMovement dispatches
+                // that transition via BulletLogic.ReachedTarget.
                 {
                     int r1x = (rng?.Next(16) ?? 8) + 10;
                     int r2x = (rng?.Next(16) ?? 8) + 10;
-                    sink.Add(BulletLogic.AimedAt(BulletKind.Player,
+                    var b1 = BulletLogic.AimedAt(BulletKind.Player,
                         x: playerCx, y: playerCy,
                         x2: playerCx + r1x, y2: playerCy + 5,
-                        initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed, damage: lib.Hits));
-                    sink.Add(BulletLogic.AimedAt(BulletKind.Player,
+                        initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed, damage: lib.Hits);
+                    var b2 = BulletLogic.AimedAt(BulletKind.Player,
                         x: playerCx, y: playerCy,
                         x2: playerCx - r2x, y2: playerCy + 5,
-                        initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed, damage: lib.Hits));
+                        initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed, damage: lib.Hits);
+                    b1.PlayerWeapon = WeaponType.DumbMissile; b1.Delayed = true;
+                    b2.PlayerWeapon = WeaponType.DumbMissile; b2.Delayed = true;
+                    sink.Add(b1); sink.Add(b2);
                 }
                 break;
 
@@ -232,20 +242,26 @@ public sealed class PlayerShooter
                     }
                     int aimX = target.X + (rng?.Next(2 * target.HalfW) ?? target.HalfW) - 1;
                     int aimY = target.Y + target.HalfH + (rng?.Next(2 * target.HalfH) ?? target.HalfH) - 1;
-                    sink.Add(BulletLogic.AimedAt(BulletKind.Player,
+                    var mg = BulletLogic.AimedAt(BulletKind.Player,
                         x: playerCx, y: playerCy, x2: aimX, y2: aimY,
-                        initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed, damage: lib.Hits));
+                        initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed, damage: lib.Hits);
+                    mg.PlayerWeapon = WeaponType.MiniGun;
+                    sink.Add(mg);
                 }
                 break;
 
             case WeaponType.MegaBomb:
-                // SHOTS.C:940-954. Bresenham to (160, 75). On done, kills all
-                // air enemies + clears enemy bullets; that detonation effect is
-                // handled by WaveController via OnMegaBombDetonate when the
-                // bullet's Alive flips false at the target.
-                sink.Add(BulletLogic.AimedAt(BulletKind.Player,
-                    x: playerCx, y: playerCy, x2: 160, y2: 75,
-                    initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed, damage: lib.Hits));
+                // SHOTS.C:940-954. Bresenham to (160, 75). Tagged with
+                // PlayerWeapon=MegaBomb so WaveController.HandleShotDone
+                // can fire the detonation effect (SHOTS.C:1232-1241:
+                // ESHOT_Clear + damage all enemies + remove shot).
+                {
+                    var mb = BulletLogic.AimedAt(BulletKind.Player,
+                        x: playerCx, y: playerCy, x2: 160, y2: 75,
+                        initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed, damage: lib.Hits);
+                    mb.PlayerWeapon = WeaponType.MegaBomb;
+                    sink.Add(mb);
+                }
                 break;
 
             case WeaponType.Turret:

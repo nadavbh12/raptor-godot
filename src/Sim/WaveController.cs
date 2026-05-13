@@ -546,6 +546,20 @@ public partial class WaveController : Node
                 foreach (var b in extras) _enemyBullets.Add(b);
         }
 
+        // Mirrors C SHOTS_Think shot_done branch (SHOTS.C:1218-1249) at the
+        // top of each per-iter shot pass. A Bresenham player bullet that
+        // reached its target in the previous Tick triggers either a re-init
+        // (DUMB_MISSLE delayflag → straight-up scatter to y=0) or a per-
+        // weapon detonation (MEGA_BOMB → damage-all + clear enemy bullets),
+        // or a default Remove. Runs BEFORE the per-bullet Tick to match
+        // C's ordering within SHOTS_Think.
+        foreach (var b in _playerBullets)
+        {
+            if (!b.Alive || !b.ReachedTarget) continue;
+            HandleShotDone(b);
+            b.ClearReachedTarget();
+        }
+
         // Tick player bullets.
         foreach (var b in _playerBullets)
             b.Tick();
@@ -715,6 +729,9 @@ public partial class WaveController : Node
         HitType.Suck   => true,
         _              => true,
     };
+
+    private void HandleShotDone(BulletLogic b)
+        => ShotDoneDispatcher.Dispatch(b, _enemyBullets, _enemies, _shooterRng);
 
     private void ApplyBonusEffect(int objType)
     {
