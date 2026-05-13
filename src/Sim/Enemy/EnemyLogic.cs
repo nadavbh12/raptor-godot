@@ -170,6 +170,27 @@ public sealed class EnemyLogic
     private void InitFlight(int mapY)
     {
         _flightIdx = 0;
+        // F_GROUND family (FlightType 3/4/5): no Bresenham, just scroll-driven y
+        // increment per tick (ENEMY.C:940-977). x2/y2 are target bounds.
+        if (Meta.FlightType >= 3 && Meta.FlightType <= 5)
+        {
+            // C ENEMY.C:465 (F_GROUNDRIGHT): new->x -= new->width (spawn at left, slide right).
+            // C ENEMY.C:473 (F_GROUNDLEFT):  new->x += new->width (spawn at right, slide left).
+            // For F_GROUND (3) the spawn x is unchanged.
+            int offsetX = Meta.FlightType == 5 ?  -Meta.Width
+                        : Meta.FlightType == 4 ?  +Meta.Width
+                        : 0;
+            _mx = _sx + offsetX;
+            _my = mapY;
+            X = _mx; Y = _my;  // ensure dump reflects post-init position
+            // C ENEMY.C:461 — F_GROUND target is (x, 211). F_GROUNDRIGHT/LEFT
+            // use 335/-hlx for x. We only need y2 for the doneflag check; x2
+            // is set per-tick from x in C and we mirror that.
+            _tgtY = 211;
+            _tgtX = Meta.FlightType == 5 ? 335 : Meta.FlightType == 4 ? -Meta.HalfX : _mx;
+            _pathInitialised = true;
+            return;
+        }
         int n = Math.Min(Meta.NumFlight,
                 Math.Min(Meta.FlightX.Length, Meta.FlightY.Length));
         if (n <= 0)
@@ -197,6 +218,28 @@ public sealed class EnemyLogic
     private void AdvancePath()
     {
         if (!_pathInitialised) return;
+
+        // F_GROUND family: scroll-driven y++, then bounds check. No Bresenham.
+        // Mirrors ENEMY.C:940-977. F_GROUNDLEFT/RIGHT also slide x by movespeed
+        // once y >= 0; F_GROUND just falls straight.
+        if (Meta.FlightType >= 3 && Meta.FlightType <= 5)
+        {
+            _my++;
+            if (Meta.FlightType == 5 && _my >= 0)        // F_GROUNDRIGHT
+            {
+                _mx += Math.Max(Meta.MoveSpeed, 1);
+                if (_mx > _tgtX) Done = true;
+            }
+            else if (Meta.FlightType == 4 && _my >= 0)   // F_GROUNDLEFT
+            {
+                _mx -= Math.Max(Meta.MoveSpeed, 1);
+                if (_mx < _tgtX) Done = true;
+            }
+            X = _mx;
+            Y = _my;
+            if (_my > _tgtY) Done = true;
+            return;
+        }
 
         // C ENEMY_Think (ENEMY.C:813-814): sprite->x/y is set from move.x/y
         // BEFORE MoveEobj runs. We capture the pre-move position here so
@@ -420,18 +463,14 @@ public sealed class EnemyLogic
             case EshotType.ES_ATPLAYER:
             default:
                 {
-                    int ddx = playerX - sx;
-                    int ddy = playerY - sy;
-                    double dist = Math.Sqrt((double)(ddx * ddx + ddy * ddy));
-                    float vx = 0f, vy = 1f;
-                    if (dist > 0)
-                    {
-                        vx = (float)(ddx / dist);
-                        vy = (float)(ddy / dist);
-                    }
                     int dmg = (shootType == (int)EshotType.ES_ATPLAYER) ? HitsAtPlay : HitsNormal;
-                    b = new BulletLogic(BulletKind.Enemy, sx, sy,
-                        dx: vx, dy: vy, initSpeed: 1, maxSpeed: 6, accelerating: true, damage: dmg);
+                    // C aims at player CENTER (player_cx, player_cy) via Bresenham
+                    // (ESHOT.C:324-325 + InitMobj/MoveSobj). The caller passes the
+                    // player's centre coords. Bresenham mirrors C exactly so
+                    // ATPLAYER bullet positions stay in lockstep frame-by-frame.
+                    b = BulletLogic.AimedAt(BulletKind.Enemy, sx, sy,
+                        x2: playerX, y2: playerY,
+                        initSpeed: 1, maxSpeed: 6, damage: dmg);
                 }
                 break;
         }

@@ -74,6 +74,52 @@ public class BulletLogicTests
         }
     }
 
+    // Regression: ATPLAYER bullets must use integer Bresenham (mirrors C
+    // ESHOT_Shoot + InitMobj + MoveSobj in ESHOT.C:319-328 + RAP.C:339-411).
+    // A prior float-vector aim truncated 0.93-px/tick steps to 0, causing
+    // bullets to lag 1 px behind C and miss the player. mission_long
+    // late-game shield drifted Godot=12 vs C=8 because of this.
+    //
+    // From (68, 51) to (160, 16): delx=92, dely=35. delx>=dely so X is the
+    // dominant axis. InitMobj err = -(35>>1) = -17. ESHOT_Shoot pre-advances
+    // one step: x=69, err += 35 → 18 > 0 ⇒ y=50, err -= 92 → -74. Then
+    // ESHOT_Think tick #1 with speed=1: snapshot (69,50), step ⇒ x=70,
+    // err += 35 → -39 (≤0, y unchanged). speed++ → 2. Matches the C
+    // mission_long dump: "i=1373 eb x=69 y=50 mx=70 my=50 speed=2 cnt=1".
+    [Fact]
+    public void Atplayer_bullet_uses_integer_bresenham()
+    {
+        var b = BulletLogic.AimedAt(BulletKind.Enemy, 68, 51, 160, 16,
+            initSpeed: 1, maxSpeed: 6, damage: 1);
+        Assert.Equal(68, b.X);
+        Assert.Equal(51, b.Y);
+        Assert.Equal(69, b.Mx);
+        Assert.Equal(50, b.My);
+
+        b.Tick();
+        Assert.Equal(69, b.X);
+        Assert.Equal(50, b.Y);
+        Assert.Equal(70, b.Mx);
+        Assert.Equal(50, b.My);
+    }
+
+    // Regression: an aimed bullet on the 45° diagonal must step diagonally
+    // each Bresenham tick. Catches off-by-one in the delx==dely branch.
+    [Fact]
+    public void Aimed_bullet_diagonal_steps_diagonally()
+    {
+        var b = BulletLogic.AimedAt(BulletKind.Enemy, 0, 0, 10, 10,
+            initSpeed: 1, maxSpeed: 1, damage: 1);
+        // delx=10, dely=10. err = -(10>>1) = -5. After pre-advance step:
+        // x=1, err=-5+10=5>0 ⇒ y=1, err-=10 → -5.
+        Assert.Equal(1, b.Mx);
+        Assert.Equal(1, b.My);
+        b.Tick();
+        // Snapshot (1,1), step: x=2, err=5>0 ⇒ y=2, err=-5.
+        Assert.Equal(2, b.Mx);
+        Assert.Equal(2, b.My);
+    }
+
     // Spec §11 State bounds: alive bullets are in [0, 320] x [0, 200].
     [Property(MaxTest = 50)]
     public Property Alive_bullet_position_in_bounds()

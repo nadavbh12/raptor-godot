@@ -136,4 +136,76 @@ public class EnemyLogicTests
         Assert.True(m.Hits >= 0);
         Assert.True(m.FlightX.Length >= 0);
     }
+
+    private static SpriteMeta Ground(int flightType, int width = 32, int height = 24, int movespeed = 1, int hits = 20) =>
+        new SpriteMeta
+        {
+            IName = "BONUS1G1_PIC",
+            Hits = hits,
+            NumFlight = 0,
+            FlightType = flightType,
+            MoveSpeed = movespeed,
+            Width = width,
+            Height = height,
+        };
+
+    // Regression: F_GROUND (FlightType=3) enemies must walk down 1 px/tick.
+    // ENEMY.C:458-462 sets move.y2=211, and ENEMY.C:940-947 advances y when
+    // scroll_flag is true and sets doneflag when y > 211. Prior to this fix
+    // F_GROUND enemies (including BONUS pickups and SHIP20G1 helicopters)
+    // were getting Done=true on the first tick and culled by PhaseCleanup,
+    // so they never appeared in Godot's parity stream.
+    [Fact]
+    public void F_ground_enemy_walks_down_one_pixel_per_tick()
+    {
+        var e = new EnemyLogic(Ground(flightType: 3), spawnX: 144, mapY: -128);
+        Assert.True(e.Alive);
+        Assert.Equal((144, -128), (e.X, e.Y));
+        e.Tick();
+        Assert.Equal((144, -127), (e.X, e.Y));
+        for (int i = 0; i < 10; i++) e.Tick();
+        Assert.Equal((144, -117), (e.X, e.Y));
+        Assert.True(e.Alive);
+    }
+
+    // Regression: F_GROUND enemy must Done out once y > 211 (move.y2).
+    [Fact]
+    public void F_ground_enemy_dies_when_y_passes_211()
+    {
+        var e = new EnemyLogic(Ground(flightType: 3), spawnX: 100, mapY: 200);
+        for (int i = 0; i < 12; i++) e.Tick();
+        Assert.True(e.Done);
+        Assert.False(e.Alive);
+    }
+
+    // Regression: F_GROUNDRIGHT (FlightType=5) must shift the initial x by
+    // -width at spawn (ENEMY.C:464-470: new->x -= new->width). Without this
+    // SHIP20G1 spawned at x=-8 instead of x=-88, off-by-80px from C.
+    [Fact]
+    public void F_groundright_enemy_spawns_shifted_left_by_width()
+    {
+        var e = new EnemyLogic(Ground(flightType: 5, width: 80), spawnX: -8, mapY: -131);
+        // Initial position reflects the C `new->x -= new->width` shift: -8 - 80 = -88.
+        Assert.Equal(-88, e.X);
+        Assert.Equal(-131, e.Y);
+    }
+
+    // Regression: F_GROUNDRIGHT enemy only slides right after y reaches 0
+    // (ENEMY.C:952: `if (sprite->y >= 0)`). Above the screen it just falls.
+    [Fact]
+    public void F_groundright_enemy_slides_right_only_after_y_reaches_zero()
+    {
+        var e = new EnemyLogic(Ground(flightType: 5, width: 80, movespeed: 3),
+            spawnX: 0, mapY: -3);
+        // Initial: x = 0 - 80 = -80, y = -3.
+        Assert.Equal((-80, -3), (e.X, e.Y));
+        e.Tick();  // y becomes -2 (still <0, no x slide)
+        Assert.Equal((-80, -2), (e.X, e.Y));
+        e.Tick();  // y becomes -1 (still <0, no x slide)
+        Assert.Equal((-80, -1), (e.X, e.Y));
+        e.Tick();  // y becomes 0, AND y >= 0 so x slides by movespeed=3
+        Assert.Equal((-77, 0), (e.X, e.Y));
+        e.Tick();  // y becomes 1, x slides by 3 → -74
+        Assert.Equal((-74, 1), (e.X, e.Y));
+    }
 }

@@ -73,8 +73,24 @@ public sealed class BulletLogic
     private readonly int _maxSpeed;
     private readonly bool _accelerating;  // true for axis-aligned bullets (ATDOWN, ATPLAY)
 
+    // Bresenham mode (mirrors C InitMobj/MoveSobj). Used for ATPLAYER and
+    // COCONUTS where C aims integer-precise toward (x2, y2). When _bresenham
+    // is true, Tick() walks the integer Bresenham step instead of using
+    // float dx/dy + sub-pixel accumulator. Off-by-one parity divergences in
+    // float aim caused late-game shield drift in mission_long.
+    private readonly bool _bresenham;
+    private int _bx, _by;          // current Bresenham position (= move.x, move.y)
+    private int _baddX, _baddY;    // ±1 step direction
+    private int _bdelX, _bdelY;    // absolute distance to target
+    private int _berr;             // Bresenham error accumulator
+    private int _bmaxloop;         // remaining steps until target reached
+
     /// <summary>Current per-tick speed (used by BulletDumper for parity comparison).</summary>
     public int CurSpeed => _curSpeed;
+    /// <summary>Pre-advanced move target (mirrors C move.x). Used by BulletDumper.</summary>
+    public int Mx => _bresenham ? _bx : (int)_fx;
+    /// <summary>Pre-advanced move target (mirrors C move.y). Used by BulletDumper.</summary>
+    public int My => _bresenham ? _by : (int)_fy;
     /// <summary>Number of animation frames in this bullet's sprite (mirrors ESHOT_LIB.num_frames).</summary>
     public int NumFrames => ShotType switch
     {
@@ -127,6 +143,61 @@ public sealed class BulletLogic
         _maxSpeed = maxSpeed;
         _accelerating = accelerating;
         Damage = damage;
+        _bresenham = false;
+    }
+
+    /// <summary>
+    /// Create a Bresenham-aimed bullet. Mirrors C ESHOT_Shoot for ATPLAYER and
+    /// COCONUTS: starts at (x, y), targets (x2, y2), uses InitMobj/MoveSobj
+    /// integer steps. Pre-advances 1 step at construction (C: MoveSobj(&move, 1)).
+    /// Speed starts at initSpeed and increments by 1 per Tick up to maxSpeed.
+    /// </summary>
+    public static BulletLogic AimedAt(BulletKind kind, int x, int y, int x2, int y2,
+                                      int initSpeed, int maxSpeed, int damage)
+        => new BulletLogic(kind, x, y, x2, y2, initSpeed, maxSpeed, damage, bresenhamMarker: true);
+
+    private BulletLogic(BulletKind kind, int x, int y, int x2, int y2,
+                        int initSpeed, int maxSpeed, int damage, bool bresenhamMarker)
+    {
+        Kind = kind;
+        X = x; Y = y;
+        _dx = 0; _dy = 0;
+        _fx = x; _fy = y;
+        _curSpeed = initSpeed;
+        _maxSpeed = maxSpeed;
+        _accelerating = true;
+        Damage = damage;
+        _bresenham = true;
+
+        // InitMobj (RAP.C:339-371).
+        _bx = x; _by = y;
+        _baddX = 1; _baddY = 1;
+        _bdelX = x2 - x;
+        _bdelY = y2 - y;
+        if (_bdelX < 0) { _bdelX = -_bdelX; _baddX = -1; }
+        if (_bdelY < 0) { _bdelY = -_bdelY; _baddY = -1; }
+        if (_bdelX >= _bdelY) { _berr = -(_bdelY >> 1); _bmaxloop = _bdelX + 1; }
+        else                  { _berr =  (_bdelX >> 1); _bmaxloop = _bdelY + 1; }
+        // C ESHOT_Shoot ends with MoveSobj(&move, 1) — pre-advance 1 step.
+        BresenhamStep();
+    }
+
+    private void BresenhamStep()
+    {
+        if (_bmaxloop == 0) return;
+        if (_bdelX >= _bdelY)
+        {
+            _bx += _baddX;
+            _berr += _bdelY;
+            if (_berr > 0) { _by += _baddY; _berr -= _bdelX; }
+        }
+        else
+        {
+            _by += _baddY;
+            _berr += _bdelX;
+            if (_berr > 0) { _bx += _baddX; _berr -= _bdelY; }
+        }
+        _bmaxloop--;
     }
 
     public void Tick()
@@ -137,10 +208,19 @@ public sealed class BulletLogic
         //   shot->y = shot->move.y;
         //   MoveSobj(&shot->move, shot->speed);
         //   if (shot->speed < lib->speed) shot->speed++;
-        X = (int)_fx;
-        Y = (int)_fy;
-        _fx += _dx * _curSpeed;
-        _fy += _dy * _curSpeed;
+        if (_bresenham)
+        {
+            X = _bx;
+            Y = _by;
+            for (int s = 0; s < _curSpeed; s++) BresenhamStep();
+        }
+        else
+        {
+            X = (int)_fx;
+            Y = (int)_fy;
+            _fx += _dx * _curSpeed;
+            _fy += _dy * _curSpeed;
+        }
         if (_accelerating && _curSpeed < _maxSpeed)
             _curSpeed++;
         FrameCounter++;

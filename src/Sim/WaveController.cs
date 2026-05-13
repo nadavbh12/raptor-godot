@@ -490,8 +490,10 @@ public partial class WaveController : Node
 
     internal void PhaseMovement()
     {
-        int px = PlayerLogic.X;
-        int py = PlayerLogic.Y;
+        // C aims ATPLAYER bullets at player CENTER (player_cx/cy = playerx + PLAYERWIDTH/2, playery + PLAYERHEIGHT/2).
+        // Pass center coords so enemy.Tick / MakeBullet hands the bullet's Bresenham its true target.
+        int px = PlayerLogic.X + 16;
+        int py = PlayerLogic.Y + 16;
 
         // Tick each alive enemy; collect any bullets they fire.
         // C order: ENEMY_Think fires bullets, then ESHOT_Think ticks them (same frame).
@@ -593,6 +595,10 @@ public partial class WaveController : Node
         foreach (var e in _enemies)
         {
             if (!e.Alive) continue;
+            // ENEMY.C:1043 — `if (!sprite->groundflag)` guards body collision.
+            // F_GROUND family (FlightType 3/4/5) sets groundflag=TRUE in C, so
+            // ground enemies (bonuses, turrets, tanks) never crash with the player.
+            if (e.Meta.FlightType >= 3 && e.Meta.FlightType <= 5) continue;
             int ex  = e.X;                    // sprite->x (top-left)
             int ex2 = e.X + 2 * e.HalfW - 1; // sprite->x2 (= sprite->x + width - 1)
             int ey  = e.Y;                    // sprite->y (top-left)

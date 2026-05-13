@@ -64,8 +64,8 @@ public partial class BulletDumper : Node
         {
             if (!b.Alive) continue;
             sb.AppendFormat(Inv,
-                "i={0} eb idx={1} type={2} x={3} y={4} mx={3} my={4} speed={5} curframe={6} cnt={7}\n",
-                _iter, idx, (int)b.ShotType, b.X, b.Y, b.CurSpeed,
+                "i={0} eb idx={1} type={2} x={3} y={4} mx={5} my={6} speed={7} curframe={8} cnt={9}\n",
+                _iter, idx, (int)b.ShotType, b.X, b.Y, b.Mx, b.My, b.CurSpeed,
                 b.FrameCounter % b.NumFrames, b.FrameCounter);
             idx++;
         }
