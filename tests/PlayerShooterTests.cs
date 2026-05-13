@@ -418,6 +418,52 @@ public class PlayerShooterTests
         Assert.True(b.My < myAfterReach);   // moving upward toward y=0
     }
 
+    // ── Beam fplrx/fplry player-follow tracking ─────────────────────────────
+
+    [Fact]
+    public void VerticalBeam_tracks_player_translation_via_fplr()
+    {
+        // SHOTS.C:1090-1098 — fplrx/fplry beam offsets by (playerCx - startx).
+        // Spawn at (160, 50) with player at (160, 176). When player moves to
+        // (170, 180), beam should sit at (170, 54).
+        var b = BulletLogic.VerticalBeam(x: 160, y: 50, life: 4, damage: 10,
+                                         startPlayerX: 160, startPlayerY: 176);
+        Assert.True(b.TracksPlayer);
+        b.ApplyFplr(170, 180);
+        Assert.Equal(170, b.X);  // 160 + (170 - 160) = 170
+        Assert.Equal(54,  b.Y);  // 50  + (180 - 176) = 54
+    }
+
+    [Fact]
+    public void LineBeam_does_not_track_player()
+    {
+        // SHOTS.C: TURRET lib->fplrx = fplry = FALSE — the line bullet stays
+        // where it was spawned (at the enemy it just hit).
+        var b = BulletLogic.LineBeam(x: 100, y: 50, damage: 5);
+        Assert.False(b.TracksPlayer);
+        // Calling ApplyFplr is safe but a no-op when neither flag is set.
+        b.ApplyFplr(999, 999);
+        Assert.Equal(100, b.X);
+        Assert.Equal(50,  b.Y);
+    }
+
+    [Fact]
+    public void ForwardLaser_beams_spawn_with_tracking_anchored_to_player_center()
+    {
+        var ps = new PlayerShooter();
+        var sink = new List<BulletLogic>();
+        ps.Shoot(WeaponType.ForwardLaser, playerCx: 160, playerCy: 176, playerPic: 3, sink);
+        Assert.Equal(2, sink.Count);
+        Assert.All(sink, b => Assert.True(b.TracksPlayer));
+        // Player moves +5 right; both beams should shift by 5.
+        int b0xBefore = sink[0].X;
+        int b1xBefore = sink[1].X;
+        sink[0].ApplyFplr(165, 176);
+        sink[1].ApplyFplr(165, 176);
+        Assert.Equal(b0xBefore + 5, sink[0].X);
+        Assert.Equal(b1xBefore + 5, sink[1].X);
+    }
+
     [Fact]
     public void PlayerStraight_dies_when_move_passes_top_edge()
     {

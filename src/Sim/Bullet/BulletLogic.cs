@@ -154,10 +154,32 @@ public sealed class BulletLogic
     private readonly bool _beam;
     private int _beamLife;            // remaining ticks before despawn
     private readonly bool _beamDamages; // false for LineBeam (TURRET, already damaged at spawn); true for VerticalBeam
+    // C SHOTS.C:1090-1098 fplrx/fplry path. _baseX/_baseY = beam position at
+    // spawn (pre-fplr). _startPlayerX/_startPlayerY = player_cx/cy at spawn.
+    // Each iter the beam re-renders at base + (current_player - start_player)
+    // so it follows the ship rigidly.
+    private readonly int _baseX, _baseY;
+    private readonly int _startPlayerX, _startPlayerY;
+    private readonly bool _fplrX, _fplrY;
     /// <summary>True iff this bullet is a stationary beam (S_LINE or S_BEAM).</summary>
     public bool IsBeam => _beam;
     /// <summary>True iff this beam applies per-tick column damage (false for TURRET line).</summary>
     public bool BeamDamages => _beamDamages;
+    /// <summary>True iff this beam tracks player position each tick (lib->fplrx / lib->fplry).</summary>
+    public bool TracksPlayer => _beam && (_fplrX || _fplrY);
+    /// <summary>
+    /// Re-positions a player-tracking beam each iter. Mirrors SHOTS.C:1090-1098:
+    ///   if (fplrx) shot->x += (player_cx - shot->startx);
+    ///   if (fplry) shot->y += (player_cy - shot->starty);
+    /// We compute the absolute position rather than incrementally because the
+    /// beam's pre-fplr base is fixed (move doesn't change for !move_flag).
+    /// </summary>
+    public void ApplyFplr(int playerCx, int playerCy)
+    {
+        if (!_beam) return;
+        X = _baseX + (_fplrX ? (playerCx - _startPlayerX) : 0);
+        Y = _baseY + (_fplrY ? (playerCy - _startPlayerY) : 0);
+    }
 
     /// <summary>Current per-tick speed (used by BulletDumper for parity comparison).</summary>
     public int CurSpeed => _curSpeed;
@@ -287,24 +309,38 @@ public sealed class BulletLogic
     /// TURRET damages the enemy immediately and creates a bullet that exists
     /// for a single SHOTS_Think pass before SHOTS_Display removes it. We model
     /// it as a beam with life=1 and zero column-damage (the damage already
-    /// happened upstream in PlayerShooter).
+    /// happened upstream in PlayerShooter). lib->fplrx = FALSE.
     /// </summary>
     public static BulletLogic LineBeam(int x, int y, int damage)
-        => new BulletLogic(beamX: x, beamY: y, life: 1, damages: false, damage: damage, beamMarker: true);
+        => new BulletLogic(beamX: x, beamY: y, life: 1, damages: false, damage: damage,
+                           fplrX: false, fplrY: false, startPlayerX: x, startPlayerY: y,
+                           beamMarker: true);
 
     /// <summary>
     /// Spawn a multi-tick VERTICAL beam (FORWARD_LASER / DEATH_RAY — S_BEAM).
     /// Sits at (x, y), damages first eligible enemy in its column each tick
     /// (per SHOTS.C:1073 — beam.x &gt; enemy.x &amp;&amp; beam.x &lt; enemy.x2),
     /// despawns after `life` ticks (= lib->numframes).
+    /// startPlayer{X,Y} record player_cx/cy at spawn; WaveController calls
+    /// <see cref="ApplyFplr"/> each iter to translate the beam with the ship
+    /// (mirrors SHOTS.C:1090-1098 lib->fplrx/fplry block).
     /// </summary>
-    public static BulletLogic VerticalBeam(int x, int y, int life, int damage)
-        => new BulletLogic(beamX: x, beamY: y, life: life, damages: true, damage: damage, beamMarker: true);
+    public static BulletLogic VerticalBeam(int x, int y, int life, int damage,
+                                           int startPlayerX, int startPlayerY)
+        => new BulletLogic(beamX: x, beamY: y, life: life, damages: true, damage: damage,
+                           fplrX: true, fplrY: true,
+                           startPlayerX: startPlayerX, startPlayerY: startPlayerY,
+                           beamMarker: true);
 
-    private BulletLogic(int beamX, int beamY, int life, bool damages, int damage, bool beamMarker)
+    private BulletLogic(int beamX, int beamY, int life, bool damages, int damage,
+                        bool fplrX, bool fplrY, int startPlayerX, int startPlayerY,
+                        bool beamMarker)
     {
         Kind = BulletKind.Player;
         X = beamX; Y = beamY;
+        _baseX = beamX; _baseY = beamY;
+        _startPlayerX = startPlayerX; _startPlayerY = startPlayerY;
+        _fplrX = fplrX; _fplrY = fplrY;
         Damage = damage;
         _beam = true;
         _beamLife = life;
@@ -314,9 +350,6 @@ public sealed class BulletLogic
         _bresenham = false;
         _playerStraight = false;
     }
-
-    /// <summary>Update beam position to follow player. WaveController calls this each tick for lib->fplrx/fplry shots.</summary>
-    public void OffsetBeam(int dx, int dy) { X += dx; Y += dy; }
 
     private BulletLogic(BulletKind kind, int x, int y, int x2, int y2,
                         int initSpeed, int maxSpeed, int damage, bool bresenhamMarker)

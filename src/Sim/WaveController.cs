@@ -560,6 +560,18 @@ public partial class WaveController : Node
             b.ClearReachedTarget();
         }
 
+        // SHOTS.C:1090-1098 — re-position player-tracking beams (fplrx/fplry)
+        // to follow the ship each iter BEFORE the per-bullet Tick. Uses the
+        // current player_cx/cy (top-left + half-dims), not the same coords as
+        // the shot_done re-init above (which uses move.x).
+        int pcx = PlayerLogic.X + 16;
+        int pcy = PlayerLogic.Y + 16;
+        foreach (var b in _playerBullets)
+        {
+            if (!b.Alive || !b.TracksPlayer) continue;
+            b.ApplyFplr(pcx, pcy);
+        }
+
         // Tick player bullets.
         foreach (var b in _playerBullets)
             b.Tick();

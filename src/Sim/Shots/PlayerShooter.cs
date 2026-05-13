@@ -283,21 +283,27 @@ public sealed class PlayerShooter
                 break;
 
             case WeaponType.ForwardLaser:
-                // SHOTS.C:971-999. Two S_BEAM bullets at gun3 ± offset, target
-                // y2 = -24 (above screen — beam terminates here if no enemy).
+                // SHOTS.C:971-999. Two S_BEAM bullets at gun3 ± offset.
+                // lib->fplrx = fplry = TRUE — beams track player_cx/cy each
+                // iter; pass spawn-time playerCx/Cy as the start so each iter
+                // the beam re-renders at (move - hlx) + (playerCx_now - startx).
                 sink.Add(BulletLogic.VerticalBeam(
                     x: playerCx + GunOffsets.OGun3[pic], y: playerCy,
-                    life: lib.NumFrames, damage: lib.Hits));
+                    life: lib.NumFrames, damage: lib.Hits,
+                    startPlayerX: playerCx, startPlayerY: playerCy));
                 sink.Add(BulletLogic.VerticalBeam(
                     x: playerCx - GunOffsets.OGun3[pic], y: playerCy,
-                    life: lib.NumFrames, damage: lib.Hits));
+                    life: lib.NumFrames, damage: lib.Hits,
+                    startPlayerX: playerCx, startPlayerY: playerCy));
                 break;
 
             case WeaponType.DeathRay:
                 // SHOTS.C:1001-1014. Single S_BEAM bullet, center above player.
+                // Same fplr-tracking semantics as FORWARD_LASER.
                 sink.Add(BulletLogic.VerticalBeam(
                     x: playerCx, y: playerCy - 24,
-                    life: lib.NumFrames, damage: lib.Hits));
+                    life: lib.NumFrames, damage: lib.Hits,
+                    startPlayerX: playerCx, startPlayerY: playerCy));
                 break;
 
             default:
