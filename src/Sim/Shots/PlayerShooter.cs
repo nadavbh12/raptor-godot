@@ -24,15 +24,40 @@ public sealed class PlayerShooter
     public bool HasMicroMissile { get; set; } = false;
 
     /// <summary>
+    /// Special-weapon types the player currently owns. Picking up a special
+    /// (S_DUMB_MISSLE..S_DEATH_RAY) adds the type here AND sets it as the
+    /// active special. The SC_1..SC_MINUS numeric keys switch the active
+    /// SpecialWeapon between owned types — that mirrors OBJS_MakeSpecial's
+    /// `if (p_objs[type] == NULL) return FALSE` guard.
+    /// </summary>
+    private readonly HashSet<WeaponType> _ownedSpecials = new();
+    public IReadOnlyCollection<WeaponType> OwnedSpecials => _ownedSpecials;
+
+    /// <summary>
     /// The active special weapon (DUMB_MISSLE / MINI_GUN / TURRET / etc.).
     /// Null = no special equipped. Mirrors C plr.sweapon (RAP.C:1006).
     /// </summary>
     public WeaponType? SpecialWeapon { get; set; } = null;
 
+    /// <summary>
+    /// Set the active special to <paramref name="w"/> iff the player owns it.
+    /// Mirrors OBJS_MakeSpecial (OBJECTS.C:1315). Returns true on success.
+    /// </summary>
+    public bool SelectSpecial(WeaponType w)
+    {
+        if (!_ownedSpecials.Contains(w)) return false;
+        SpecialWeapon = w;
+        return true;
+    }
+
     /// <summary>Resets cooldowns. Mirrors SHOTS_Init clearing shot_lib.cur_shoot.</summary>
     public void Reset()
     {
         for (int i = 0; i < _curShoot.Length; i++) _curShoot[i] = 0;
+        _ownedSpecials.Clear();
+        SpecialWeapon = null;
+        HasPlasmaGuns = false;
+        HasMicroMissile = false;
     }
 
     /// <summary>
@@ -55,8 +80,12 @@ public sealed class PlayerShooter
                 HasMicroMissile = true;
                 return true;
             case >= 3 and <= 14:   // specials S_DUMB_MISSLE..S_DEATH_RAY
-                SpecialWeapon = (WeaponType)objType;
-                return true;
+                {
+                    var w = (WeaponType)objType;
+                    _ownedSpecials.Add(w);
+                    SpecialWeapon = w;
+                    return true;
+                }
             default:
                 return false;
         }

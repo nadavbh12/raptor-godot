@@ -342,6 +342,71 @@ public class PlayerShooterTests
         Assert.Equal(WeaponType.MegaBomb, ps.SpecialWeapon);
     }
 
+    // ── Owned-specials + slot selection (OBJS_MakeSpecial port) ──────────────
+
+    [Fact]
+    public void GrantWeapon_special_adds_to_OwnedSpecials_and_sets_active()
+    {
+        var ps = new PlayerShooter();
+        Assert.True(ps.GrantWeapon(3));  // DumbMissile
+        Assert.Contains(WeaponType.DumbMissile, ps.OwnedSpecials);
+        Assert.Equal(WeaponType.DumbMissile, ps.SpecialWeapon);
+
+        Assert.True(ps.GrantWeapon(11));  // MegaBomb
+        Assert.Contains(WeaponType.MegaBomb, ps.OwnedSpecials);
+        Assert.Contains(WeaponType.DumbMissile, ps.OwnedSpecials);   // both retained
+        Assert.Equal(WeaponType.MegaBomb, ps.SpecialWeapon);          // newest active
+    }
+
+    [Fact]
+    public void SelectSpecial_succeeds_only_for_owned_types()
+    {
+        var ps = new PlayerShooter();
+        ps.GrantWeapon(3);   // DumbMissile
+        ps.GrantWeapon(4);   // MiniGun
+        // Active is MiniGun (last granted). Switching to owned DumbMissile works.
+        Assert.True(ps.SelectSpecial(WeaponType.DumbMissile));
+        Assert.Equal(WeaponType.DumbMissile, ps.SpecialWeapon);
+        // Switching to a non-owned special fails and leaves SpecialWeapon alone.
+        Assert.False(ps.SelectSpecial(WeaponType.MegaBomb));
+        Assert.Equal(WeaponType.DumbMissile, ps.SpecialWeapon);
+    }
+
+    [Fact]
+    public void Reset_clears_inventory_and_specials()
+    {
+        var ps = new PlayerShooter { HasPlasmaGuns = true, HasMicroMissile = true };
+        ps.GrantWeapon(3);
+        ps.GrantWeapon(5);
+        Assert.NotEmpty(ps.OwnedSpecials);
+        ps.Reset();
+        Assert.Empty(ps.OwnedSpecials);
+        Assert.Null(ps.SpecialWeapon);
+        Assert.False(ps.HasPlasmaGuns);
+        Assert.False(ps.HasMicroMissile);
+    }
+
+    [Fact]
+    public void PlaythroughDriver_KeyToSpecial_maps_RAP_C_SC_keys()
+    {
+        // RAP.C:955-996. Cross-check the full SC_1..SC_MINUS table.
+        Assert.Equal(WeaponType.DumbMissile,  Raptor.Test.PlaythroughDriver.KeyToSpecial("1"));
+        Assert.Equal(WeaponType.MiniGun,      Raptor.Test.PlaythroughDriver.KeyToSpecial("2"));
+        Assert.Equal(WeaponType.Turret,       Raptor.Test.PlaythroughDriver.KeyToSpecial("3"));
+        Assert.Equal(WeaponType.MissilePods,  Raptor.Test.PlaythroughDriver.KeyToSpecial("4"));
+        Assert.Equal(WeaponType.AirMissile,   Raptor.Test.PlaythroughDriver.KeyToSpecial("5"));
+        Assert.Equal(WeaponType.GrdMissile,   Raptor.Test.PlaythroughDriver.KeyToSpecial("6"));
+        Assert.Equal(WeaponType.Bomb,         Raptor.Test.PlaythroughDriver.KeyToSpecial("7"));
+        Assert.Equal(WeaponType.EnergyGrab,   Raptor.Test.PlaythroughDriver.KeyToSpecial("8"));
+        Assert.Equal(WeaponType.PulseCannon,  Raptor.Test.PlaythroughDriver.KeyToSpecial("9"));
+        Assert.Equal(WeaponType.DeathRay,     Raptor.Test.PlaythroughDriver.KeyToSpecial("0"));
+        Assert.Equal(WeaponType.ForwardLaser, Raptor.Test.PlaythroughDriver.KeyToSpecial("Minus"));
+        // Non-numeric / unsupported keys → null.
+        Assert.Null(Raptor.Test.PlaythroughDriver.KeyToSpecial("Up"));
+        Assert.Null(Raptor.Test.PlaythroughDriver.KeyToSpecial("Return"));
+        Assert.Null(Raptor.Test.PlaythroughDriver.KeyToSpecial(""));
+    }
+
     [Fact]
     public void GrantWeapon_non_weapon_types_return_false()
     {

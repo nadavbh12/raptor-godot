@@ -486,6 +486,14 @@ public partial class WaveController : Node
         int dy = _playthrough?.PlayerInputY ?? 0;
         PlayerLogic.Tick(dx, dy);
 
+        // RAP.C SC_1..SC_MINUS — script-issued special-weapon switches.
+        // Mirrors OBJS_MakeSpecial: silently ignored if the type isn't owned.
+        if (_playthrough != null)
+        {
+            while (_playthrough.TryDequeueSpecialSelect(out var w))
+                Shooter.SelectSpecial(w);
+        }
+
         // Mirrors RAP.C:1000 BUT_1 → OBJS_Use(S_FORWARD_GUNS/...) cascade. Order
         // matches C: fire happens BEFORE SHOTS_Think runs (which decrements
         // cooldowns), so the cooldown set this tick can't be cleared in the
