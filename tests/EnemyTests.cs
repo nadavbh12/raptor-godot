@@ -190,6 +190,28 @@ public class EnemyLogicTests
         Assert.Equal(-131, e.Y);
     }
 
+    // IsGround classifies F_GROUND family (FlightType 3/4/5). Used by player-
+    // bullet collision to honor SHOTS.C ht filters (S_AIR / S_GROUND).
+    [Fact]
+    public void IsGround_is_true_for_F_GROUND_family()
+    {
+        Assert.True (new EnemyLogic(Ground(flightType: 3), 0, 0).IsGround);
+        Assert.True (new EnemyLogic(Ground(flightType: 4), 0, 0).IsGround);
+        Assert.True (new EnemyLogic(Ground(flightType: 5), 0, 0).IsGround);
+    }
+
+    [Fact]
+    public void IsGround_is_false_for_air_flight_types()
+    {
+        var meta = SyntheticPath((100, 0));
+        meta.FlightType = 1;  // LINEAR (air)
+        Assert.False(new EnemyLogic(meta, 0, 0).IsGround);
+        meta.FlightType = 0;  // REPEAT
+        Assert.False(new EnemyLogic(meta, 0, 0).IsGround);
+        meta.FlightType = 2;  // SINGLE? whichever
+        Assert.False(new EnemyLogic(meta, 0, 0).IsGround);
+    }
+
     // Regression: F_GROUNDRIGHT enemy only slides right after y reaches 0
     // (ENEMY.C:952: `if (sprite->y >= 0)`). Above the screen it just falls.
     [Fact]

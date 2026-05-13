@@ -603,7 +603,11 @@ public partial class WaveController : Node
             }
         }
 
-        // Player bullets vs enemy AABB.
+        // Player bullets vs enemy AABB. C SHOTS.C's per-tick collision honors
+        // each shot's lib->ht (HIT_TYPE): S_AIR ignores ground, S_GROUND ignores
+        // air, S_ALL / S_GRALL hit anything, S_GTILE only damages ground/tiles,
+        // S_SUCK is the energy-grab path (deferred). Bullets carry their HitType
+        // tag from PlayerShooter; we filter the candidate enemy set here.
         _hitEnemies.Clear();
         foreach (var b in _playerBullets)
         {
@@ -611,6 +615,7 @@ public partial class WaveController : Node
             foreach (var e in _enemies)
             {
                 if (!e.Alive) continue;
+                if (!HitTypeMatches(b.HitType, e)) continue;
                 int dx = Math.Abs(b.X - e.X);
                 int dy = Math.Abs(b.Y - e.Y);
                 if (dx < e.HalfW && dy < e.HalfH)
@@ -666,6 +671,26 @@ public partial class WaveController : Node
     private const int OBJ_ENERGY        = 16;
     // S_DETECT (17) ignored — cosmetic. S_ITEMBUY1..6 (18..23) → money,
     // amount per slot from the C obj_lib (deferred — not yet exposed here).
+
+    /// <summary>
+    /// Returns true iff a bullet with the given HitType can damage this enemy.
+    /// Mirrors the SHOTS.C SHOTS_Think `case lib->ht` branches:
+    ///   S_ALL / S_GRALL — damage anything (ground OR air)
+    ///   S_AIR           — air enemies only (FlightType not 3/4/5)
+    ///   S_GROUND        — ground enemies only (FlightType 3/4/5)
+    ///   S_GTILE         — only ground enemies (tiles handled separately)
+    ///   S_SUCK          — energy-grab path; not yet wired
+    /// </summary>
+    private static bool HitTypeMatches(HitType ht, EnemyLogic e) => ht switch
+    {
+        HitType.All    => true,
+        HitType.GrAll  => true,
+        HitType.Air    => !e.IsGround,
+        HitType.Ground => e.IsGround,
+        HitType.GTile  => e.IsGround,
+        HitType.Suck   => true,
+        _              => true,
+    };
 
     private void ApplyBonusEffect(int objType)
     {

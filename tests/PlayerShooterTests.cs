@@ -191,6 +191,54 @@ public class PlayerShooterTests
         Assert.True(ps.GetCooldown(WeaponType.Turret) > 0);
     }
 
+    // ── HitType tagging ──────────────────────────────────────────────────────
+
+    [Fact]
+    public void Forward_guns_bullets_carry_HitType_All()
+    {
+        var ps = new PlayerShooter();
+        var sink = new List<BulletLogic>();
+        ps.Shoot(WeaponType.ForwardGuns, 160, 176, 3, sink);
+        Assert.All(sink, b => Assert.Equal(HitType.All, b.HitType));
+    }
+
+    [Fact]
+    public void Plasma_bullets_carry_HitType_Air()
+    {
+        // SHOTS.C lib->ht for PLASMA_GUNS = S_AIR — must NOT hit ground enemies.
+        var ps = new PlayerShooter();
+        var sink = new List<BulletLogic>();
+        ps.Shoot(WeaponType.PlasmaGuns, 160, 176, 3, sink);
+        Assert.All(sink, b => Assert.Equal(HitType.Air, b.HitType));
+    }
+
+    [Fact]
+    public void GrdMissile_bullets_carry_HitType_Ground()
+    {
+        var ps = new PlayerShooter();
+        var sink = new List<BulletLogic>();
+        ps.Shoot(WeaponType.GrdMissile, 160, 176, 3, sink);
+        Assert.All(sink, b => Assert.Equal(HitType.Ground, b.HitType));
+    }
+
+    [Fact]
+    public void MicroMissile_bullets_carry_HitType_GrAll()
+    {
+        var ps = new PlayerShooter();
+        var sink = new List<BulletLogic>();
+        ps.Shoot(WeaponType.MicroMissile, 160, 176, 3, sink);
+        Assert.All(sink, b => Assert.Equal(HitType.GrAll, b.HitType));
+    }
+
+    [Fact]
+    public void Bomb_bullets_carry_HitType_GTile()
+    {
+        var ps = new PlayerShooter();
+        var sink = new List<BulletLogic>();
+        ps.Shoot(WeaponType.Bomb, 160, 176, 3, sink);
+        Assert.All(sink, b => Assert.Equal(HitType.GTile, b.HitType));
+    }
+
     // ── BulletLogic.PlayerStraight movement parity ───────────────────────────
 
     [Fact]

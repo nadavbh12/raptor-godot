@@ -1,3 +1,5 @@
+using Raptor.Sim.Shots;
+
 namespace Raptor.Sim.Bullet;
 
 public enum BulletKind { Player, Enemy }
@@ -32,6 +34,12 @@ public enum EnemyShotType
 public sealed class BulletLogic
 {
     public BulletKind Kind { get; }
+    /// <summary>
+    /// Which entities this bullet can damage (mirrors SHOT_LIB.ht in C). Player
+    /// bullets carry their weapon's hit type so collision can filter air/ground
+    /// enemies. Enemy bullets default to All — they always hit the player.
+    /// </summary>
+    public HitType HitType { get; set; } = HitType.All;
     /// <summary>
     /// Enemy shot type for view rendering. Defaults to AtPlayer (0) which uses
     /// the ESHOT_BLK sprite. Set explicitly by EnemyLogic.MakeBullet so the

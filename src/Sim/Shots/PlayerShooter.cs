@@ -95,7 +95,9 @@ public sealed class PlayerShooter
     /// <summary>
     /// Single-weapon shoot. Mirrors SHOTS_PlayerShoot's per-type switch
     /// (SHOTS.C:644-1015). Honors the cur_shoot cooldown gate before spawning.
-    /// Returns true iff a bullet was actually spawned.
+    /// Returns true iff a bullet was actually spawned. Sink-pushed bullets
+    /// have their HitType set from the weapon's ShotLib entry (used by
+    /// WaveController collision to filter air/ground enemies per SHOTS.C ht).
     /// </summary>
     public bool Shoot(WeaponType type, int playerCx, int playerCy, int playerPic,
                       List<BulletLogic> sink,
@@ -106,6 +108,7 @@ public sealed class PlayerShooter
         if (_curShoot[idx] > 0) return false;   // cooldown active
         var lib = ShotLib.Get(type);
         _curShoot[idx] = lib.ShootRate;
+        int sinkStart = sink.Count;
 
         // Clamp playerPic to the gun-offset table range. C's o_gun arrays are
         // declared as [8]; playerpic ranges 0..6 with neutral=3. We allow the
@@ -125,7 +128,7 @@ public sealed class PlayerShooter
                     spawnX: playerCx - GunOffsets.OGun1[pic] - 1, spawnY: playerCy,
                     initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed,
                     hlx: lib.Hlx, hly: lib.Hly, damage: lib.Hits));
-                return true;
+                break;
 
             case WeaponType.PlasmaGuns:
                 // SHOTS.C:686-701. One bullet centered.
@@ -133,7 +136,7 @@ public sealed class PlayerShooter
                     spawnX: playerCx, spawnY: playerCy,
                     initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed,
                     hlx: lib.Hlx, hly: lib.Hly, damage: lib.Hits));
-                return true;
+                break;
 
             case WeaponType.MicroMissile:
                 // SHOTS.C:703-733. Two bullets at gun3 ± offset.
@@ -145,7 +148,7 @@ public sealed class PlayerShooter
                     spawnX: playerCx - GunOffsets.OGun3[pic], spawnY: playerCy,
                     initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed,
                     hlx: lib.Hlx, hly: lib.Hly, damage: lib.Hits));
-                return true;
+                break;
 
             case WeaponType.MissilePods:
                 // SHOTS.C:818-848. Two bullets at gun2 ± offset, with smoke.
@@ -157,7 +160,7 @@ public sealed class PlayerShooter
                     spawnX: playerCx - GunOffsets.OGun2[pic], spawnY: playerCy,
                     initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed,
                     hlx: lib.Hlx, hly: lib.Hly, damage: lib.Hits, smoke: lib.Smoke));
-                return true;
+                break;
 
             case WeaponType.AirMissile:
                 // SHOTS.C:850-878. Two bullets at gun2 ± offset, S_AIR hit.
@@ -171,7 +174,7 @@ public sealed class PlayerShooter
                     spawnX: playerCx - GunOffsets.OGun2[pic], spawnY: playerCy,
                     initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed,
                     hlx: lib.Hlx, hly: lib.Hly, damage: lib.Hits, smoke: lib.Smoke));
-                return true;
+                break;
 
             case WeaponType.Bomb:
                 // SHOTS.C:910-923. One bullet center.
@@ -179,7 +182,7 @@ public sealed class PlayerShooter
                     spawnX: playerCx, spawnY: playerCy,
                     initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed,
                     hlx: lib.Hlx, hly: lib.Hly, damage: lib.Hits));
-                return true;
+                break;
 
             case WeaponType.EnergyGrab:
                 // SHOTS.C:925-938. One bullet at center-4.
@@ -187,7 +190,7 @@ public sealed class PlayerShooter
                     spawnX: playerCx - 4, spawnY: playerCy,
                     initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed,
                     hlx: lib.Hlx, hly: lib.Hly, damage: lib.Hits));
-                return true;
+                break;
 
             case WeaponType.PulseCannon:
                 // SHOTS.C:956-969. One bullet center.
@@ -195,7 +198,7 @@ public sealed class PlayerShooter
                     spawnX: playerCx, spawnY: playerCy,
                     initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed,
                     hlx: lib.Hlx, hly: lib.Hly, damage: lib.Hits));
-                return true;
+                break;
 
             case WeaponType.DumbMissile:
                 // SHOTS.C:735-766. Two Bresenham bullets, randomized scatter.
@@ -214,7 +217,7 @@ public sealed class PlayerShooter
                         x2: playerCx - r2x, y2: playerCy + 5,
                         initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed, damage: lib.Hits));
                 }
-                return true;
+                break;
 
             case WeaponType.MiniGun:
                 // SHOTS.C:768-790. One Bresenham bullet toward a random enemy.
@@ -233,7 +236,7 @@ public sealed class PlayerShooter
                         x: playerCx, y: playerCy, x2: aimX, y2: aimY,
                         initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed, damage: lib.Hits));
                 }
-                return true;
+                break;
 
             case WeaponType.MegaBomb:
                 // SHOTS.C:940-954. Bresenham to (160, 75). On done, kills all
@@ -243,7 +246,7 @@ public sealed class PlayerShooter
                 sink.Add(BulletLogic.AimedAt(BulletKind.Player,
                     x: playerCx, y: playerCy, x2: 160, y2: 75,
                     initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed, damage: lib.Hits));
-                return true;
+                break;
 
             case WeaponType.Turret:
             case WeaponType.ForwardLaser:
@@ -256,6 +259,22 @@ public sealed class PlayerShooter
             default:
                 return false;
         }
+        // Tag every bullet we just pushed with the weapon's hit type so
+        // WaveController collision can filter air/ground enemies.
+        TagHitType(sink, sinkStart, lib.Ht);
+        return sink.Count > sinkStart;
+    }
+
+    /// <summary>
+    /// Helper to tag all bullets the just-dispatched Shoot pushed with the
+    /// weapon's HitType. Called by callers after `Shoot()` returns true if they
+    /// kept the previous sink size. The public Shoot() handles tagging inline,
+    /// but the BUT_1 cascade aggregates several Shoot() calls into one sink;
+    /// each call retags only the bullets it pushed.
+    /// </summary>
+    private static void TagHitType(List<BulletLogic> sink, int from, HitType ht)
+    {
+        for (int i = from; i < sink.Count; i++) sink[i].HitType = ht;
     }
 
     private static EnemyLogic? PickRandomEnemy(IReadOnlyList<EnemyLogic>? enemies, Random? rng)

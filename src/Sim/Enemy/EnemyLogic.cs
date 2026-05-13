@@ -26,6 +26,12 @@ public sealed class EnemyLogic
     // Half-width / half-height from actual sprite dimensions.
     public int HalfW => Meta.HalfX;
     public int HalfH => Meta.HalfY;
+    /// <summary>
+    /// True iff this enemy is a ground-flight family (F_GROUND/F_GROUNDLEFT/
+    /// F_GROUNDRIGHT — FlightType 3/4/5). Used by collision to honor C's
+    /// per-shot HIT_TYPE filter (S_AIR ignores ground, S_GROUND ignores air).
+    /// </summary>
+    public bool IsGround => Meta.FlightType >= 3 && Meta.FlightType <= 5;
 
     public int Hits { get; private set; }
     public bool Done { get; private set; }
