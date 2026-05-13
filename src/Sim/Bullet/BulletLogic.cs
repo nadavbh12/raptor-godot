@@ -106,6 +106,20 @@ public sealed class BulletLogic
     private int _psSign;           // +1 for downward bullets, -1 for upward
     private bool _psSmoke;         // SMOKE trail flag (lib->smoke)
 
+    // Beam mode. Stationary projectile that despawns after a fixed number of
+    // ticks (C SHOTS_Think for !move_flag bullets: curframe++ each iter; when
+    // curframe >= numframes, set move.done = TRUE). Column damage is applied
+    // by WaveController each tick — BulletLogic just counts down. fplrX/Y
+    // (lib->fplrx / lib->fplry) signal that the beam should follow the player
+    // each iter; WaveController applies the displacement.
+    private readonly bool _beam;
+    private int _beamLife;            // remaining ticks before despawn
+    private readonly bool _beamDamages; // false for LineBeam (TURRET, already damaged at spawn); true for VerticalBeam
+    /// <summary>True iff this bullet is a stationary beam (S_LINE or S_BEAM).</summary>
+    public bool IsBeam => _beam;
+    /// <summary>True iff this beam applies per-tick column damage (false for TURRET line).</summary>
+    public bool BeamDamages => _beamDamages;
+
     /// <summary>Current per-tick speed (used by BulletDumper for parity comparison).</summary>
     public int CurSpeed => _curSpeed;
     /// <summary>Pre-advanced move target (mirrors C move.x). Used by BulletDumper.</summary>
@@ -229,6 +243,42 @@ public sealed class BulletLogic
     /// <summary>True if this bullet leaves a smoke trail each tick (lib->smoke).</summary>
     public bool LeavesSmoke => _psSmoke;
 
+    /// <summary>
+    /// Spawn a one-tick LINE beam (TURRET — S_LINE). C SHOTS_PlayerShoot for
+    /// TURRET damages the enemy immediately and creates a bullet that exists
+    /// for a single SHOTS_Think pass before SHOTS_Display removes it. We model
+    /// it as a beam with life=1 and zero column-damage (the damage already
+    /// happened upstream in PlayerShooter).
+    /// </summary>
+    public static BulletLogic LineBeam(int x, int y, int damage)
+        => new BulletLogic(beamX: x, beamY: y, life: 1, damages: false, damage: damage, beamMarker: true);
+
+    /// <summary>
+    /// Spawn a multi-tick VERTICAL beam (FORWARD_LASER / DEATH_RAY — S_BEAM).
+    /// Sits at (x, y), damages first eligible enemy in its column each tick
+    /// (per SHOTS.C:1073 — beam.x &gt; enemy.x &amp;&amp; beam.x &lt; enemy.x2),
+    /// despawns after `life` ticks (= lib->numframes).
+    /// </summary>
+    public static BulletLogic VerticalBeam(int x, int y, int life, int damage)
+        => new BulletLogic(beamX: x, beamY: y, life: life, damages: true, damage: damage, beamMarker: true);
+
+    private BulletLogic(int beamX, int beamY, int life, bool damages, int damage, bool beamMarker)
+    {
+        Kind = BulletKind.Player;
+        X = beamX; Y = beamY;
+        Damage = damage;
+        _beam = true;
+        _beamLife = life;
+        _beamDamages = damages;
+        // Beams don't accelerate or move; the speed/maxspeed fields are unused.
+        _accelerating = false;
+        _bresenham = false;
+        _playerStraight = false;
+    }
+
+    /// <summary>Update beam position to follow player. WaveController calls this each tick for lib->fplrx/fplry shots.</summary>
+    public void OffsetBeam(int dx, int dy) { X += dx; Y += dy; }
+
     private BulletLogic(BulletKind kind, int x, int y, int x2, int y2,
                         int initSpeed, int maxSpeed, int damage, bool bresenhamMarker)
     {
@@ -276,6 +326,15 @@ public sealed class BulletLogic
     public void Tick()
     {
         if (!Alive) return;
+        if (_beam)
+        {
+            // SHOTS_Think for !move_flag bullets (SHOTS.C:1109-1127): curframe++
+            // each iter, despawn when curframe >= numframes. We just decrement.
+            _beamLife--;
+            FrameCounter++;
+            if (_beamLife <= 0) Alive = false;
+            return;
+        }
         // C ESHOT_Think order (ESHOT.C:476-485):
         //   shot->x = shot->move.x;   // snapshot displayed pos BEFORE movement
         //   shot->y = shot->move.y;

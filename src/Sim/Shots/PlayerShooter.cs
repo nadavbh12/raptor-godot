@@ -249,12 +249,40 @@ public sealed class PlayerShooter
                 break;
 
             case WeaponType.Turret:
+                // SHOTS.C:792-816. Pick a random AIR enemy; if none, no shot.
+                // C damages the enemy immediately (enemy->hits -= lib->hits)
+                // and creates a 1-tick S_LINE bullet for the visual.
+                {
+                    var target = PickRandomAirEnemy(enemies, rng);
+                    if (target == null)
+                    {
+                        _curShoot[idx] = 0;
+                        return false;
+                    }
+                    target.TakeDamage(lib.Hits);
+                    int aimX = target.X + (rng?.Next(2 * target.HalfW) ?? target.HalfW) - 1;
+                    int aimY = target.Y + (rng?.Next(2 * target.HalfH) ?? target.HalfH) - 1;
+                    sink.Add(BulletLogic.LineBeam(aimX, aimY, damage: lib.Hits));
+                }
+                break;
+
             case WeaponType.ForwardLaser:
+                // SHOTS.C:971-999. Two S_BEAM bullets at gun3 ± offset, target
+                // y2 = -24 (above screen — beam terminates here if no enemy).
+                sink.Add(BulletLogic.VerticalBeam(
+                    x: playerCx + GunOffsets.OGun3[pic], y: playerCy,
+                    life: lib.NumFrames, damage: lib.Hits));
+                sink.Add(BulletLogic.VerticalBeam(
+                    x: playerCx - GunOffsets.OGun3[pic], y: playerCy,
+                    life: lib.NumFrames, damage: lib.Hits));
+                break;
+
             case WeaponType.DeathRay:
-                // Beam weapons require LineBeam / VerticalBeam bullet kinds
-                // that don't move and follow the player. Not yet ported; the
-                // cooldown still ticks so repeat-firing matches C's pacing.
-                return false;
+                // SHOTS.C:1001-1014. Single S_BEAM bullet, center above player.
+                sink.Add(BulletLogic.VerticalBeam(
+                    x: playerCx, y: playerCy - 24,
+                    life: lib.NumFrames, damage: lib.Hits));
+                break;
 
             default:
                 return false;
@@ -285,6 +313,18 @@ public sealed class PlayerShooter
         {
             var e = enemies[(start + i) % enemies.Count];
             if (e.Alive) return e;
+        }
+        return null;
+    }
+
+    private static EnemyLogic? PickRandomAirEnemy(IReadOnlyList<EnemyLogic>? enemies, Random? rng)
+    {
+        if (enemies == null || enemies.Count == 0) return null;
+        int start = rng?.Next(enemies.Count) ?? 0;
+        for (int i = 0; i < enemies.Count; i++)
+        {
+            var e = enemies[(start + i) % enemies.Count];
+            if (e.Alive && !e.IsGround) return e;
         }
         return null;
     }

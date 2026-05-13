@@ -176,19 +176,61 @@ public class PlayerShooterTests
     }
 
     [Fact]
-    public void Beam_weapons_dont_yet_spawn_but_cooldown_unchanged()
+    public void Turret_with_no_air_enemies_does_not_fire_and_resets_cooldown()
     {
-        // Turret / ForwardLaser / DeathRay aren't yet spawning a bullet, but
-        // their cooldown gate must NOT prevent retries each frame — Shoot()
-        // returns false without setting cur_shoot for beams (no bullet means
-        // C wouldn't have fired either).
+        // SHOTS.C:792-799 — if ENEMY_GetRandomAir returns NULL, no shot.
         var ps = new PlayerShooter();
         var sink = new List<BulletLogic>();
-        Assert.False(ps.Shoot(WeaponType.Turret, 160, 176, 3, sink));
+        Assert.False(ps.Shoot(WeaponType.Turret, 160, 176, 3, sink, enemies: null));
         Assert.Empty(sink);
-        // The cooldown is still SET (mirrors C: lib->cur_shoot = lib->shoot_rate
-        // BEFORE the switch) — repeat-firing matches C's pacing even for stubs.
-        Assert.True(ps.GetCooldown(WeaponType.Turret) > 0);
+        Assert.Equal(0, ps.GetCooldown(WeaponType.Turret));
+    }
+
+    [Fact]
+    public void ForwardLaser_spawns_two_VerticalBeams_with_lib_NumFrames_life()
+    {
+        var ps = new PlayerShooter();
+        var sink = new List<BulletLogic>();
+        Assert.True(ps.Shoot(WeaponType.ForwardLaser, 160, 176, 3, sink));
+        Assert.Equal(2, sink.Count);
+        Assert.All(sink, b => Assert.True(b.IsBeam));
+        Assert.All(sink, b => Assert.True(b.BeamDamages));
+    }
+
+    [Fact]
+    public void DeathRay_spawns_one_VerticalBeam()
+    {
+        var ps = new PlayerShooter();
+        var sink = new List<BulletLogic>();
+        Assert.True(ps.Shoot(WeaponType.DeathRay, 160, 176, 3, sink));
+        Assert.Single(sink);
+        Assert.True(sink[0].IsBeam);
+        Assert.True(sink[0].BeamDamages);
+    }
+
+    [Fact]
+    public void Beam_despawns_after_its_life_ticks()
+    {
+        // FORWARD_LASER lib.NumFrames = 4 → beam ticks 4 times before despawn.
+        var ps = new PlayerShooter();
+        var sink = new List<BulletLogic>();
+        ps.Shoot(WeaponType.ForwardLaser, 160, 176, 3, sink);
+        var beam = sink[0];
+        beam.Tick(); Assert.True(beam.Alive);
+        beam.Tick(); Assert.True(beam.Alive);
+        beam.Tick(); Assert.True(beam.Alive);
+        beam.Tick(); Assert.False(beam.Alive);
+    }
+
+    [Fact]
+    public void LineBeam_lives_one_tick_only()
+    {
+        // C's TURRET is an instant 1-iter line; we model it as life=1.
+        var b = BulletLogic.LineBeam(x: 100, y: 50, damage: 5);
+        Assert.True(b.IsBeam);
+        Assert.False(b.BeamDamages);   // damage already applied at spawn upstream
+        b.Tick();
+        Assert.False(b.Alive);
     }
 
     // ── HitType tagging ──────────────────────────────────────────────────────

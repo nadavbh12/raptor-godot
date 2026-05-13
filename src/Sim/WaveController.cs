@@ -608,10 +608,11 @@ public partial class WaveController : Node
         // air, S_ALL / S_GRALL hit anything, S_GTILE only damages ground/tiles,
         // S_SUCK is the energy-grab path (deferred). Bullets carry their HitType
         // tag from PlayerShooter; we filter the candidate enemy set here.
+        // Beams are handled in a separate pass below (different damage model).
         _hitEnemies.Clear();
         foreach (var b in _playerBullets)
         {
-            if (!b.Alive) continue;
+            if (!b.Alive || b.IsBeam) continue;
             foreach (var e in _enemies)
             {
                 if (!e.Alive) continue;
@@ -621,6 +622,29 @@ public partial class WaveController : Node
                 if (dx < e.HalfW && dy < e.HalfH)
                 {
                     b.Kill();
+                    _hitEnemies.Add((e, b.Damage));
+                    break;
+                }
+            }
+        }
+
+        // Beam-vs-enemy column damage. SHOTS.C:1068-1088 — for each VerticalBeam,
+        // find the first enemy whose x range contains the beam X and whose
+        // y < player_cy (above the player) and y > -30. Damage it by the beam's
+        // per-shot hits; the beam does NOT despawn on hit. LineBeam (TURRET)
+        // bullets have BeamDamages=false because PlayerShooter already applied
+        // damage at spawn — they exist only for the visual.
+        foreach (var b in _playerBullets)
+        {
+            if (!b.Alive || !b.IsBeam || !b.BeamDamages) continue;
+            foreach (var e in _enemies)
+            {
+                if (!e.Alive) continue;
+                if (!HitTypeMatches(b.HitType, e)) continue;
+                int ex  = e.X;
+                int ex2 = e.X + 2 * e.HalfW - 1;
+                if (b.X > ex && b.X < ex2 && e.Y < py && e.Y > -30)
+                {
                     _hitEnemies.Add((e, b.Damage));
                     break;
                 }
