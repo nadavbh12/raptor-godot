@@ -47,6 +47,18 @@ public partial class PlaythroughDriver : Node
     public int PlayerInputX =>
         (_heldKeys.Contains("Right") ? 1 : 0) - (_heldKeys.Contains("Left") ? 1 : 0);
 
+    /// <summary>
+    /// True if the fire button (BUT_1) is held. Mirrors INPUT.C's k_Fire scancode
+    /// (SC_CTRL by default). Scripts use the named key "Fire" or "Ctrl".
+    /// </summary>
+    public bool IsFireHeld => _heldKeys.Contains("Fire") || _heldKeys.Contains("Ctrl");
+
+    /// <summary>BUT_2 (next-special-weapon cycle). Named "FireSp" / "Alt" in scripts.</summary>
+    public bool IsFireSpHeld => _heldKeys.Contains("FireSp") || _heldKeys.Contains("Alt");
+
+    /// <summary>BUT_3 (mega bomb). Named "Mega" / "Shift" in scripts.</summary>
+    public bool IsMegaHeld => _heldKeys.Contains("Mega") || _heldKeys.Contains("Shift");
+
     public override void _Ready()
     {
         var scriptPath = OS.GetEnvironment("RAPTOR_PLAYTHROUGH");

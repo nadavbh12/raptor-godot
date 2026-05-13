@@ -6,6 +6,7 @@ using Raptor.Sim.Bullet;
 using Raptor.Sim.Enemy;
 using Raptor.Sim.MazeLevel;
 using Raptor.Sim.Player;
+using Raptor.Sim.Shots;
 using Raptor.Test;
 
 namespace Raptor.Sim;
@@ -140,8 +141,14 @@ public partial class WaveController : Node
     // resets the iter counter so the fast slot lands on the same iter index.
 
     // ── Player ────────────────────────────────────────────────────────────────
-    public  PlayerLogic  PlayerLogic { get; } = new();
-    public  uint         Score { get; private set; } = 0;
+    public  PlayerLogic    PlayerLogic   { get; } = new();
+    public  PlayerShooter  Shooter       { get; } = new();
+    public  uint           Score { get; private set; } = 0;
+
+    // C SHOTS_PlayerShoot uses libc `random()` for DUMB_MISSLE scatter and
+    // MINI_GUN target picks. We share a dedicated Random seeded off the wave
+    // RNG so PlayerShooter remains testable without a Godot RNG.
+    private System.Random? _shooterRng;
 
     // Starting score for a new pilot (from golden: HANGAR shows score=10000).
     // In the C version, new pilots start with some credits from win_register.
@@ -356,6 +363,11 @@ public partial class WaveController : Node
 
         // Reset player position.
         PlayerLogic.Reset();
+        // Reset weapon cooldowns; mirrors SHOTS_Init in RAP.C Init_Game.
+        Shooter.Reset();
+        // Seed PlayerShooter RNG deterministically off the wave seed so
+        // DUMB_MISSLE scatter and MINI_GUN picks are replay-stable.
+        _shooterRng = new System.Random((int)(Rng.Seed & 0x7FFFFFFFu));
 
         // Load sprite metadata library.
         string slibPath = Path.Combine(_assetsRoot ?? "assets", "sprites_meta", "SPRITE1_ITM.json");
@@ -467,6 +479,23 @@ public partial class WaveController : Node
         int dx = _playthrough?.PlayerInputX ?? 0;
         int dy = _playthrough?.PlayerInputY ?? 0;
         PlayerLogic.Tick(dx, dy);
+
+        // Mirrors RAP.C:1000 BUT_1 → OBJS_Use(S_FORWARD_GUNS/...) cascade. Order
+        // matches C: fire happens BEFORE SHOTS_Think runs (which decrements
+        // cooldowns), so the cooldown set this tick can't be cleared in the
+        // same tick. C resets BUT_1=FALSE after firing — our edge model uses
+        // the held state, which is what the demo records (b1 is a held flag).
+        if (_waveActive && (_playthrough?.IsFireHeld ?? false))
+        {
+            int cx = PlayerLogic.X + 16;       // player_cx = playerx + PLAYERWIDTH/2
+            int cy = PlayerLogic.Y + 16;
+            var fired = Shooter.ApplyButton1(cx, cy, PlayerLogic.Pic, _enemies, _shooterRng);
+            foreach (var b in fired) _playerBullets.Add(b);
+        }
+
+        // SHOTS.C:1035-1040 — cooldown decrement once per game iter. Done at
+        // the end of input so the fire above sees the C-state cur_shoot.
+        Shooter.TickCooldowns();
     }
 
     internal void PhaseSpawn()

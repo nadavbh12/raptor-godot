@@ -85,12 +85,25 @@ public sealed class BulletLogic
     private int _berr;             // Bresenham error accumulator
     private int _bmaxloop;         // remaining steps until target reached
 
+    // Player-straight mode (mirrors SHOTS.C SHOTS_Think for the S_SHOOT/!use_plot
+    // path used by FORWARD_GUNS, PLASMA_GUNS, MICRO_MISSLE, MISSLE_PODS, etc.).
+    // C's order per tick (SHOTS.C:1052-1267):
+    //   1) shot->y = move.y - hly   (display)
+    //   2) speed++ up to maxspeed   (BEFORE the move — unlike ESHOT_Think!)
+    //   3) move.y -= speed          (or += for downward bullets)
+    // Distinct from _bresenham (Bresenham aim) and the float ESHOT model.
+    private readonly bool _playerStraight;
+    private int _psHlx, _psHly;    // sprite half-dims for display offset
+    private int _psMoveX, _psMoveY; // C shot->move.x, shot->move.y
+    private int _psSign;           // +1 for downward bullets, -1 for upward
+    private bool _psSmoke;         // SMOKE trail flag (lib->smoke)
+
     /// <summary>Current per-tick speed (used by BulletDumper for parity comparison).</summary>
     public int CurSpeed => _curSpeed;
     /// <summary>Pre-advanced move target (mirrors C move.x). Used by BulletDumper.</summary>
-    public int Mx => _bresenham ? _bx : (int)_fx;
+    public int Mx => _playerStraight ? _psMoveX : _bresenham ? _bx : (int)_fx;
     /// <summary>Pre-advanced move target (mirrors C move.y). Used by BulletDumper.</summary>
-    public int My => _bresenham ? _by : (int)_fy;
+    public int My => _playerStraight ? _psMoveY : _bresenham ? _by : (int)_fy;
     /// <summary>Number of animation frames in this bullet's sprite (mirrors ESHOT_LIB.num_frames).</summary>
     public int NumFrames => ShotType switch
     {
@@ -156,6 +169,58 @@ public sealed class BulletLogic
                                       int initSpeed, int maxSpeed, int damage)
         => new BulletLogic(kind, x, y, x2, y2, initSpeed, maxSpeed, damage, bresenhamMarker: true);
 
+    /// <summary>
+    /// Create a player straight-fire bullet (FORWARD_GUNS / PLASMA_GUNS /
+    /// MICRO_MISSLE / MISSLE_PODS / etc.). Mirrors SHOTS_PlayerShoot init +
+    /// SHOTS_Think movement (SHOTS.C:619-1268).
+    /// Spawn coords are the C `cur->x, cur->y = player_cx + gun_off, player_cy`
+    /// values. Internal move.y advances by speed (downward) or -speed (upward).
+    /// Displayed (X, Y) lag move by (hlx, hly) — the sprite top-left corner.
+    /// </summary>
+    public static BulletLogic PlayerStraight(int spawnX, int spawnY,
+                                             int initSpeed, int maxSpeed,
+                                             int hlx, int hly, int damage,
+                                             bool upward = true, bool smoke = false)
+        => new BulletLogic(spawnX, spawnY, initSpeed, maxSpeed, hlx, hly, damage,
+                           upward, smoke, playerStraightMarker: true);
+
+    private BulletLogic(int spawnX, int spawnY, int initSpeed, int maxSpeed,
+                        int hlx, int hly, int damage, bool upward, bool smoke,
+                        bool playerStraightMarker)
+    {
+        Kind = BulletKind.Player;
+        // Mirrors C SHOTS_PlayerShoot init (SHOTS.C:650-684). At spawn (BEFORE
+        // any SHOTS_Think iteration runs), C stores:
+        //   cur->x = player_cx + gun_offset   ← raw spawn, NOT yet display-corrected
+        //   cur->y = player_cy
+        //   cur->move.x/y = cur->x/y
+        //   cur->speed = lib->speed (initSpeed)
+        // The FIRST SHOTS_Think in the same iter then snapshots display
+        // (= move - hl) and advances move/speed. We treat one Tick() as one
+        // SHOTS_Think iteration so PhaseMovement on iter N produces iter-N
+        // post-think state. X/Y here is therefore the raw pre-think spawn
+        // position; nothing reads it before the first Tick.
+        _psMoveX = spawnX;
+        _psMoveY = spawnY;
+        _psHlx = hlx;
+        _psHly = hly;
+        _psSign = upward ? -1 : +1;
+        _psSmoke = smoke;
+        X = spawnX;
+        Y = spawnY;
+        _curSpeed = initSpeed;
+        _maxSpeed = maxSpeed;
+        _accelerating = true;
+        Damage = damage;
+        _playerStraight = true;
+        _bresenham = false;
+    }
+
+    /// <summary>True if this is a player straight-fire bullet (SHOTS movement model).</summary>
+    public bool IsPlayerStraight => _playerStraight;
+    /// <summary>True if this bullet leaves a smoke trail each tick (lib->smoke).</summary>
+    public bool LeavesSmoke => _psSmoke;
+
     private BulletLogic(BulletKind kind, int x, int y, int x2, int y2,
                         int initSpeed, int maxSpeed, int damage, bool bresenhamMarker)
     {
@@ -208,6 +273,30 @@ public sealed class BulletLogic
         //   shot->y = shot->move.y;
         //   MoveSobj(&shot->move, shot->speed);
         //   if (shot->speed < lib->speed) shot->speed++;
+        if (_playerStraight)
+        {
+            // SHOTS.C:1052-1267 SHOTS_Think for S_SHOOT / !use_plot:
+            //   shot->y = move.y - hly  (display)
+            //   speed++ up to maxspeed  (BEFORE the move)
+            //   move.y -= speed         (sign by upward/downward direction)
+            X = _psMoveX - _psHlx;
+            Y = _psMoveY - _psHly;
+            // SHOTS.C:1100 — despawn check on displayed pos before movement.
+            if ((Y + 16) < 0 || X < 0 || X > 320 || Y > 200)
+            {
+                Alive = false;
+                return;
+            }
+            if (_accelerating && _curSpeed < _maxSpeed)
+                _curSpeed++;
+            _psMoveY += _psSign * _curSpeed;
+            FrameCounter++;
+            // SHOTS.C:1262 — also kill on move.y < 0 (covers upward bullets
+            // whose move outruns the display lag).
+            if (_psSign < 0 && _psMoveY < 0)
+                Alive = false;
+            return;
+        }
         if (_bresenham)
         {
             X = _bx;

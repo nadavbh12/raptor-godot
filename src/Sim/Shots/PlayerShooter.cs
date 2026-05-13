@@ -1,0 +1,245 @@
+using System;
+using System.Collections.Generic;
+using Raptor.Sim.Bullet;
+using Raptor.Sim.Enemy;
+
+namespace Raptor.Sim.Shots;
+
+/// <summary>
+/// Player weapon system. Mirrors SOURCE/SHOTS.C SHOTS_PlayerShoot dispatch,
+/// the SHOTS_Think cooldown decrement (SHOTS.C:1035-1040), and the RAP.C:1000
+/// BUT_1 cascade. Holds per-weapon cooldown timers and the player's owned-
+/// weapon inventory.
+///
+/// Phase order in WaveController:
+///   PhaseInput → TickCooldowns + ApplyButton1(fireHeld)
+///   PhaseMovement (already ticks each bullet via BulletLogic.Tick)
+/// </summary>
+public sealed class PlayerShooter
+{
+    private readonly int[] _curShoot = new int[ShotLib.Count];
+
+    /// <summary>Standing inventory. ForwardGuns is always owned (lib->forever=TRUE).</summary>
+    public bool HasPlasmaGuns   { get; set; } = false;
+    public bool HasMicroMissile { get; set; } = false;
+
+    /// <summary>
+    /// The active special weapon (DUMB_MISSLE / MINI_GUN / TURRET / etc.).
+    /// Null = no special equipped. Mirrors C plr.sweapon (RAP.C:1006).
+    /// </summary>
+    public WeaponType? SpecialWeapon { get; set; } = null;
+
+    /// <summary>Resets cooldowns. Mirrors SHOTS_Init clearing shot_lib.cur_shoot.</summary>
+    public void Reset()
+    {
+        for (int i = 0; i < _curShoot.Length; i++) _curShoot[i] = 0;
+    }
+
+    /// <summary>Per-tick cooldown decrement (SHOTS.C:1035-1040).</summary>
+    public void TickCooldowns()
+    {
+        for (int i = 0; i < _curShoot.Length; i++)
+            if (_curShoot[i] > 0) _curShoot[i]--;
+    }
+
+    /// <summary>Cooldown remaining for a given weapon (test introspection).</summary>
+    public int GetCooldown(WeaponType w) => _curShoot[(int)w];
+
+    /// <summary>
+    /// RAP.C:1000-1008 BUT_1 cascade. Returns the list of newly-spawned bullets
+    /// from all weapons fired this tick (FORWARD_GUNS unconditional;
+    /// PLASMA_GUNS/MICRO_MISSLE if owned; SpecialWeapon if equipped).
+    /// </summary>
+    public List<BulletLogic> ApplyButton1(int playerCx, int playerCy, int playerPic,
+                                          IReadOnlyList<EnemyLogic>? enemies = null,
+                                          Random? rng = null)
+    {
+        var bullets = new List<BulletLogic>(4);
+        Shoot(WeaponType.ForwardGuns, playerCx, playerCy, playerPic, bullets, enemies, rng);
+        if (HasPlasmaGuns)
+            Shoot(WeaponType.PlasmaGuns, playerCx, playerCy, playerPic, bullets, enemies, rng);
+        if (HasMicroMissile)
+            Shoot(WeaponType.MicroMissile, playerCx, playerCy, playerPic, bullets, enemies, rng);
+        if (SpecialWeapon is WeaponType sw)
+            Shoot(sw, playerCx, playerCy, playerPic, bullets, enemies, rng);
+        return bullets;
+    }
+
+    /// <summary>
+    /// Single-weapon shoot. Mirrors SHOTS_PlayerShoot's per-type switch
+    /// (SHOTS.C:644-1015). Honors the cur_shoot cooldown gate before spawning.
+    /// Returns true iff a bullet was actually spawned.
+    /// </summary>
+    public bool Shoot(WeaponType type, int playerCx, int playerCy, int playerPic,
+                      List<BulletLogic> sink,
+                      IReadOnlyList<EnemyLogic>? enemies = null,
+                      Random? rng = null)
+    {
+        int idx = (int)type;
+        if (_curShoot[idx] > 0) return false;   // cooldown active
+        var lib = ShotLib.Get(type);
+        _curShoot[idx] = lib.ShootRate;
+
+        // Clamp playerPic to the gun-offset table range. C's o_gun arrays are
+        // declared as [8]; playerpic ranges 0..6 with neutral=3. We allow the
+        // 8th slot (init=4 → playerpic+g_flash=11 out of range) by clamping.
+        int pic = playerPic;
+        if (pic < 0) pic = 0; if (pic > 7) pic = 7;
+
+        switch (type)
+        {
+            case WeaponType.ForwardGuns:
+                // SHOTS.C:650-684. Two bullets: gun1 right and gun1 left (minus 1).
+                sink.Add(BulletLogic.PlayerStraight(
+                    spawnX: playerCx + GunOffsets.OGun1[pic], spawnY: playerCy,
+                    initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed,
+                    hlx: lib.Hlx, hly: lib.Hly, damage: lib.Hits));
+                sink.Add(BulletLogic.PlayerStraight(
+                    spawnX: playerCx - GunOffsets.OGun1[pic] - 1, spawnY: playerCy,
+                    initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed,
+                    hlx: lib.Hlx, hly: lib.Hly, damage: lib.Hits));
+                return true;
+
+            case WeaponType.PlasmaGuns:
+                // SHOTS.C:686-701. One bullet centered.
+                sink.Add(BulletLogic.PlayerStraight(
+                    spawnX: playerCx, spawnY: playerCy,
+                    initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed,
+                    hlx: lib.Hlx, hly: lib.Hly, damage: lib.Hits));
+                return true;
+
+            case WeaponType.MicroMissile:
+                // SHOTS.C:703-733. Two bullets at gun3 ± offset.
+                sink.Add(BulletLogic.PlayerStraight(
+                    spawnX: playerCx + GunOffsets.OGun3[pic], spawnY: playerCy,
+                    initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed,
+                    hlx: lib.Hlx, hly: lib.Hly, damage: lib.Hits));
+                sink.Add(BulletLogic.PlayerStraight(
+                    spawnX: playerCx - GunOffsets.OGun3[pic], spawnY: playerCy,
+                    initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed,
+                    hlx: lib.Hlx, hly: lib.Hly, damage: lib.Hits));
+                return true;
+
+            case WeaponType.MissilePods:
+                // SHOTS.C:818-848. Two bullets at gun2 ± offset, with smoke.
+                sink.Add(BulletLogic.PlayerStraight(
+                    spawnX: playerCx + GunOffsets.OGun2[pic], spawnY: playerCy,
+                    initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed,
+                    hlx: lib.Hlx, hly: lib.Hly, damage: lib.Hits, smoke: lib.Smoke));
+                sink.Add(BulletLogic.PlayerStraight(
+                    spawnX: playerCx - GunOffsets.OGun2[pic], spawnY: playerCy,
+                    initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed,
+                    hlx: lib.Hlx, hly: lib.Hly, damage: lib.Hits, smoke: lib.Smoke));
+                return true;
+
+            case WeaponType.AirMissile:
+                // SHOTS.C:850-878. Two bullets at gun2 ± offset, S_AIR hit.
+            case WeaponType.GrdMissile:
+                // SHOTS.C:880-908. Two bullets at gun2 ± offset, S_GROUND hit.
+                sink.Add(BulletLogic.PlayerStraight(
+                    spawnX: playerCx + GunOffsets.OGun2[pic], spawnY: playerCy,
+                    initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed,
+                    hlx: lib.Hlx, hly: lib.Hly, damage: lib.Hits, smoke: lib.Smoke));
+                sink.Add(BulletLogic.PlayerStraight(
+                    spawnX: playerCx - GunOffsets.OGun2[pic], spawnY: playerCy,
+                    initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed,
+                    hlx: lib.Hlx, hly: lib.Hly, damage: lib.Hits, smoke: lib.Smoke));
+                return true;
+
+            case WeaponType.Bomb:
+                // SHOTS.C:910-923. One bullet center.
+                sink.Add(BulletLogic.PlayerStraight(
+                    spawnX: playerCx, spawnY: playerCy,
+                    initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed,
+                    hlx: lib.Hlx, hly: lib.Hly, damage: lib.Hits));
+                return true;
+
+            case WeaponType.EnergyGrab:
+                // SHOTS.C:925-938. One bullet at center-4.
+                sink.Add(BulletLogic.PlayerStraight(
+                    spawnX: playerCx - 4, spawnY: playerCy,
+                    initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed,
+                    hlx: lib.Hlx, hly: lib.Hly, damage: lib.Hits));
+                return true;
+
+            case WeaponType.PulseCannon:
+                // SHOTS.C:956-969. One bullet center.
+                sink.Add(BulletLogic.PlayerStraight(
+                    spawnX: playerCx, spawnY: playerCy,
+                    initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed,
+                    hlx: lib.Hlx, hly: lib.Hly, damage: lib.Hits));
+                return true;
+
+            case WeaponType.DumbMissile:
+                // SHOTS.C:735-766. Two Bresenham bullets, randomized scatter.
+                // C's `cur->move.x2 = cur->x + random(16) + 10` etc; we mirror
+                // that with the provided RNG. Falls back to deterministic
+                // offsets if no RNG was supplied (tests).
+                {
+                    int r1x = (rng?.Next(16) ?? 8) + 10;
+                    int r2x = (rng?.Next(16) ?? 8) + 10;
+                    sink.Add(BulletLogic.AimedAt(BulletKind.Player,
+                        x: playerCx, y: playerCy,
+                        x2: playerCx + r1x, y2: playerCy + 5,
+                        initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed, damage: lib.Hits));
+                    sink.Add(BulletLogic.AimedAt(BulletKind.Player,
+                        x: playerCx, y: playerCy,
+                        x2: playerCx - r2x, y2: playerCy + 5,
+                        initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed, damage: lib.Hits));
+                }
+                return true;
+
+            case WeaponType.MiniGun:
+                // SHOTS.C:768-790. One Bresenham bullet toward a random enemy.
+                // If no enemy is on-screen, C returns FALSE (no shot fired) —
+                // we mirror that by un-doing the cooldown and returning false.
+                {
+                    var target = PickRandomEnemy(enemies, rng);
+                    if (target == null)
+                    {
+                        _curShoot[idx] = 0;
+                        return false;
+                    }
+                    int aimX = target.X + (rng?.Next(2 * target.HalfW) ?? target.HalfW) - 1;
+                    int aimY = target.Y + target.HalfH + (rng?.Next(2 * target.HalfH) ?? target.HalfH) - 1;
+                    sink.Add(BulletLogic.AimedAt(BulletKind.Player,
+                        x: playerCx, y: playerCy, x2: aimX, y2: aimY,
+                        initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed, damage: lib.Hits));
+                }
+                return true;
+
+            case WeaponType.MegaBomb:
+                // SHOTS.C:940-954. Bresenham to (160, 75). On done, kills all
+                // air enemies + clears enemy bullets; that detonation effect is
+                // handled by WaveController via OnMegaBombDetonate when the
+                // bullet's Alive flips false at the target.
+                sink.Add(BulletLogic.AimedAt(BulletKind.Player,
+                    x: playerCx, y: playerCy, x2: 160, y2: 75,
+                    initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed, damage: lib.Hits));
+                return true;
+
+            case WeaponType.Turret:
+            case WeaponType.ForwardLaser:
+            case WeaponType.DeathRay:
+                // Beam weapons require LineBeam / VerticalBeam bullet kinds
+                // that don't move and follow the player. Not yet ported; the
+                // cooldown still ticks so repeat-firing matches C's pacing.
+                return false;
+
+            default:
+                return false;
+        }
+    }
+
+    private static EnemyLogic? PickRandomEnemy(IReadOnlyList<EnemyLogic>? enemies, Random? rng)
+    {
+        if (enemies == null || enemies.Count == 0) return null;
+        int start = rng?.Next(enemies.Count) ?? 0;
+        for (int i = 0; i < enemies.Count; i++)
+        {
+            var e = enemies[(start + i) % enemies.Count];
+            if (e.Alive) return e;
+        }
+        return null;
+    }
+}
