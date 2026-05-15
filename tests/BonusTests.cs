@@ -19,6 +19,38 @@ public class BonusTests
     }
 
     [Fact]
+    public void Bonus_wobble_and_sprite_frame_advance_every_other_tick()
+    {
+        var b = new BonusLogic(objType: 4 /* S_MINI_GUN */, x: 100, y: 50, initialPos: 15);
+
+        b.Tick();
+        Assert.Equal(15, b.Pos);
+        Assert.Equal(0, b.Frame);
+
+        b.Tick();
+        Assert.Equal(0, b.Pos);
+        Assert.Equal(1, b.Frame);
+    }
+
+    [Fact]
+    public void Bonus_glow_frame_advances_every_tick_like_c()
+    {
+        var b = new BonusLogic(objType: 23 /* S_ITEMBUY6 */, x: 100, y: 50);
+
+        b.Tick();
+        Assert.Equal(1, b.GlowFrame);
+
+        b.Tick();
+        Assert.Equal(2, b.GlowFrame);
+
+        b.Tick();
+        Assert.Equal(3, b.GlowFrame);
+
+        b.Tick();
+        Assert.Equal(0, b.GlowFrame);
+    }
+
+    [Fact]
     public void Bonus_dies_when_falling_below_screen()
     {
         // BONUS.C:241 — `if (cur->gy > 200) remove`. Our equivalent: y > 200.
@@ -36,6 +68,27 @@ public class BonusTests
         b.Kill();
         b.Tick();
         Assert.Equal(50, b.Y);
+        Assert.False(b.Alive);
+    }
+
+    [Fact]
+    public void Money_bonus_survives_pickup_as_dollar_countdown()
+    {
+        var b = new BonusLogic(objType: 23 /* S_ITEMBUY6 */, x: 100, y: 50);
+
+        b.MarkPickedUpMoney();
+
+        Assert.True(b.Alive);
+        Assert.True(b.DisplayAsPickedUpMoney);
+        Assert.Equal(50, b.PickedUpMoneyCountdown);
+
+        for (int i = 0; i < 49; i++)
+            b.Tick();
+
+        Assert.True(b.Alive);
+        Assert.True(b.DisplayAsPickedUpMoney);
+
+        b.Tick();
         Assert.False(b.Alive);
     }
 

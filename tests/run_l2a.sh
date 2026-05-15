@@ -85,6 +85,7 @@ RAPTOR_PLAYTHROUGH="$SCRIPT" \
 RAPTOR_PARITY_OUT="$OUT/godot.parity.txt" \
 RAPTOR_TEST_FAST=1 \
 "$GODOT_BIN" --path "$REPO" --headless --quit-after $MAX_FRAMES \
+    --audio-driver Dummy \
     >"$OUT/godot.log" 2>&1 || {
     echo "[run_l2a] FAIL: godot run failed; see $OUT/godot.log"
     tail -30 "$OUT/godot.log" >&2

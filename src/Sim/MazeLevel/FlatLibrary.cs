@@ -44,6 +44,9 @@ public sealed class FlatLibrary
     /// <summary>Score awarded on destruction (lib->bounty).</summary>
     public int BountyFor(int flatIndex) => Get(flatIndex).Bounty;
 
+    /// <summary>Flat index drawn after destruction (mirrors C eitems / linkflat).</summary>
+    public int DestroyedFlatFor(int flatIndex) => Get(flatIndex).LinkFlat;
+
     public static FlatLibrary LoadFromFile(string path)
     {
         var json = File.ReadAllText(path);

@@ -25,30 +25,6 @@ public class EnemyLogicTests
         };
     }
 
-    [Fact(Skip = "Stale: assumed one-waypoint-per-tick teleport. EnemyLogic now mirrors C's Bresenham-step movement; parity is verified by L2a integration tests against C goldens.")]
-    public void Enemy_walks_path_one_waypoint_per_tick_then_marks_done()
-    {
-        var meta = SyntheticPath((100, 0), (110, 10), (120, 20));
-        var e = new EnemyLogic(meta, 0, 0);
-        e.Tick(); Assert.Equal((100, 0),   (e.X, e.Y));
-        e.Tick(); Assert.Equal((110, 10),  (e.X, e.Y));
-        e.Tick(); Assert.Equal((120, 20),  (e.X, e.Y));
-        e.Tick(); Assert.True(e.Done);
-        Assert.False(e.Alive);
-    }
-
-    [Fact(Skip = "Stale: assumes teleport-per-tick. C-faithful Bresenham model verified by L2a tests.")]
-    public void Repeat_flight_cycles_path_indefinitely()
-    {
-        var meta = SyntheticPath((100, 0), (110, 10));
-        meta.FlightType = 0;  // REPEAT
-        var e = new EnemyLogic(meta, 0, 0);
-        for (int i = 0; i < 20; i++) e.Tick();
-        // After 20 ticks of REPEAT, still alive, position is one of the two waypoints
-        Assert.True(e.Alive);
-        Assert.Contains((e.X, e.Y), new[] { (100, 0), (110, 10) });
-    }
-
     [Fact]
     public void Take_damage_kills_after_enough_hits()
     {
@@ -58,6 +34,73 @@ public class EnemyLogicTests
         e.TakeDamage(1); Assert.True(e.Alive);
         e.TakeDamage(1); Assert.True(e.Alive);
         e.TakeDamage(1); Assert.False(e.Alive);
+        Assert.False(e.PendingRemovalDump);
+    }
+
+    [Fact]
+    public void Damage_preserves_negative_hits_like_C()
+    {
+        var meta = SyntheticPath((50, 50));
+        meta.Hits = 1;
+        var e = new EnemyLogic(meta, 0, 0);
+
+        e.TakeDamage(2);
+
+        Assert.Equal(-1, e.Hits);
+        Assert.False(e.Alive);
+    }
+
+    [Fact]
+    public void Multiple_same_pass_hits_can_overkill_enemy_like_C()
+    {
+        var meta = SyntheticPath((50, 50));
+        meta.Hits = 1;
+        var e = new EnemyLogic(meta, 0, 0);
+
+        e.TakeDamage(1, deferRemovalForDump: true);
+        e.TakeDamage(1, deferRemovalForDump: true);
+
+        Assert.Equal(-1, e.Hits);
+        Assert.False(e.Alive);
+        Assert.True(e.PendingRemovalDump);
+    }
+
+    [Fact]
+    public void Pending_removal_enemy_still_thinks_and_can_fire_once_like_C()
+    {
+        var meta = SyntheticPath((0, 0));
+        meta.Hits = 1;
+        meta.NumGuns = 2;
+        meta.ShootFrame = 20;
+        meta.ShootCnt = 1;
+        meta.ShootStart = -1;
+        meta.ShotSpace = 0;
+        meta.ShootX = new[] { 13, 19 };
+        meta.ShootY = new[] { 20, 20 };
+        meta.ShootType = new[] { 1, 1 };
+        var e = new EnemyLogic(meta, 176, 100);
+        e.TakeDamage(1, deferRemovalForDump: true);
+
+        var first = e.Tick();
+
+        Assert.NotNull(first);
+        Assert.NotNull(e.ExtraBulletsThisTick);
+        Assert.Equal(2, 1 + e.ExtraBulletsThisTick!.Count);
+    }
+
+    [Fact]
+    public void Deferred_shot_damage_keeps_dead_enemy_for_one_dump()
+    {
+        var meta = SyntheticPath((50, 50));
+        meta.Hits = 1;
+        var e = new EnemyLogic(meta, 0, 0);
+
+        e.TakeDamage(1, deferRemovalForDump: true);
+
+        Assert.False(e.Alive);
+        Assert.True(e.PendingRemovalDump);
+        e.ClearPendingRemovalDump();
+        Assert.False(e.PendingRemovalDump);
     }
 
     [Fact]
@@ -83,37 +126,28 @@ public class EnemyLogicTests
         for (int i = 0; i < 10; i++) Assert.Null(e.Tick());
     }
 
-    [Fact(Skip = "Stale: pre-dates the full ENEMY.C shoot state machine (countdown → shoot_on → shootflag/shootcount/shootagain). C-faithful firing verified by L2a tests.")]
-    public void Enemy_with_guns_fires_every_ShootFrame_ticks()
+    [Fact]
+    public void ContainsPointStrict_uses_C_top_left_bbox_not_center_distance()
     {
-        var meta = SyntheticPath((50, 50), (60, 60), (70, 70), (80, 80), (90, 90));
-        meta.NumGuns   = 1;
-        meta.ShootFrame = 2;
-        meta.ShootX    = new[] { 0 };
-        meta.ShootY    = new[] { 0 };
-        var e = new EnemyLogic(meta, 0, 0);
-        // Tick 1: counter reaches 1 — no fire yet.
-        // Tick 2: counter reaches 2 == ShootFrame — fires and resets.
-        Assert.Null(e.Tick());
-        var fired = e.Tick();
-        Assert.NotNull(fired);
-        Assert.Equal(BulletKind.Enemy, fired!.Kind);
-    }
+        // ENEMY.C damage predicates use strict top-left bounds:
+        //   x > sprite->x && x < sprite->x2 && y > sprite->y && y < sprite->y2
+        // A point left of sprite->x must not hit even if it is within half-width
+        // distance of the top-left corner. This is the mission_fight iter-160
+        // false positive that prematurely removed the x=162 player bullet.
+        var e = new EnemyLogic(new SpriteMeta
+        {
+            Hits = 7,
+            NumFlight = 0,
+            FlightType = 1,
+            Width = 32,
+            Height = 24,
+        }, spawnX: 176, mapY: 140);
 
-    // Spec §11 State bounds: enemy Hits never goes negative.
-    [Property(MaxTest = 50)]
-    public Property Hits_never_below_zero_under_arbitrary_damage()
-    {
-        return Prop.ForAll(
-            Gen.NonEmptyListOf(Gen.Choose(0, 100)).ToArbitrary(),
-            damages =>
-            {
-                var meta = SyntheticPath((0, 0));
-                meta.Hits = 5;
-                var e = new EnemyLogic(meta, 0, 0);
-                foreach (var d in damages) e.TakeDamage(d);
-                return e.Hits >= 0;
-            });
+        Assert.False(e.ContainsPointStrict(162, 142));
+        Assert.False(e.ContainsPointStrict(176, 142)); // strict left edge
+        Assert.True(e.ContainsPointStrict(177, 142));
+        Assert.True(e.ContainsPointStrict(206, 162));
+        Assert.False(e.ContainsPointStrict(207, 162)); // strict right edge (x + width - 1)
     }
 
     [Fact]

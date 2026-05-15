@@ -1,5 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
+using Raptor.Sim;
 using Raptor.Sim.Bullet;
 using Raptor.Sim.Enemy;
 
@@ -18,10 +21,16 @@ namespace Raptor.Sim.Shots;
 public sealed class PlayerShooter
 {
     private readonly int[] _curShoot = new int[ShotLib.Count];
+    private static readonly Lazy<StreamWriter?> RngTrace = new(OpenRngTrace);
+    private static readonly Lazy<StreamWriter?> SpecialTrace = new(OpenSpecialTrace);
+    private static bool DeterministicMiniGun =>
+        DeterministicRandom.Enabled ||
+        Environment.GetEnvironmentVariable("RAPTOR_DETERMINISTIC_MINIGUN") == "1";
 
     /// <summary>Standing inventory. ForwardGuns is always owned (lib->forever=TRUE).</summary>
     public bool HasPlasmaGuns   { get; set; } = false;
     public bool HasMicroMissile { get; set; } = false;
+    public int MegaBombCount { get; private set; } = 0;
 
     /// <summary>
     /// Special-weapon types the player currently owns. Picking up a special
@@ -50,6 +59,30 @@ public sealed class PlayerShooter
         return true;
     }
 
+    /// <summary>Cycle to the next owned special, matching C OBJS_GetNext.</summary>
+    public void CycleSpecial()
+    {
+        for (int i = 0; i <= (int)WeaponType.DeathRay - (int)WeaponType.DumbMissile; i++)
+        {
+            int next = SpecialWeapon is WeaponType current && current >= WeaponType.DumbMissile
+                ? (int)current + 1 + i
+                : (int)WeaponType.DumbMissile + i;
+            if (next > (int)WeaponType.DeathRay)
+                next = (int)WeaponType.DumbMissile + (next - (int)WeaponType.DeathRay - 1);
+
+            var candidate = (WeaponType)next;
+            if (_ownedSpecials.Contains(candidate))
+            {
+                SpecialWeapon = candidate;
+                TraceSpecial("next", (int)candidate);
+                return;
+            }
+        }
+
+        SpecialWeapon = null;
+        TraceSpecial("next", -1);
+    }
+
     /// <summary>Resets cooldowns. Mirrors SHOTS_Init clearing shot_lib.cur_shoot.</summary>
     public void Reset()
     {
@@ -58,6 +91,7 @@ public sealed class PlayerShooter
         SpecialWeapon = null;
         HasPlasmaGuns = false;
         HasMicroMissile = false;
+        MegaBombCount = 0;
     }
 
     /// <summary>
@@ -79,16 +113,39 @@ public sealed class PlayerShooter
             case 2:   // S_MICRO_MISSLE
                 HasMicroMissile = true;
                 return true;
-            case >= 3 and <= 14:   // specials S_DUMB_MISSLE..S_DEATH_RAY
+            case 11:  // S_MEGA_BOMB — weapon inventory, but not a selectable special.
+                MegaBombCount++;
+                return true;
+            case >= 3 and <= 14:   // selectable specials (OBJECTS.C specialw=TRUE)
                 {
                     var w = (WeaponType)objType;
                     _ownedSpecials.Add(w);
-                    SpecialWeapon = w;
+                    if (SpecialWeapon == null)
+                    {
+                        SpecialWeapon = w;
+                        TraceSpecial("auto", objType);
+                    }
+                    TraceSpecial("add", objType);
                     return true;
                 }
             default:
                 return false;
         }
+    }
+
+    public bool ConsumeMegaBomb()
+    {
+        if (MegaBombCount <= 0) return false;
+        MegaBombCount--;
+        return true;
+    }
+
+    public bool LoseCurrentSpecialForShieldLow()
+    {
+        if (SpecialWeapon is not WeaponType current) return false;
+        _ownedSpecials.Remove(current);
+        CycleSpecial();
+        return true;
     }
 
     /// <summary>Per-tick cooldown decrement (SHOTS.C:1035-1040).</summary>
@@ -134,7 +191,13 @@ public sealed class PlayerShooter
                       Random? rng = null)
     {
         int idx = (int)type;
-        if (_curShoot[idx] > 0) return false;   // cooldown active
+        if (_curShoot[idx] > 0)
+        {
+            TraceLine(string.Format(CultureInfo.InvariantCulture,
+                "cooldown.block weapon={0} cooldown={1}", (int)type, _curShoot[idx]));
+            return false;
+        }
+        TraceSpecial("use", idx);
         var lib = ShotLib.Get(type);
         _curShoot[idx] = lib.ShootRate;
         int sinkStart = sink.Count;
@@ -149,10 +212,13 @@ public sealed class PlayerShooter
         {
             case WeaponType.ForwardGuns:
                 // SHOTS.C:650-684. Two bullets: gun1 right and gun1 left (minus 1).
+                ConsumeRandomPitchSound(rng, "sound.fx_gun");
+                NextRandom(rng, lib.NumFrames, "forward.frame.r");  // cur->curframe = random(lib->numframes)
                 sink.Add(BulletLogic.PlayerStraight(
                     spawnX: playerCx + GunOffsets.OGun1[pic], spawnY: playerCy,
                     initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed,
                     hlx: lib.Hlx, hly: lib.Hly, damage: lib.Hits));
+                NextRandom(rng, lib.NumFrames, "forward.frame.l");
                 sink.Add(BulletLogic.PlayerStraight(
                     spawnX: playerCx - GunOffsets.OGun1[pic] - 1, spawnY: playerCy,
                     initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed,
@@ -161,6 +227,8 @@ public sealed class PlayerShooter
 
             case WeaponType.PlasmaGuns:
                 // SHOTS.C:686-701. One bullet centered.
+                ConsumeRandomPitchSound(rng, "sound.fx_gun");
+                NextRandom(rng, lib.NumFrames, "plasma.frame");
                 sink.Add(BulletLogic.PlayerStraight(
                     spawnX: playerCx, spawnY: playerCy,
                     initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed,
@@ -169,6 +237,7 @@ public sealed class PlayerShooter
 
             case WeaponType.MicroMissile:
                 // SHOTS.C:703-733. Two bullets at gun3 ± offset.
+                ConsumeRandomPitchSound(rng, "sound.fx_gun");
                 sink.Add(BulletLogic.PlayerStraight(
                     spawnX: playerCx + GunOffsets.OGun3[pic], spawnY: playerCy,
                     initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed,
@@ -181,6 +250,7 @@ public sealed class PlayerShooter
 
             case WeaponType.MissilePods:
                 // SHOTS.C:818-848. Two bullets at gun2 ± offset, with smoke.
+                ConsumeRandomPitchSound(rng, "sound.fx_gun");
                 sink.Add(BulletLogic.PlayerStraight(
                     spawnX: playerCx + GunOffsets.OGun2[pic], spawnY: playerCy,
                     initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed,
@@ -195,6 +265,7 @@ public sealed class PlayerShooter
                 // SHOTS.C:850-878. Two bullets at gun2 ± offset, S_AIR hit.
             case WeaponType.GrdMissile:
                 // SHOTS.C:880-908. Two bullets at gun2 ± offset, S_GROUND hit.
+                ConsumeRandomPitchSound(rng, "sound.fx_missle");
                 sink.Add(BulletLogic.PlayerStraight(
                     spawnX: playerCx + GunOffsets.OGun2[pic], spawnY: playerCy,
                     initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed,
@@ -207,6 +278,7 @@ public sealed class PlayerShooter
 
             case WeaponType.Bomb:
                 // SHOTS.C:910-923. One bullet center.
+                ConsumeRandomPitchSound(rng, "sound.fx_missle");
                 sink.Add(BulletLogic.PlayerStraight(
                     spawnX: playerCx, spawnY: playerCy,
                     initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed,
@@ -215,6 +287,7 @@ public sealed class PlayerShooter
 
             case WeaponType.EnergyGrab:
                 // SHOTS.C:925-938. One bullet at center-4.
+                ConsumeRandomPitchSound(rng, "sound.fx_gun");
                 sink.Add(BulletLogic.PlayerStraight(
                     spawnX: playerCx - 4, spawnY: playerCy,
                     initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed,
@@ -223,6 +296,7 @@ public sealed class PlayerShooter
 
             case WeaponType.PulseCannon:
                 // SHOTS.C:956-969. One bullet center.
+                ConsumeRandomPitchSound(rng, "sound.fx_pulse");
                 sink.Add(BulletLogic.PlayerStraight(
                     spawnX: playerCx, spawnY: playerCy,
                     initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed,
@@ -242,16 +316,19 @@ public sealed class PlayerShooter
                 // outward scatter. WaveController.PhaseMovement dispatches
                 // that transition via BulletLogic.ReachedTarget.
                 {
-                    int r1x = (rng?.Next(16) ?? 8) + 10;
-                    int r2x = (rng?.Next(16) ?? 8) + 10;
-                    var b1 = BulletLogic.AimedAt(BulletKind.Player,
+                    ConsumeRandomPitchSound(rng, "sound.fx_missle");
+                    int r1x = NextRandom(rng, 16, "dumb.scatter.r", fallback: 8) + 10;
+                    int r2x = NextRandom(rng, 16, "dumb.scatter.l", fallback: 8) + 10;
+                    var b1 = BulletLogic.PlayerAimedAt(
                         x: playerCx, y: playerCy,
                         x2: playerCx + r1x, y2: playerCy + 5,
-                        initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed, damage: lib.Hits);
-                    var b2 = BulletLogic.AimedAt(BulletKind.Player,
+                        initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed,
+                        hlx: lib.Hlx, hly: lib.Hly, damage: lib.Hits);
+                    var b2 = BulletLogic.PlayerAimedAt(
                         x: playerCx, y: playerCy,
                         x2: playerCx - r2x, y2: playerCy + 5,
-                        initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed, damage: lib.Hits);
+                        initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed,
+                        hlx: lib.Hlx, hly: lib.Hly, damage: lib.Hits);
                     b1.PlayerWeapon = WeaponType.DumbMissile; b1.Delayed = true;
                     b2.PlayerWeapon = WeaponType.DumbMissile; b2.Delayed = true;
                     sink.Add(b1); sink.Add(b2);
@@ -263,17 +340,34 @@ public sealed class PlayerShooter
                 // If no enemy is on-screen, C returns FALSE (no shot fired) —
                 // we mirror that by un-doing the cooldown and returning false.
                 {
-                    var target = PickRandomEnemy(enemies, rng);
+                    bool deterministic = DeterministicMiniGun;
+                    var target = deterministic
+                        ? PickMiddleEnemy(enemies)
+                        : PickRandomEnemy(enemies, rng);
                     if (target == null)
                     {
-                        _curShoot[idx] = 0;
+                        TraceMiniGunTarget(enemies, target: null);
                         return false;
                     }
-                    int aimX = target.X + (rng?.Next(2 * target.HalfW) ?? target.HalfW) - 1;
-                    int aimY = target.Y + target.HalfH + (rng?.Next(2 * target.HalfH) ?? target.HalfH) - 1;
-                    var mg = BulletLogic.AimedAt(BulletKind.Player,
+                    int aimX;
+                    int aimY;
+                    if (deterministic)
+                    {
+                        aimX = target.X + target.HalfW - 1;
+                        aimY = target.Y + target.HalfH + target.HalfH - 1;
+                    }
+                    else
+                    {
+                        ConsumeRandomPitchSound(rng, "sound.fx_gun");
+                        NextRandom(rng, lib.NumFrames, "mini.frame");
+                        aimX = target.X + NextRandom(rng, target.Meta.Width, "mini.aim.x", fallback: target.HalfW) - 1;
+                        aimY = target.Y + target.HalfH + NextRandom(rng, target.Meta.Height, "mini.aim.y", fallback: target.HalfH) - 1;
+                    }
+                    TraceMiniGunTarget(enemies, target);
+                    var mg = BulletLogic.PlayerAimedAt(
                         x: playerCx, y: playerCy, x2: aimX, y2: aimY,
-                        initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed, damage: lib.Hits);
+                        initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed,
+                        hlx: lib.Hlx, hly: lib.Hly, damage: lib.Hits);
                     mg.PlayerWeapon = WeaponType.MiniGun;
                     sink.Add(mg);
                 }
@@ -285,9 +379,10 @@ public sealed class PlayerShooter
                 // can fire the detonation effect (SHOTS.C:1232-1241:
                 // ESHOT_Clear + damage all enemies + remove shot).
                 {
-                    var mb = BulletLogic.AimedAt(BulletKind.Player,
+                    var mb = BulletLogic.PlayerAimedAt(
                         x: playerCx, y: playerCy, x2: 160, y2: 75,
-                        initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed, damage: lib.Hits);
+                        initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed,
+                        hlx: lib.Hlx, hly: lib.Hly, damage: lib.Hits);
                     mb.PlayerWeapon = WeaponType.MegaBomb;
                     sink.Add(mb);
                 }
@@ -304,15 +399,17 @@ public sealed class PlayerShooter
                         _curShoot[idx] = 0;
                         return false;
                     }
+                    ConsumeRandomPitchSound(rng, "sound.fx_turret");
                     target.TakeDamage(lib.Hits);
-                    int aimX = target.X + (rng?.Next(2 * target.HalfW) ?? target.HalfW) - 1;
-                    int aimY = target.Y + (rng?.Next(2 * target.HalfH) ?? target.HalfH) - 1;
+                    int aimX = target.X + NextRandom(rng, target.Meta.Width, "turret.aim.x", fallback: target.HalfW) - 1;
+                    int aimY = target.Y + NextRandom(rng, target.Meta.Height, "turret.aim.y", fallback: target.HalfH) - 1;
                     sink.Add(BulletLogic.LineBeam(aimX, aimY, damage: lib.Hits));
                 }
                 break;
 
             case WeaponType.ForwardLaser:
                 // SHOTS.C:971-999. Two S_BEAM bullets at gun3 ± offset.
+                // FX_LASER has rpflag=FALSE, so it does not consume RNG.
                 // lib->fplrx = fplry = TRUE — beams track player_cx/cy each
                 // iter; pass spawn-time playerCx/Cy as the start so each iter
                 // the beam re-renders at (move - hlx) + (playerCx_now - startx).
@@ -328,6 +425,7 @@ public sealed class PlayerShooter
 
             case WeaponType.DeathRay:
                 // SHOTS.C:1001-1014. Single S_BEAM bullet, center above player.
+                // FX_LASER has rpflag=FALSE, so it does not consume RNG.
                 // Same fplr-tracking semantics as FORWARD_LASER.
                 sink.Add(BulletLogic.VerticalBeam(
                     x: playerCx, y: playerCy - 24,
@@ -338,9 +436,10 @@ public sealed class PlayerShooter
             default:
                 return false;
         }
-        // Tag every bullet we just pushed with the weapon's hit type so
-        // WaveController collision can filter air/ground enemies.
-        TagHitType(sink, sinkStart, lib.Ht);
+        // Tag every bullet we just pushed with the weapon metadata C stores
+        // through shot->lib: hit type for collision and weapon id for dumps /
+        // shot_done dispatch.
+        TagShotMetadata(sink, sinkStart, type, lib.Ht);
         return sink.Count > sinkStart;
     }
 
@@ -351,32 +450,130 @@ public sealed class PlayerShooter
     /// but the BUT_1 cascade aggregates several Shoot() calls into one sink;
     /// each call retags only the bullets it pushed.
     /// </summary>
-    private static void TagHitType(List<BulletLogic> sink, int from, HitType ht)
+    private static void TagShotMetadata(List<BulletLogic> sink, int from,
+                                        WeaponType type, HitType ht)
     {
-        for (int i = from; i < sink.Count; i++) sink[i].HitType = ht;
+        for (int i = from; i < sink.Count; i++)
+        {
+            sink[i].HitType = ht;
+            sink[i].PlayerWeapon = type;
+            sink[i].CWeaponTypeForDump = CShotLibType(type);
+        }
     }
+
+    private static WeaponType CShotLibType(WeaponType type) =>
+        type == WeaponType.AirMissile ? WeaponType.MissilePods : type;
 
     private static EnemyLogic? PickRandomEnemy(IReadOnlyList<EnemyLogic>? enemies, Random? rng)
     {
         if (enemies == null || enemies.Count == 0) return null;
-        int start = rng?.Next(enemies.Count) ?? 0;
-        for (int i = 0; i < enemies.Count; i++)
-        {
-            var e = enemies[(start + i) % enemies.Count];
-            if (e.Alive) return e;
-        }
-        return null;
+        var visible = new List<EnemyLogic>(enemies.Count);
+        foreach (var e in enemies)
+            if (IsVisible(e)) visible.Add(e);
+        if (visible.Count == 0) return null;
+        return visible[NextRandom(rng, visible.Count, "mini.target")];
+    }
+
+    private static EnemyLogic? PickMiddleEnemy(IReadOnlyList<EnemyLogic>? enemies)
+    {
+        if (enemies == null || enemies.Count == 0) return null;
+        var visible = new List<EnemyLogic>(enemies.Count);
+        foreach (var e in enemies)
+            if (IsVisible(e)) visible.Add(e);
+        if (visible.Count == 0) return null;
+        return visible[visible.Count / 2];
     }
 
     private static EnemyLogic? PickRandomAirEnemy(IReadOnlyList<EnemyLogic>? enemies, Random? rng)
     {
         if (enemies == null || enemies.Count == 0) return null;
-        int start = rng?.Next(enemies.Count) ?? 0;
-        for (int i = 0; i < enemies.Count; i++)
+        var visible = new List<EnemyLogic>(enemies.Count);
+        foreach (var e in enemies)
+            if (IsVisible(e) && !e.IsGround) visible.Add(e);
+        if (visible.Count == 0) return null;
+        return visible[NextRandom(rng, visible.Count, "turret.target")];
+    }
+
+    private static bool IsVisible(EnemyLogic e)
+    {
+        if (!e.Alive && !e.PendingRemovalDump) return false;
+        return e.Y + e.Meta.Height > 0 && e.Y < 200
+            && e.X + e.Meta.Width > 0 && e.X < 320;
+    }
+
+    internal static int NextRandom(Random? rng, int maxValue, string label, int fallback = 0)
+    {
+        int value = DeterministicRandom.NextOrMidpoint(rng, maxValue, fallback);
+        var trace = RngTrace.Value;
+        if (trace != null)
         {
-            var e = enemies[(start + i) % enemies.Count];
-            if (e.Alive && !e.IsGround) return e;
+            trace.WriteLine(string.Format(CultureInfo.InvariantCulture,
+                "{0} max={1} value={2}", label, maxValue, value));
+            trace.Flush();
         }
-        return null;
+        return value;
+    }
+
+    internal static void TraceLine(string message)
+    {
+        var trace = RngTrace.Value;
+        if (trace == null) return;
+        trace.WriteLine(message);
+        trace.Flush();
+    }
+
+    private static void TraceMiniGunTarget(IReadOnlyList<EnemyLogic>? enemies, EnemyLogic? target)
+    {
+        var trace = RngTrace.Value;
+        if (trace == null) return;
+
+        trace.WriteLine(string.Format(CultureInfo.InvariantCulture,
+            "mini.target.snapshot count={0} selected={1}",
+            enemies?.Count ?? 0,
+            target == null
+                ? "none"
+                : string.Format(CultureInfo.InvariantCulture, "x={0} y={1} w={2} h={3}", target.X, target.Y, target.Meta.Width, target.Meta.Height)));
+        if (enemies != null)
+        {
+            for (int i = 0; i < enemies.Count; i++)
+            {
+                var e = enemies[i];
+                trace.WriteLine(string.Format(CultureInfo.InvariantCulture,
+                    "mini.target.snapshot[{0}] x={1} y={2} w={3} h={4} alive={5} pending={6} visible={7}",
+                    i, e.X, e.Y, e.Meta.Width, e.Meta.Height, e.Alive, e.PendingRemovalDump, IsVisible(e)));
+            }
+        }
+        trace.Flush();
+    }
+
+    private static void ConsumeRandomPitchSound(Random? rng, string label)
+    {
+        // FX.C SND_Patch randomizes pitch for rpflag sounds with random(40).
+        // The C game shares that rand() stream with weapon targeting, so
+        // headless/no-audio parity still needs to consume it.
+        NextRandom(rng, 40, label);
+    }
+
+    private static StreamWriter? OpenRngTrace()
+    {
+        string? path = Environment.GetEnvironmentVariable("RAPTOR_SHOOT_RNG_TRACE");
+        if (string.IsNullOrWhiteSpace(path)) return null;
+        return new StreamWriter(path) { AutoFlush = true };
+    }
+
+    private static StreamWriter? OpenSpecialTrace()
+    {
+        string? path = Environment.GetEnvironmentVariable("RAPTOR_SPECIAL_TRACE");
+        if (string.IsNullOrWhiteSpace(path)) return null;
+        return new StreamWriter(path) { AutoFlush = true };
+    }
+
+    private static void TraceSpecial(string eventName, int type)
+    {
+        var trace = SpecialTrace.Value;
+        if (trace == null) return;
+        trace.WriteLine(string.Format(CultureInfo.InvariantCulture,
+            "event={0} type={1}", eventName, type));
+        trace.Flush();
     }
 }

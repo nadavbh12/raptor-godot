@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using Godot;
 using Raptor.Sim.Bonus;
@@ -93,6 +94,7 @@ public partial class WaveController : Node
     // rel=133 (after iter 0 at rel~14 + 119 frames of fade-in + 3 wait).
     // Hold=131 puts Godot iter 1 at frame 134 (after subTick cycle of 3).
     private const int FadeInHoldFrames = 131;
+    private const int DemoFadeInHoldFrames = 153;
 
     // C: between Return-on-shipcomp (raptor_parity_set_win_state(0) inside
     // menu_exit) and raptor_parity_game_enter being called, the main thread
@@ -103,6 +105,7 @@ public partial class WaveController : Node
     // application, and the player input pipeline picks up the held throttle
     // ~30 iters later than C does.
     private const int LoadCompFrames = 102;
+    private const int DemoLoadCompFrames = 78;
     private int  _waveNum    = 1;
 
     // When MenuStateMachine.EnterGame fires we defer the iter-0 body and
@@ -111,6 +114,15 @@ public partial class WaveController : Node
     // becomes active and iter 0 runs.
     private int  _pendingGameEnterFrame = -1;
     private int  _pendingGameNum = 0;
+    private int  _pendingDemoStartFrame = -1;
+    private DemoReplay? _pendingDemoReplay;
+    private DemoReplay? _demoReplay;
+    private int _demoRecordIndex = 0;
+    private bool _demoB2Latch = false;
+    private bool _demoB3Latch = false;
+    private bool _debugDemoReplay = false;
+    private int _paletteStuffCnt = 0;
+    private bool _skipInitialPaletteStuff = false;
 
     // Fired right after _gameLoopIter advances; PositionDumper subscribes to
     // emit at iter ends, mirroring C's parity_tick semantics.
@@ -170,6 +182,7 @@ public partial class WaveController : Node
     private const int EB_NOT_USED    = 64;
     // Default difficulty: DIFF_2 (Normal) → cur_diff = 24.
     private int _curDiff = EB_EASY_LEVEL | EB_MED_LEVEL;   // 24
+    private int _curPlayerDiff = 2;
 
     /// <summary>
     /// Maps a raw CSPRITE.level value to the corresponding EB_ bitmask.
@@ -198,6 +211,7 @@ public partial class WaveController : Node
     private readonly List<BulletLogic>  _playerBullets = new();
     private readonly List<BulletLogic>  _enemyBullets  = new();
     private readonly List<BonusLogic>   _bonuses       = new();
+    private readonly List<EnemyLogic>   _weaponTargetEnemies = new();
 
     // Active explosion animations spawned when an enemy dies. Each entry
     // records the C exptype (SOURCE/MAP.H), the center position, and the sim
@@ -215,16 +229,22 @@ public partial class WaveController : Node
 
     // ── Collision scratch ─────────────────────────────────────────────────────
     private readonly List<(EnemyLogic enemy, int dmg)> _hitEnemies = new();
+    private readonly List<BulletLogic> _shotDoneAfterCollision = new();
     private bool _playerHit;
     private int  _playerHitDmg;
     private readonly List<EnemyLogic> _bodyCrashEnemies = new();  // enemies that collided with player
     private readonly List<BonusLogic> _pickedUpBonuses  = new();  // bonuses overlapping player this tick
+    private bool _playerWasAliveAtCollisionStart;
 
     // ── Shield recharge (OBJS_Think in C) ────────────────────────────────────
     // CHARGE_SHIELD = 24*4 = 96. When think_cnt > 96, heal 1 shield.
     // curplr_diff < DIFF_3 enables recharge.
     private const int ChargeShield = 96;
+    private const int ShieldLow = 10;
     private int _thinkCnt = 0;
+    private int _oldShieldForLowLoss = -1;
+    public int SystemDamageWarningUntilFrame { get; private set; } = -1;
+    private static readonly Lazy<StreamWriter?> ShieldTrace = new(OpenShieldTrace);
 
     // ── Map scroll state (mirrors C's TILE.C) ─────────────────────────────────
     // tilepos starts at (MAP_ROWS - MAP_ONSCREEN) * MAP_COLS = 142 * 9 = 1278.
@@ -247,7 +267,14 @@ public partial class WaveController : Node
     // dispatches against this slice. Destructibility / Hits / Bounty are
     // looked up by (MapTileEntry.FGame, MapTileEntry.Flats) in _flatLib.
     private readonly List<TileState> _tileSlice = new();
+    private int _tileSliceTilePos = int.MinValue;
+    private int[]? _tileHitsByMapSpot;
+    private bool[]? _tileDeadByMapSpot;
+    private bool[]? _tileDestructibleByMapSpot;
+    private int[]? _tileBountyByMapSpot;
+    private readonly List<TileDelayExplosion> _tileDelayExplosions = new();
     private FlatLibrary? _flatLib;
+    private record struct TileDelayExplosion(int MapSpot, int Frames);
 
     // ── Map sprite list for spawning ──────────────────────────────────────────
     private List<MapSpriteEntry>? _mapSprites;
@@ -255,6 +282,19 @@ public partial class WaveController : Node
 
     /// <summary>Tile-grid data for the current wave (rows * cols entries, row-major).</summary>
     public IReadOnlyList<MapTileEntry>? MapTiles => _mapTiles;
+
+    public int RenderedFlatFor(int mapspot)
+    {
+        if (_mapTiles == null || mapspot < 0 || mapspot >= _mapTiles.Count)
+            return 0;
+
+        int flat = _mapTiles[mapspot].Flats;
+        if (_flatLib == null || _tileDeadByMapSpot == null ||
+            mapspot >= _tileDeadByMapSpot.Length || !_tileDeadByMapSpot[mapspot])
+            return flat;
+
+        return _flatLib.DestroyedFlatFor(flat);
+    }
     /// <summary>Current scroll Y offset (mirrors C's tileyoff).</summary>
     public int TileYOff => _tileyoff;
     /// <summary>Current top-of-screen row in the tile grid (mirrors C's tilepos).</summary>
@@ -286,6 +326,7 @@ public partial class WaveController : Node
         SeedRngForWave(1, OS.GetEnvironment("RAPTOR_RNG_SEED_OVERRIDE"));
 
         _assetsRoot = ProjectSettings.GlobalizePath("res://assets");
+        _debugDemoReplay = OS.GetEnvironment("RAPTOR_DEBUG_DEMO") == "1";
 
         var menuController = GetNodeOrNull<MenuController>("../MenuController");
         if (menuController != null)
@@ -312,6 +353,19 @@ public partial class WaveController : Node
             _emitter.GetPbullets = () => _playerBullets.Count;
             _emitter.GetEbullets = () => _enemyBullets.Count;
             _emitter.GetGameIter = () => GameLoopIter;
+            _emitter.GetGameAnchorFrame = () => _gameEnterFc;
+            _emitter.GetDemoGameNum = () => _demoReplay?.Header.DemoGame ?? -1;
+            _emitter.GetMenuDemoEmitSequence = () => MenuDemoEmitSequence;
+        }
+    }
+
+    private int MenuDemoEmitSequence
+    {
+        get
+        {
+            if (_pendingDemoStartFrame >= 0) return -1;
+            if (_demoReplay != null) return _demoRecordIndex;
+            return int.MinValue;
         }
     }
 
@@ -339,6 +393,7 @@ public partial class WaveController : Node
     private void ApplyPendingGameEnter()
     {
         _waveNum    = _pendingGameNum + 1;  // gameNum is 0-based; wave files are 1-based.
+        SeedRngForWave(_waveNum, OS.GetEnvironment("RAPTOR_RNG_SEED_OVERRIDE"));
         LoadWave(_waveNum);
         _gameEnterFc = SimClock.Frame;
         _waveActive  = true;
@@ -353,6 +408,57 @@ public partial class WaveController : Node
         OnIterEnd?.Invoke();
     }
 
+    public void StartDemoPlayback(DemoReplay replay, int currentFrame)
+    {
+        _pendingDemoReplay = replay;
+        _pendingDemoStartFrame = currentFrame + DemoLoadCompFrames;
+    }
+
+    private void ApplyPendingDemoStart()
+    {
+        if (_pendingDemoReplay == null) return;
+
+        _demoReplay = _pendingDemoReplay;
+        _pendingDemoReplay = null;
+        _pendingDemoStartFrame = -1;
+        _demoRecordIndex = 0;
+        _demoB2Latch = false;
+        _demoB3Latch = false;
+
+        _waveNum = _demoReplay.Header.DemoWave + 1;
+        SeedRngForWave(_demoReplay.Header.DemoWave, OS.GetEnvironment("RAPTOR_RNG_SEED_OVERRIDE"));
+        LoadWave(_waveNum);
+        SetupDemoPlayer(_demoReplay.Header.DemoGame);
+        _gameEnterFc = SimClock.Frame;
+        _waveActive = true;
+        if (_debugDemoReplay)
+            GD.Print($"demo start fc={SimClock.Frame} fade={DemoFadeInHoldFrames}");
+
+        _scheduler.Tick();
+        _gameLoopIter++;
+        OnIterEnd?.Invoke();
+    }
+
+    private void SetupDemoPlayer(int game)
+    {
+        // DEMO_MakePlayer sets plr.diff[0..2] = DIFF_3 before
+        // RAP_SetPlayerDiff(), so demo playback runs on hard difficulty.
+        _curPlayerDiff = 3;
+        _curDiff = EB_EASY_LEVEL | EB_MED_LEVEL | EB_HARD_LEVEL;
+
+        Score = game switch
+        {
+            1 => NewPilotScore + 327683u,
+            2 => NewPilotScore + 876543u,
+            _ => NewPilotScore,
+        };
+        PlayerLogic.SetShield(PlayerLogic.MaxShield);
+        _oldShieldForLowLoss = PlayerLogic.Shield;
+        HasSecretsDetector = true;
+
+        DemoLoadout.Apply(Shooter, game, registered: false);
+    }
+
     /// <summary>
     /// Loads the wave's map data and initialises the spawn state.
     /// Public for testing; normally called via OnGameEnter.
@@ -363,9 +469,15 @@ public partial class WaveController : Node
         _playerBullets.Clear();
         _enemyBullets.Clear();
         _bonuses.Clear();
+        _weaponTargetEnemies.Clear();
         _hitEnemies.Clear();
+        _shotDoneAfterCollision.Clear();
         _pickedUpBonuses.Clear();
         _explosions.Clear();
+        _tileDelayExplosions.Clear();
+        _paletteStuffCnt = 0;
+        _skipInitialPaletteStuff = true;
+        _oldShieldForLowLoss = PlayerLogic.Shield;
         _playerHit = false;
         _endWaveFlag = false;
         _subTick = 0;
@@ -383,15 +495,13 @@ public partial class WaveController : Node
             if (File.Exists(flatsPath))
                 _flatLib = FlatLibrary.LoadFromFile(flatsPath);
         }
-        RebuildTileSlice();
-
         // Reset player position.
         PlayerLogic.Reset();
         // Reset weapon cooldowns; mirrors SHOTS_Init in RAP.C Init_Game.
         Shooter.Reset();
         // Seed PlayerShooter RNG deterministically off the wave seed so
         // DUMB_MISSLE scatter and MINI_GUN picks are replay-stable.
-        _shooterRng = new System.Random((int)(Rng.Seed & 0x7FFFFFFFu));
+        _shooterRng = new LegacyRandom((int)(Rng.Seed & 0x7FFFFFFFu));
 
         // Load sprite metadata library.
         string slibPath = Path.Combine(_assetsRoot ?? "assets", "sprites_meta", "SPRITE1_ITM.json");
@@ -403,6 +513,9 @@ public partial class WaveController : Node
         _mapSprites    = mapData.Sprites ?? new List<MapSpriteEntry>();
         _mapTiles      = mapData.Tiles   ?? new List<MapTileEntry>();
         _spawnIdx      = 0;
+        InitializeTileBacking();
+        _tileSliceTilePos = int.MinValue;
+        RebuildTileSlice();
 
         GD.Print($"WaveController: loaded wave {waveNum}, {_mapSprites.Count} sprites, tiley={_tiley}");
 
@@ -474,6 +587,8 @@ public partial class WaveController : Node
     {
         if (_pendingGameEnterFrame >= 0 && SimClock.Frame >= _pendingGameEnterFrame)
             ApplyPendingGameEnter();
+        if (_pendingDemoStartFrame >= 0 && SimClock.Frame >= _pendingDemoStartFrame)
+            ApplyPendingDemoStart();
 
         if (!_waveActive) return;
 
@@ -481,7 +596,8 @@ public partial class WaveController : Node
         // runs before GFX_FadeIn). After iter 0, hold for FadeInHoldFrames
         // frames to mirror C's blocking palette fade-in. Then run at strict
         // 3 fc/iter (the C steady-state cadence confirmed by position dumps).
-        if (SimClock.Frame - _gameEnterFc < FadeInHoldFrames) return;
+        int fadeHoldFrames = _demoReplay != null ? DemoFadeInHoldFrames : FadeInHoldFrames;
+        if (SimClock.Frame - _gameEnterFc < fadeHoldFrames) return;
 
         _subTick++;
         if (_subTick < 3) return;
@@ -495,6 +611,24 @@ public partial class WaveController : Node
 
     internal void PhaseInput()
     {
+        if (_demoReplay != null)
+        {
+            if (_demoRecordIndex >= _demoReplay.Records.Count)
+            {
+                _demoReplay = null;
+                _waveActive = false;
+                return;
+            }
+
+            var frame = _demoReplay.Records[_demoRecordIndex++];
+            if (_debugDemoReplay && _demoRecordIndex <= 40)
+                GD.Print($"demo tick fc={SimClock.Frame} rec={_demoRecordIndex - 1} px={frame.Px} py={frame.Py}");
+            PlayerLogic.ApplyDemoFrame(frame.Px, frame.Py, frame.PlayerPic);
+            ApplyDemoButtons(frame);
+            Shooter.TickCooldowns();
+            return;
+        }
+
         // Under a parity playthrough, scripted `down NAME`/`up NAME` lines
         // populate PlaythroughDriver's held-key set; read it as the player's
         // key state and let PlayerLogic.Tick run C's IPT_GetKeyBoard ramp.
@@ -521,7 +655,7 @@ public partial class WaveController : Node
         {
             int cx = PlayerLogic.X + 16;       // player_cx = playerx + PLAYERWIDTH/2
             int cy = PlayerLogic.Y + 16;
-            var fired = Shooter.ApplyButton1(cx, cy, PlayerLogic.Pic, _enemies, _shooterRng);
+            var fired = Shooter.ApplyButton1(cx, cy, PlayerLogic.Pic, _weaponTargetEnemies, _shooterRng);
             foreach (var b in fired) _playerBullets.Add(b);
         }
 
@@ -530,13 +664,61 @@ public partial class WaveController : Node
         Shooter.TickCooldowns();
     }
 
+    private void ApplyDemoButtons(DemoReplay.Frame frame)
+    {
+        int cx = PlayerLogic.X + 16;
+        int cy = PlayerLogic.Y + 16;
+
+        if (frame.B1 != 0)
+        {
+            var fired = Shooter.ApplyButton1(cx, cy, PlayerLogic.Pic, _weaponTargetEnemies, _shooterRng);
+            foreach (var b in fired) _playerBullets.Add(b);
+        }
+
+        if (frame.B2 != 0)
+        {
+            if (!_demoB2Latch)
+            {
+                _demoB2Latch = true;
+                Shooter.CycleSpecial();
+            }
+        }
+        else
+        {
+            _demoB2Latch = false;
+        }
+
+        if (frame.B3 != 0)
+        {
+            if (!_demoB3Latch)
+            {
+                _demoB3Latch = true;
+                var fired = new List<BulletLogic>(1);
+                if (Shooter.MegaBombCount > 0
+                    && Shooter.Shoot(WeaponType.MegaBomb, cx, cy, PlayerLogic.Pic, fired, _enemies, _shooterRng))
+                {
+                    Shooter.ConsumeMegaBomb();
+                    foreach (var b in fired) _playerBullets.Add(b);
+                }
+            }
+        }
+        else
+        {
+            _demoB3Latch = false;
+        }
+    }
+
     internal void PhaseSpawn()
     {
         if (_mapSprites == null || _slib == null || _endWaveFlag) return;
 
-        // Order matches C: ENEMY_Think (which spawns) is called BEFORE
-        // TILE_DisplayScreen (which advances tilepos) in RAP.C's main loop.
-        // So we spawn for the current tilepos first, then advance scroll.
+        RefreshTileSliceForThink();
+        ProcessTileDelayExplosions();
+
+        // This method combines Godot's spawn phase with C's TILE_Think scroll
+        // advance. The collision tile slice above intentionally stays at the
+        // pre-scroll tspots for the current SHOTS pass; _tilepos/_tileyoff are
+        // advanced here for subsequent spawning/scroll state.
         SpawnForTiley(_tiley);
 
         _tileyoff++;
@@ -546,22 +728,23 @@ public partial class WaveController : Node
             _tilepos  -= MAP_COLS;
             _tiley     = _tilepos / MAP_COLS - 3;
             if (_tilepos <= 0) _tilepos = 0;
-            // Tilepos advanced one row → re-populate _tileSlice. Hits / Bounty
-            // for any in-progress destruction get reset by this; in C the
-            // tspot slot tdead/hits arrays index by absolute mapspot rather
-            // than slice slot, so they survive scroll. Our simpler model
-            // re-derives per row; tile destruction only matters while the
-            // tile is on-screen anyway, so the reset is invisible.
-            RebuildTileSlice();
         }
-        else
+    }
+
+    private void RefreshTileSliceForThink()
+    {
+        if (_tileSlice.Count == 0 || _tileSliceTilePos != _tilepos)
         {
-            // No row crossing — just shift the ScreenY of each slot for sub-
-            // tile-height scroll. ScreenX is constant; only the y-offset
-            // moves between full-row rebuilds.
-            for (int i = 0; i < _tileSlice.Count; i++)
-                _tileSlice[i].ScreenY = _tileyoff + (i / MAP_COLS) * MAP_BLOCKSIZE;
+            RebuildTileSlice();
+            return;
         }
+
+        // C TILE_Think writes tspots using the current tileyoff, then advances
+        // tileyoff at the end of the same function. Later SHOTS_Think collides
+        // against those pre-scroll tspots, so update the collision slice at the
+        // start of PhaseSpawn and leave it unchanged after scrolling.
+        for (int i = 0; i < _tileSlice.Count; i++)
+            _tileSlice[i].ScreenY = _tileyoff + (i / MAP_COLS) * MAP_BLOCKSIZE;
     }
 
     /// <summary>
@@ -582,26 +765,129 @@ public partial class WaveController : Node
             int slot     = row * MAP_COLS + col;
             int mapspot  = _tilepos + slot;
             var t        = _tileSlice[slot];
+            t.MapSpot    = mapspot;
             t.ScreenX    = MAP_LEFT + col * MAP_BLOCKSIZE;
             t.ScreenY    = _tileyoff + row * MAP_BLOCKSIZE;
-            t.Dead       = false;
             if (_mapTiles == null || mapspot < 0 || mapspot >= _mapTiles.Count ||
-                _flatLib == null)
+                _flatLib == null || _tileHitsByMapSpot == null ||
+                _tileDeadByMapSpot == null || _tileDestructibleByMapSpot == null ||
+                _tileBountyByMapSpot == null)
             {
                 t.IsDestructible = false; t.Hits = 1; t.Bounty = 0;
+                t.Dead = false;
                 continue;
             }
-            var entry = _mapTiles[mapspot];
-            int flatIdx = entry.Flats;
+            t.IsDestructible = _tileDestructibleByMapSpot[mapspot];
+            t.Hits           = _tileHitsByMapSpot[mapspot];
+            t.Bounty         = _tileBountyByMapSpot[mapspot];
+            t.Dead           = _tileDeadByMapSpot[mapspot];
+        }
+        _tileSliceTilePos = _tilepos;
+    }
+
+    private void InitializeTileBacking()
+    {
+        int count = _mapTiles?.Count ?? 0;
+        _tileHitsByMapSpot = new int[count];
+        _tileDeadByMapSpot = new bool[count];
+        _tileDestructibleByMapSpot = new bool[count];
+        _tileBountyByMapSpot = new int[count];
+
+        if (_mapTiles == null || _flatLib == null) return;
+        for (int mapspot = 0; mapspot < _mapTiles.Count; mapspot++)
+        {
+            int flatIdx = _mapTiles[mapspot].Flats;
             if (flatIdx < 0 || flatIdx >= _flatLib.Count)
             {
-                t.IsDestructible = false; t.Hits = 1; t.Bounty = 0;
+                _tileHitsByMapSpot[mapspot] = 1;
                 continue;
             }
-            t.IsDestructible = _flatLib.IsDestructible(flatIdx);
-            t.Hits           = _flatLib.HitsFor(flatIdx);
-            t.Bounty         = _flatLib.BountyFor(flatIdx);
+
+            bool destructible = _flatLib.IsDestructible(flatIdx);
+            _tileDestructibleByMapSpot[mapspot] = destructible;
+            _tileHitsByMapSpot[mapspot] = _flatLib.HitsFor(flatIdx);
+            _tileBountyByMapSpot[mapspot] = _flatLib.BountyFor(flatIdx);
         }
+    }
+
+    private void SyncTileSliceToBacking()
+    {
+        if (_tileHitsByMapSpot == null || _tileDeadByMapSpot == null) return;
+        foreach (var t in _tileSlice)
+        {
+            if (t.MapSpot < 0 || t.MapSpot >= _tileHitsByMapSpot.Length) continue;
+            _tileHitsByMapSpot[t.MapSpot] = t.Hits;
+            _tileDeadByMapSpot[t.MapSpot] = t.Dead;
+        }
+    }
+
+    private void RefreshTileSliceValuesFromBacking()
+    {
+        if (_tileHitsByMapSpot == null || _tileDeadByMapSpot == null) return;
+        foreach (var t in _tileSlice)
+        {
+            if (t.MapSpot < 0 || t.MapSpot >= _tileHitsByMapSpot.Length) continue;
+            t.Hits = _tileHitsByMapSpot[t.MapSpot];
+            t.Dead = _tileDeadByMapSpot[t.MapSpot];
+        }
+    }
+
+    private void ApplyTileExplosionDamage(int mapspot, int damage)
+    {
+        if (_tileHitsByMapSpot == null || _tileDeadByMapSpot == null ||
+            _tileDestructibleByMapSpot == null)
+            return;
+
+        int ix = mapspot % MAP_COLS;
+        ApplyTileExplosionNeighbor(mapspot - 1, ix - 1, damage);
+        ApplyTileExplosionNeighbor(mapspot - MAP_COLS, ix, damage);
+        ApplyTileExplosionNeighbor(mapspot + 1, ix + 1, damage);
+    }
+
+    private void ApplyTileExplosionNeighbor(int spot, int x, int damage)
+    {
+        if (_tileHitsByMapSpot == null || _tileDeadByMapSpot == null ||
+            _tileDestructibleByMapSpot == null)
+            return;
+        if (spot < 0 || spot >= _tileHitsByMapSpot.Length) return;
+        if (x < 0 || x >= MAP_COLS) return;
+        if (!_tileDestructibleByMapSpot[spot]) return;
+        if (_tileDeadByMapSpot[spot]) return;
+
+        int before = _tileHitsByMapSpot[spot];
+        _tileHitsByMapSpot[spot] -= damage;
+        TileDamageDispatcher.TraceMapSpot("splash", spot, -1, -1, damage, before,
+            _tileHitsByMapSpot[spot], _tileDeadByMapSpot[spot]);
+        if (before >= 0 && _tileHitsByMapSpot[spot] < 0)
+        {
+            _tileDeadByMapSpot[spot] = true;
+            SpawnTileExplosion(spot);
+            ApplyTileExplosionDamage(spot, damage: 5);
+            ScheduleTileDelayExplosion(spot);
+        }
+    }
+
+    private void ScheduleTileDelayExplosion(int mapspot)
+    {
+        _tileDelayExplosions.Add(new TileDelayExplosion(mapspot, 10));
+    }
+
+    private void ProcessTileDelayExplosions()
+    {
+        for (int i = 0; i < _tileDelayExplosions.Count; i++)
+        {
+            var td = _tileDelayExplosions[i];
+            if (td.Frames < 0)
+            {
+                ApplyTileExplosionDamage(td.MapSpot, damage: 20);
+                _tileDelayExplosions.RemoveAt(i);
+                i--;
+                continue;
+            }
+
+            _tileDelayExplosions[i] = td with { Frames = td.Frames - 1 };
+        }
+        RefreshTileSliceValuesFromBacking();
     }
 
     internal void PhaseMovement()
@@ -616,27 +902,34 @@ public partial class WaveController : Node
         for (int i = 0; i < _enemies.Count; i++)
         {
             var enemy = _enemies[i];
-            if (!enemy.Alive) continue;
+            if (!enemy.Alive && !enemy.PendingRemovalDump) continue;
             var fired = enemy.Tick(px, py);
             if (fired != null)
-                _enemyBullets.Add(fired);
+                AddEnemyBullet(fired);
             // Multi-gun enemies (helicopters numguns=2, bosses up to 13) fire
             // one bullet per gun per shot tick — collect the extras.
             var extras = enemy.ExtraBulletsThisTick;
             if (extras != null)
-                foreach (var b in extras) _enemyBullets.Add(b);
+                foreach (var b in extras) AddEnemyBullet(b);
         }
+        RebuildWeaponTargetSnapshot();
 
-        // Mirrors C SHOTS_Think shot_done branch (SHOTS.C:1218-1249) at the
-        // top of each per-iter shot pass. A Bresenham player bullet that
-        // reached its target in the previous Tick triggers either a re-init
-        // (DUMB_MISSLE delayflag → straight-up scatter to y=0) or a per-
-        // weapon detonation (MEGA_BOMB → damage-all + clear enemy bullets),
-        // or a default Remove. Runs BEFORE the per-bullet Tick to match
-        // C's ordering within SHOTS_Think.
+        // C reaches shot_done after the damage switch. Straight shots set both
+        // move.done and doneflag when leaving the screen, so they remove before
+        // damage. use_plot player shots set only move.done, so they get one
+        // final collision pass at their current move.x/y target before removal
+        // or delay re-targeting.
+        _shotDoneAfterCollision.Clear();
         foreach (var b in _playerBullets)
         {
-            if (!b.Alive || !b.ReachedTarget) continue;
+            if (!b.Alive || !b.PendingShotDone) continue;
+            if (b.ReachedTarget && !b.DeferredDoneFlag && b.IsPlayerAimedBresenham)
+            {
+                b.SnapshotForPendingShotDonePass();
+                _shotDoneAfterCollision.Add(b);
+                continue;
+            }
+
             HandleShotDone(b);
             b.ClearReachedTarget();
         }
@@ -655,7 +948,10 @@ public partial class WaveController : Node
 
         // Tick player bullets.
         foreach (var b in _playerBullets)
+        {
+            if (_shotDoneAfterCollision.Contains(b)) continue;
             b.Tick();
+        }
 
         // Tick bonuses (BONUS_Think — drift down 1 px/iter, despawn at y > 200).
         foreach (var bn in _bonuses) bn.Tick();
@@ -692,6 +988,7 @@ public partial class WaveController : Node
 
         _playerHit = false;
         _playerHitDmg = 0;
+        _playerWasAliveAtCollisionStart = PlayerLogic.Alive;
 
         foreach (var b in _enemyBullets)
         {
@@ -710,52 +1007,31 @@ public partial class WaveController : Node
             }
         }
 
-        // Player bullets vs enemy AABB. C SHOTS.C's per-tick collision honors
-        // each shot's lib->ht (HIT_TYPE): S_AIR ignores ground, S_GROUND ignores
-        // air, S_ALL / S_GRALL hit anything, S_GTILE only damages ground/tiles,
-        // S_SUCK is the energy-grab path (deferred). Bullets carry their HitType
-        // tag from PlayerShooter; we filter the candidate enemy set here.
+        // Body collision: enemy bounding box vs player centre.
+        // C performs this in ENEMY_Think, before SHOTS_Think, so body-crash
+        // damage/removal must happen before player bullets are tested.
+        ApplyBodyCrashCollisions(px, py);
+        ProcessPendingEnemyRemovalsForParity();
+
+        // Player bullets vs enemy/tile collision. C SHOTS.C dispatches this as
+        // per-hit-type if/else chains, so S_ALL/S_GROUND only test tiles after
+        // the corresponding enemy damage call fails for that same bullet.
         // Beams are handled in a separate pass below (different damage model).
         _hitEnemies.Clear();
-        foreach (var b in _playerBullets)
+        PlayerBulletCollisionDispatcher.TraceIter = _gameLoopIter;
+        TileDamageDispatcher.TraceIter = _gameLoopIter;
+        var collision = PlayerBulletCollisionDispatcher.Collect(_playerBullets, _enemies, _tileSlice, MAP_COLS);
+        for (int i = 0; i < collision.RandomSparkColorCount; i++)
+            PlayerShooter.NextRandom(_shooterRng, 2, "spark.hit_color");
+        if (collision.TileBounty > 0) Score += (uint)collision.TileBounty;
+        SyncTileSliceToBacking();
+        foreach (int mapspot in collision.DestroyedTileMapSpots)
         {
-            if (!b.Alive || b.IsBeam) continue;
-            foreach (var e in _enemies)
-            {
-                if (!e.Alive) continue;
-                if (!HitTypeMatches(b.HitType, e)) continue;
-                int dx = Math.Abs(b.X - e.X);
-                int dy = Math.Abs(b.Y - e.Y);
-                if (dx < e.HalfW && dy < e.HalfH)
-                {
-                    b.Kill();
-                    _hitEnemies.Add((e, b.Damage));
-                    break;
-                }
-            }
+            SpawnTileExplosion(mapspot);
+            ApplyTileExplosionDamage(mapspot, damage: 5);
+            ScheduleTileDelayExplosion(mapspot);
         }
-
-        // Tile collision dispatch (SHOTS.C shot_done for S_GROUND, S_GTILE,
-        // S_GRALL — TILE_IsHit / TILE_Bomb). Bullets carry their HitType from
-        // PlayerShooter; we dispatch through the pure-C# TileDamageDispatcher.
-        // Without flatlib data all tiles are non-destructible so this fires
-        // but never lands; once flat data is extracted, _tileSlice will carry
-        // real destructibility and this branch becomes active.
-        foreach (var b in _playerBullets)
-        {
-            if (!b.Alive || b.IsBeam) continue;
-            if (b.HitType != HitType.GTile && b.HitType != HitType.Ground &&
-                b.HitType != HitType.GrAll) continue;
-            TileDamageDispatcher.DamageResult tr = b.HitType == HitType.GTile
-                ? TileDamageDispatcher.TileBomb(_tileSlice, b.X, b.Y, b.Damage, MAP_COLS)
-                : TileDamageDispatcher.TileIsHit(_tileSlice, b.X, b.Y, b.Damage);
-            if (!tr.Hit) continue;
-            // S_GTILE bombs continue after hit (move.done = TRUE leads to
-            // detonation effect handled by HandleShotDone). S_GROUND bullets
-            // die on tile hit (mirrors SHOTS.C:1208 setting move.done=TRUE).
-            if (b.HitType != HitType.GTile) b.Kill();
-            if (tr.Bounty > 0) Score += (uint)tr.Bounty;
-        }
+        RefreshTileSliceValuesFromBacking();
 
         // Beam-vs-enemy column damage. SHOTS.C:1068-1088 — for each VerticalBeam,
         // find the first enemy whose x range contains the beam X and whose
@@ -778,29 +1054,6 @@ public partial class WaveController : Node
                     break;
                 }
             }
-        }
-
-        // Body collision: enemy bounding box vs player centre.
-        // Mirrors ENEMY.C lines 1039-1057:
-        //   if (player_cx > sprite->x && player_cx < sprite->x2)
-        //     if (player_cy > sprite->y && player_cy < sprite->y2)
-        // e.X/e.Y are top-left corner coordinates (= C's sprite->x/y).
-        // C: sprite->x2 = sprite->x + width - 1 (set in ENEMY_Think per flight type).
-        // width = 2*HalfW, height = 2*HalfH.
-        _bodyCrashEnemies.Clear();
-        foreach (var e in _enemies)
-        {
-            if (!e.Alive) continue;
-            // ENEMY.C:1043 — `if (!sprite->groundflag)` guards body collision.
-            // F_GROUND family (FlightType 3/4/5) sets groundflag=TRUE in C, so
-            // ground enemies (bonuses, turrets, tanks) never crash with the player.
-            if (e.Meta.FlightType >= 3 && e.Meta.FlightType <= 5) continue;
-            int ex  = e.X;                    // sprite->x (top-left)
-            int ex2 = e.X + 2 * e.HalfW - 1; // sprite->x2 (= sprite->x + width - 1)
-            int ey  = e.Y;                    // sprite->y (top-left)
-            int ey2 = e.Y + 2 * e.HalfH - 1; // sprite->y2 (= sprite->y + height - 1)
-            if (px > ex && px < ex2 && py > ey && py < ey2)
-                _bodyCrashEnemies.Add(e);
         }
 
         // Bonus pickup. BONUS.C:207 — `cur->x > playerx && cur->x < playerx+PW
@@ -843,8 +1096,52 @@ public partial class WaveController : Node
         _              => true,
     };
 
+    private void ApplyBodyCrashCollisions(int playerCx, int playerCy)
+    {
+        const int playerWidth2 = 16;   // PLAYERWIDTH/2 — subtracted from enemy hits on body crash
+
+        _bodyCrashEnemies.Clear();
+        foreach (var e in _enemies)
+        {
+            if (!e.Alive && !e.PendingRemovalDump) continue;
+            // ENEMY.C:1043 — `if (!sprite->groundflag)` guards body collision.
+            // F_GROUND family (FlightType 3/4/5) sets groundflag=TRUE in C, so
+            // ground enemies (bonuses, turrets, tanks) never crash with the player.
+            if (e.Meta.FlightType >= 3 && e.Meta.FlightType <= 5) continue;
+            int ex  = e.X;                    // sprite->x (top-left)
+            int ex2 = e.X + 2 * e.HalfW - 1; // sprite->x2 (= sprite->x + width - 1)
+            int ey  = e.Y;                    // sprite->y (top-left)
+            int ey2 = e.Y + 2 * e.HalfH - 1; // sprite->y2 (= sprite->y + height - 1)
+            if (playerCx > ex && playerCx < ex2 && playerCy > ey && playerCy < ey2)
+                _bodyCrashEnemies.Add(e);
+        }
+
+        foreach (var e in _bodyCrashEnemies)
+        {
+            if (!e.Alive && !e.PendingRemovalDump) continue;
+            bool wasAlive = e.Alive;
+            e.TakeDamage(playerWidth2);
+            int bodyDmg = e.Meta.BodyCrashDamage;
+            PlayerLogic.TakeDamage(bodyDmg);
+            _explosions.Add(new Explosion(ExpAirSmall2, PlayerLogic.X + 16, PlayerLogic.Y + 16, SimClock.Frame));
+            if (wasAlive && !e.Alive)
+            {
+                Score += (uint)e.Meta.Money;
+                ConsumeEnemyDeathSoundRandom();
+                SpawnExplosion(e);
+                SpawnBonusFor(e);
+            }
+        }
+
+        _bodyCrashEnemies.Clear();
+    }
+
     private void HandleShotDone(BulletLogic b)
-        => ShotDoneDispatcher.Dispatch(b, _enemyBullets, _enemies, _shooterRng);
+    {
+        var result = ShotDoneDispatcher.Dispatch(b, _enemyBullets, _enemies, _shooterRng, _tileSlice);
+        if (result.TileBounty > 0) Score += (uint)result.TileBounty;
+        SyncTileSliceToBacking();
+    }
 
     private void ApplyBonusEffect(int objType)
     {
@@ -856,8 +1153,6 @@ public partial class WaveController : Node
 
     internal void PhaseCollisionResolve()
     {
-        const int playerWidth2 = 16;   // PLAYERWIDTH/2 — subtracted from enemy hits on body crash
-
         // Apply player damage from enemy bullets.
         if (_playerHit && _playerHitDmg > 0)
         {
@@ -867,48 +1162,33 @@ public partial class WaveController : Node
         // Apply enemy damage from player bullets.
         foreach (var (enemy, dmg) in _hitEnemies)
         {
-            enemy.TakeDamage(dmg);
-            if (!enemy.Alive)
-            {
-                Score += (uint)enemy.Meta.Money;
-                SpawnExplosion(enemy);
-                SpawnBonusFor(enemy);
-            }
+            enemy.TakeDamage(dmg, deferRemovalForDump: true);
         }
 
-        // Body collision: enemy hits player (mirrors ENEMY.C lines 1039-1057).
-        // sprite->hits -= PLAYERWIDTH/2 = 16. If hits ≤ 0, enemy dies → add money.
-        // Player takes OBJS_SubEnergy(max(width,height) >> 2) = BodyCrashDamage.
-        // C also fires A_SMALL_AIR_EXPLO at the collision point regardless of
-        // whether the enemy dies (ENEMY.C:1054).
-        bool playerWasAlive = PlayerLogic.Alive;
-        foreach (var e in _bodyCrashEnemies)
+        foreach (var b in _shotDoneAfterCollision)
         {
-            if (!e.Alive) continue;
-            e.TakeDamage(playerWidth2);
-            int bodyDmg = e.Meta.BodyCrashDamage;
-            PlayerLogic.TakeDamage(bodyDmg);
-            _explosions.Add(new Explosion(ExpAirSmall2, PlayerLogic.X + 16, PlayerLogic.Y + 16, SimClock.Frame));
-            if (!e.Alive)
-            {
-                Score += (uint)e.Meta.Money;
-                SpawnExplosion(e);
-                SpawnBonusFor(e);
-            }
+            if (!b.Alive || !b.ReachedTarget) continue;
+            HandleShotDone(b);
+            b.ClearReachedTarget();
         }
+        _shotDoneAfterCollision.Clear();
+
         // Apply bonus pickup effects collected this tick (weapon → inventory,
         // S_ENERGY → heal). C's BONUS.C:208-216 path; we batch in
         // CollisionResolve so all death/pickup events fire after collection.
         foreach (var b in _pickedUpBonuses)
         {
             ApplyBonusEffect(b.ObjType);
-            b.Kill();
+            if (Bonus.BonusEffectDispatcher.IsMoneyBonus(b.ObjType))
+                b.MarkPickedUpMoney();
+            else
+                b.Kill();
         }
         _pickedUpBonuses.Clear();
 
         // Player just died this tick — spawn one large death explosion at the
         // player's center (mirrors RAP.C:583 A_LARGE_AIR_EXPLO at player_cx/cy).
-        if (playerWasAlive && !PlayerLogic.Alive)
+        if (_playerWasAliveAtCollisionStart && !PlayerLogic.Alive)
         {
             _explosions.Add(new Explosion(ExpAirLarge, PlayerLogic.X + 16, PlayerLogic.Y + 16, SimClock.Frame));
         }
@@ -916,6 +1196,7 @@ public partial class WaveController : Node
 
     // C exptype constants used for cosmetic-only explosion events (SOURCE/MAP.H).
     private const int ExpAirLarge  = 2;   // EXP_AIRLARGE → LGFLAK_BLK
+    private const int ExpGrdLarge  = 5;   // EXP_GRDLARGE → GEXPLO_BLK
     private const int ExpAirSmall2 = 10;  // EXP_AIRSMALL2 → SMFLAK_BLK
 
     // Spawn explosion(s) at the enemy's death position. Mirrors ENEMY.C:1066-1115
@@ -928,12 +1209,91 @@ public partial class WaveController : Node
     // is set. That spawn happens here for cohesion: any path that called
     // SpawnExplosion also wants the C drop side-effect.
     private const int ExpAirLargeCode = 2;  // EXP_AIRLARGE (SOURCE/MAP.H)
+
+    private void ConsumeEnemyDeathSoundRandom()
+    {
+        // ENEMY.C plays SND_3DPatch(FX_AIREXPLO, ...) before dispatching the
+        // explosion animation. FX_AIREXPLO has random pitch, so this consumes
+        // the shared rand() stream even when audio output is muted.
+        PlayerShooter.NextRandom(_shooterRng, 40, "sound3d.fx_airexplo");
+    }
+
+    private void ProcessPendingEnemyRemovalsForParity()
+    {
+        // C applies player-shot damage in SHOTS_Think, but enemy removal,
+        // score, death sound, explosion, and bonus spawn happen later in the
+        // next ENEMY_Think pass. PendingRemovalDump keeps the dead sprite
+        // visible in the current parity dump; this method performs the C
+        // removal side effects at the start of the following movement phase.
+        foreach (var e in _enemies)
+        {
+            if (e.Alive || !e.PendingRemovalDump) continue;
+            Score += (uint)e.Meta.Money;
+            ConsumeEnemyDeathSoundRandom();
+            SpawnExplosion(e);
+            SpawnBonusFor(e);
+            e.ClearPendingRemovalDump();
+        }
+    }
+
+    private void RebuildWeaponTargetSnapshot()
+    {
+        // C ENEMY_GetRandom samples the onscreen[] array populated by the last
+        // ENEMY_Think pass, while player weapon use happens earlier in the next
+        // game-loop body. Keep that phase boundary explicit instead of passing
+        // the live enemy list directly to MiniGun/Turret targeting.
+        _weaponTargetEnemies.Clear();
+        foreach (var e in _enemies)
+        {
+            if (!e.Alive && !e.PendingRemovalDump) continue;
+            if (e.Y + e.Meta.Height <= 0 || e.Y >= 200) continue;
+            if (e.X + e.Meta.Width <= 0 || e.X >= 320) continue;
+            _weaponTargetEnemies.Add(e);
+        }
+    }
+
+    private void AddEnemyBullet(BulletLogic bullet)
+    {
+        ConsumeEnemyShotSoundRandomForParity(_shooterRng, bullet.ShotType);
+        _enemyBullets.Add(bullet);
+    }
+
+    internal static void ConsumeEnemyShotSoundRandomForParity(System.Random? rng, EnemyShotType shotType)
+    {
+        // ESHOT.C calls SND_3DPatch for every enemy shot. All enemy shot FX
+        // entries used here set rpflag=TRUE in FX.C, so they consume random(40)
+        // for pitch even when the game is running with dummy/no audio.
+        if (shotType == EnemyShotType.Coconuts)
+            PlayerShooter.NextRandom(rng, 6, "sound3d.coconut.pick");
+
+        string label = shotType switch
+        {
+            EnemyShotType.Missile => "sound3d.fx_enemymissle",
+            EnemyShotType.Laser => "sound3d.fx_enemylaser",
+            EnemyShotType.Plasma => "sound3d.fx_enemyplasma",
+            EnemyShotType.Coconuts => "sound3d.fx_coconut",
+            _ => "sound3d.fx_enemyshot",
+        };
+        PlayerShooter.NextRandom(rng, 40, label);
+    }
+
+    private void SpawnTileExplosion(int mapspot)
+    {
+        foreach (var tile in _tileSlice)
+        {
+            if (tile.MapSpot != mapspot) continue;
+            _explosions.Add(new Explosion(ExpGrdLarge, tile.ScreenX + 16, tile.ScreenY + 16, SimClock.Frame));
+            return;
+        }
+    }
+
     private void SpawnBonusFor(EnemyLogic e)
     {
         if (e.Meta.Bonus < 0) return;
         // C: BONUS_Add(curlib->bonus, sprite->x, sprite->y). The bonus spawns
         // at the enemy's TOP-LEFT corner (sprite->x/y), not center.
-        _bonuses.Add(new BonusLogic(e.Meta.Bonus, e.X, e.Y));
+        int initialPos = PlayerShooter.NextRandom(_shooterRng, 16, "bonus.pos");
+        _bonuses.Add(new BonusLogic(e.Meta.Bonus, e.X, e.Y, initialPos));
     }
     private void SpawnExplosion(EnemyLogic e)
     {
@@ -968,7 +1328,7 @@ public partial class WaveController : Node
     internal void PhaseCleanup()
     {
         // Remove dead or out-of-bounds enemies.
-        _enemies.RemoveAll(e => !e.Alive);
+        _enemies.RemoveAll(e => !e.Alive && !e.PendingRemovalDump);
 
         // Remove out-of-bounds bullets.
         _playerBullets.RemoveAll(b => !b.Alive);
@@ -988,15 +1348,53 @@ public partial class WaveController : Node
 
     internal void PhaseHud()
     {
+        if (_skipInitialPaletteStuff)
+        {
+            _skipInitialPaletteStuff = false;
+            return;
+        }
+
+        // RAP_PaletteStuff() consumes random(3) only on alternating calls
+        // (`if (cnt & 1)`). It is visual, but C shares rand() with weapons.
+        if ((_paletteStuffCnt & 1) != 0)
+            PlayerShooter.NextRandom(_shooterRng, 3, "palette.stuff");
+        _paletteStuffCnt++;
+
         // Shield recharge (mirrors OBJS_Think in OBJECTS.C).
         // CHARGE_SHIELD = 96. Every 97 game loops, heal 1 shield.
-        // Only on curplr_diff < DIFF_3 (we're DIFF_2 by default).
+        // Only on curplr_diff < DIFF_3.
         _thinkCnt++;
-        if (_thinkCnt > ChargeShield)
+        if (_curPlayerDiff < 3 && _thinkCnt > ChargeShield)
         {
             _thinkCnt = 0;
             PlayerLogic.Heal(1);
         }
+
+        if (_oldShieldForLowLoss >= 0
+            && PlayerLogic.Shield <= ShieldLow
+            && PlayerLogic.Shield < _oldShieldForLowLoss)
+        {
+            if (Shooter.LoseCurrentSpecialForShieldLow())
+                SystemDamageWarningUntilFrame = SimClock.Frame + View.HudWarning.SystemDamageDurationFrames;
+        }
+        TraceShield();
+        _oldShieldForLowLoss = PlayerLogic.Shield;
+    }
+
+    private void TraceShield()
+    {
+        var trace = ShieldTrace.Value;
+        if (trace == null) return;
+        trace.WriteLine(string.Format(CultureInfo.InvariantCulture,
+            "i={0} shield={1} old={2}", _gameLoopIter, PlayerLogic.Shield, _oldShieldForLowLoss));
+        trace.Flush();
+    }
+
+    private static StreamWriter? OpenShieldTrace()
+    {
+        string? path = System.Environment.GetEnvironmentVariable("RAPTOR_SHIELD_TRACE");
+        if (string.IsNullOrWhiteSpace(path)) return null;
+        return new StreamWriter(path) { AutoFlush = true };
     }
 
     // ── Internal scheduler ────────────────────────────────────────────────────

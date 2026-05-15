@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using Godot;
 using Raptor.Sim.Shots;
 
@@ -20,6 +21,7 @@ public partial class PlaythroughDriver : Node
     private Playthrough? _pt;
     private Sim.MenuStateMachine? _menu;
     private ParityEmitter? _emitter;
+    private Sim.WaveController? _wave;
 
     // Key dispatched by the script on the previous tick, applied to
     // MenuStateMachine on the current tick. The 1-frame delay mirrors the
@@ -49,10 +51,13 @@ public partial class PlaythroughDriver : Node
         (_heldKeys.Contains("Right") ? 1 : 0) - (_heldKeys.Contains("Left") ? 1 : 0);
 
     /// <summary>
-    /// True if the fire button (BUT_1) is held. Mirrors INPUT.C's k_Fire scancode
-    /// (SC_CTRL by default). Scripts use the named key "Fire" or "Ctrl".
+    /// True if the fire button (BUT_1) is held. Mirrors INPUT.C's k_Fire scancode.
+    /// The checked-in C SETUP.INI maps Fire to SC_A, while older scripts used
+    /// named aliases like "Fire" or "Ctrl".
     /// </summary>
-    public bool IsFireHeld => _heldKeys.Contains("Fire") || _heldKeys.Contains("Ctrl");
+    public bool IsFireHeld => _heldKeys.Any(IsFireKey);
+
+    public static bool IsFireKey(string key) => key == "A" || key == "Fire" || key == "Ctrl";
 
     /// <summary>BUT_2 (next-special-weapon cycle). Named "FireSp" / "Alt" in scripts.</summary>
     public bool IsFireSpHeld => _heldKeys.Contains("FireSp") || _heldKeys.Contains("Alt");
@@ -125,9 +130,17 @@ public partial class PlaythroughDriver : Node
         }
 
         _emitter = GetNodeOrNull<ParityEmitter>("../ParityEmitter");
+        _wave = GetNodeOrNull<Sim.WaveController>("../WaveController");
 
         _pt.OnKeyPress = key =>
         {
+            if (key == "D" && _wave != null)
+            {
+                string demoPath = Path.Combine(ProjectSettings.GlobalizePath("res://assets"), "demos", "DEMO1G1_REC.json");
+                _wave.StartDemoPlayback(DemoReplay.LoadFile(demoPath), Sim.SimClock.Frame);
+                return;
+            }
+
             // Special-weapon select keys (SC_1..SC_MINUS) bypass the menu
             // dispatch and go straight to the in-game shooter via the
             // _specialSelects queue. They never reach _pendingKey, so they

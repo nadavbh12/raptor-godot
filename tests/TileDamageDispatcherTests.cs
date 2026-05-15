@@ -69,10 +69,38 @@ public class TileDamageDispatcherTests
     {
         var s = Slice(8, 9);
         s[0].IsDestructible = true; s[0].Hits = 5; s[0].Bounty = 250;
-        var r = TileDamageDispatcher.TileIsHit(s, x: 32, y: -40, damage: 5);
+        var r = TileDamageDispatcher.TileIsHit(s, x: 32, y: -40, damage: 6);
         Assert.True(r.Hit);
         Assert.True(r.JustDestroyed);
         Assert.Equal(250, r.Bounty);
+        Assert.Equal(-1, s[0].Hits);
+        Assert.True(s[0].Dead);
+    }
+
+    [Fact]
+    public void TileIsHit_skips_dead_tile_from_prior_tile_think()
+    {
+        var s = Slice(8, 9);
+        s[0].IsDestructible = true; s[0].Hits = -1; s[0].Dead = true;
+
+        var r = TileDamageDispatcher.TileIsHit(s, x: 32, y: -40, damage: 5);
+
+        Assert.False(r.Hit);
+        Assert.Equal(-1, s[0].Hits);
+    }
+
+    [Fact]
+    public void TileIsHit_does_not_report_destroyed_at_exactly_zero_hits()
+    {
+        var s = Slice(8, 9);
+        s[0].IsDestructible = true; s[0].Hits = 1; s[0].Bounty = 250;
+
+        var r = TileDamageDispatcher.TileIsHit(s, x: 32, y: -40, damage: 1);
+
+        Assert.True(r.Hit);
+        Assert.False(r.JustDestroyed);
+        Assert.False(s[0].Dead);
+        Assert.Equal(0, r.Bounty);
         Assert.Equal(0, s[0].Hits);
     }
 
@@ -124,5 +152,23 @@ public class TileDamageDispatcherTests
         var r = TileDamageDispatcher.TileIsHit(s, x: 120, y: -40, damage: 1);
         Assert.True(r.Hit);
         Assert.Equal(3, r.HitIndex);
+    }
+
+    [Fact]
+    public void TileIsHit_uses_exclusive_bottom_edge_from_current_tspot()
+    {
+        // C TILE_Think builds tspots before incrementing tileyoff. At the
+        // mission_fight boundary, top-row y=-8 means a shot at y=24 is exactly
+        // on the exclusive bottom edge and must not hit; using post-scroll y=-7
+        // would incorrectly include it.
+        var s = Slice(1, 9);
+        s[4].ScreenY = -8;
+        s[4].IsDestructible = true;
+        s[4].Hits = 10;
+
+        var r = TileDamageDispatcher.TileIsHit(s, x: 162, y: 24, damage: 1);
+
+        Assert.False(r.Hit);
+        Assert.Equal(10, s[4].Hits);
     }
 }

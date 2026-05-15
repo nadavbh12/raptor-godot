@@ -40,10 +40,18 @@ internal class ParityEmitWorker : IDisposable
     /// WaveController; used as the primary alignment key for in-game
     /// checkpoint emission (iter-bucket boundaries, not fc-bucket).</summary>
     public Func<int>?  GetGameIter { get; set; }
+    public Func<int>?  GetGameAnchorFrame { get; set; }
+    public Func<int>?  GetDemoGameNum { get; set; }
+    public Func<int>?  GetMenuDemoEmitSequence { get; set; }
 
     // Iter-bucket size for in-game emission. Must match parity.c's ITER_BUCKET.
     // 18 iters ≈ 70 fc in C-time at C's variable ~3.89 fc/iter cadence.
     private const int IterBucket = 18;
+    private const int DemoEmitDisabled = int.MinValue;
+    private int _lastMenuDemoEmitSequence = DemoEmitDisabled;
+    private int _menuDemoMilestoneIndex = 0;
+    private static readonly int[] MenuDemoSeqTargets = { 1, 2, 24, 37, 71, 94 };
+    private static readonly int[] MenuDemoReportFcs = { 140, 280, 350, 420, 490, 560 };
 
     // Stub fallback fields — used when Menu is null or before in-game starts.
     public string WinState  { get; set; } = "UNKNOWN";
@@ -94,11 +102,15 @@ internal class ParityEmitWorker : IDisposable
         {
             // In-game: anchor = GameEnteredFrame, win = "MISSION_N".
             // In menu: anchor = StateEnteredFrame, win = state parity string.
-            if (Menu.InGame)
+            int demoGameNum = GetDemoGameNum?.Invoke() ?? -1;
+            if (Menu.InGame || demoGameNum >= 0)
             {
                 isInGame = true;
-                anchor   = Menu.GameEnteredFrame;
-                win      = Menu.GameNum switch
+                anchor   = Menu.InGame
+                    ? Menu.GameEnteredFrame
+                    : GetGameAnchorFrame?.Invoke() ?? Menu.StateEnteredFrame;
+                int gameNum = Menu.InGame ? Menu.GameNum : demoGameNum;
+                win      = gameNum switch
                 {
                     0 => "MISSION_1",
                     1 => "MISSION_2",
@@ -119,6 +131,8 @@ internal class ParityEmitWorker : IDisposable
             {
                 _lastEmitSec = -1;
                 _lastAnchor  = anchor;
+                _lastMenuDemoEmitSequence = DemoEmitDisabled;
+                _menuDemoMilestoneIndex = 0;
             }
         }
         else
@@ -147,6 +161,20 @@ internal class ParityEmitWorker : IDisposable
         }
         else
         {
+            int demoSeq = GetMenuDemoEmitSequence?.Invoke() ?? DemoEmitDisabled;
+            if (demoSeq != DemoEmitDisabled)
+            {
+                if (demoSeq < 0 || demoSeq == _lastMenuDemoEmitSequence) return;
+                int target = MenuDemoTargetFor(_menuDemoMilestoneIndex);
+                if (demoSeq < target) return;
+
+                int demoReportFc = MenuDemoReportFcFor(_menuDemoMilestoneIndex);
+                _lastMenuDemoEmitSequence = demoSeq;
+                _menuDemoMilestoneIndex++;
+                Emit(demoReportFc, -1, win);
+                return;
+            }
+
             int relFc = Sim.SimClock.Frame - anchor;
             curSec = relFc / 70;
             if (curSec <= _lastEmitSec) return;
@@ -155,6 +183,20 @@ internal class ParityEmitWorker : IDisposable
             reportFc   = curSec * 70;
         }
         Emit(reportFc, reportIter, win);
+    }
+
+    private static int MenuDemoTargetFor(int index)
+    {
+        if (index < MenuDemoSeqTargets.Length)
+            return MenuDemoSeqTargets[index];
+        return MenuDemoSeqTargets[^1] + (index - MenuDemoSeqTargets.Length + 1) * 23 + 1;
+    }
+
+    private static int MenuDemoReportFcFor(int index)
+    {
+        if (index < MenuDemoReportFcs.Length)
+            return MenuDemoReportFcs[index];
+        return MenuDemoReportFcs[^1] + (index - MenuDemoReportFcs.Length + 1) * 70;
     }
 
     private void Emit(int fc, int iter, string win)
@@ -216,6 +258,9 @@ public partial class ParityEmitter : Node
     public Func<int>?  GetPbullets { get => _worker.GetPbullets;  set => _worker.GetPbullets = value; }
     public Func<int>?  GetEbullets { get => _worker.GetEbullets;  set => _worker.GetEbullets = value; }
     public Func<int>?  GetGameIter { get => _worker.GetGameIter;  set => _worker.GetGameIter = value; }
+    public Func<int>?  GetGameAnchorFrame { get => _worker.GetGameAnchorFrame; set => _worker.GetGameAnchorFrame = value; }
+    public Func<int>?  GetDemoGameNum { get => _worker.GetDemoGameNum; set => _worker.GetDemoGameNum = value; }
+    public Func<int>?  GetMenuDemoEmitSequence { get => _worker.GetMenuDemoEmitSequence; set => _worker.GetMenuDemoEmitSequence = value; }
 
     // Legacy stub fields (used when Menu is null).
     public string WinState { get => _worker.WinState; set => _worker.WinState = value; }

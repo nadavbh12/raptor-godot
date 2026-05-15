@@ -94,6 +94,29 @@ public class PlayerTests
         Assert.True(p.Alive);
     }
 
+    [Fact]
+    public void ApplyDemoFrame_overrides_position_and_pic()
+    {
+        var p = new PlayerLogic();
+        p.Reset();
+        p.Tick(1, -1);
+        p.ApplyDemoFrame(-14, 177, 5);
+
+        Assert.Equal(-14, p.X);
+        Assert.Equal(177, p.Y);
+        Assert.Equal(5, p.Pic);
+    }
+
+    [Fact]
+    public void SetShield_clamps_to_valid_range()
+    {
+        var p = new PlayerLogic();
+        p.SetShield(500);
+        Assert.Equal(PlayerLogic.MaxShield, p.Shield);
+        p.SetShield(-1);
+        Assert.Equal(0, p.Shield);
+    }
+
     // Spec §11 State bounds: Player position is always in [MinX, MaxX] x [MinY, MaxY].
     [Property(MaxTest = 50)]
     public Property Player_position_stays_in_bounds_under_arbitrary_input()

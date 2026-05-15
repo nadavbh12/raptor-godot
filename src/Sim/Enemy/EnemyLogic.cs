@@ -36,6 +36,14 @@ public sealed class EnemyLogic
     public int Hits { get; private set; }
     public bool Done { get; private set; }
     public bool Alive => Hits > 0 && !Done;
+    public bool PendingRemovalDump { get; private set; }
+
+    public bool ContainsPointStrict(int x, int y)
+    {
+        int x2 = X + Meta.Width - 1;
+        int y2 = Y + Meta.Height - 1;
+        return x > X && x < x2 && y > Y && y < y2;
+    }
 
     // ── Flight-path state ────────────────────────────────────────────────────
     private int _flightIdx;   // index into next flight step (0-based)
@@ -129,7 +137,7 @@ public sealed class EnemyLogic
     public BulletLogic? Tick(int playerX = 144, int playerY = 160)
     {
         _firedThisTick = null;  // reset every tick so extras aren't re-emitted
-        if (!Alive) return null;
+        if (!Alive && !PendingRemovalDump) return null;
         AdvancePath();
         var fired = MaybeFireAll(playerX, playerY);
         if (fired == null || fired.Count == 0) return null;
@@ -153,12 +161,17 @@ public sealed class EnemyLogic
     }
     private List<BulletLogic>? _firedThisTick;
 
-    public void TakeDamage(int dmg)
+    public void TakeDamage(int dmg, bool deferRemovalForDump = false)
     {
-        if (!Alive) return;
+        if (Done) return;
         Hits -= dmg;
-        if (Hits < 0) Hits = 0;
+        if (Hits <= 0)
+        {
+            PendingRemovalDump |= deferRemovalForDump;
+        }
     }
+
+    public void ClearPendingRemovalDump() => PendingRemovalDump = false;
 
     // ── Private helpers ──────────────────────────────────────────────────────
 

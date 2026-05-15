@@ -120,6 +120,37 @@ public class BulletLogicTests
         Assert.Equal(2, b.My);
     }
 
+    [Fact]
+    public void Player_aimed_bullet_finishes_full_speed_loop_after_target_reached()
+    {
+        // RAP.C MoveSobj decrements maxloop but keeps walking until `speed`
+        // is exhausted; only after the loop does it set move.done. A fast
+        // MiniGun/Missile shot can therefore overshoot its target in the same
+        // tick that marks it reached.
+        var b = BulletLogic.PlayerAimedAt(0, 0, 2, 0,
+            initSpeed: 5, maxSpeed: 5, hlx: 0, hly: 0, damage: 1);
+
+        b.Tick();
+
+        Assert.Equal(5, b.Mx);
+        Assert.True(b.ReachedTarget);
+    }
+
+    [Fact]
+    public void Non_beam_player_bullets_dump_zero_c_counter()
+    {
+        // C SHOTS_DumpForParity writes shot->cnt, not curframe. SHOTS_Display
+        // only increments cnt for S_BEAM, so normal and aimed shots keep cnt=0
+        // even while their animation frame advances.
+        var b = BulletLogic.PlayerAimedAt(156, 157, 92, -8,
+            initSpeed: 8, maxSpeed: 10, hlx: 4, hly: 4, damage: 1);
+
+        b.Tick();
+
+        Assert.Equal(1, b.FrameCounter);
+        Assert.Equal(0, b.CCounterForDump);
+    }
+
     // Spec §11 State bounds: alive bullets are in [0, 320] x [0, 200].
     [Property(MaxTest = 50)]
     public Property Alive_bullet_position_in_bounds()

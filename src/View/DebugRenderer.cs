@@ -3,8 +3,10 @@ using System.IO;
 using System.Linq;
 using Godot;
 using Raptor.Sim;
+using Raptor.Sim.Bonus;
 using Raptor.Sim.Bullet;
 using Raptor.Sim.Enemy;
+using Raptor.Sim.Shots;
 
 namespace Raptor.View;
 
@@ -16,6 +18,8 @@ public partial class DebugRenderer : Node2D
     private int _lastShotSec = -1;
     private int _scriptDumpSeq = 0;
     private string? _pendingScriptDumpLabel;
+    private readonly HudScannerIndicator.State _scannerState = new();
+    private int _lastScannerFrame = -1;
 
     private readonly Dictionary<string, Texture2D> _spriteCache = new();
     private readonly Dictionary<string, string> _spritePaths = new();
@@ -55,15 +59,14 @@ public partial class DebugRenderer : Node2D
     //   EXP_AIRLARGE  → A_LARGE_AIR_EXPLO→ LGFLAK_BLK (12)
     //   EXP_AIRSMALL2 → A_MED_AIR_EXPLO2 → SMFLAK_BLK (14)
     //   EXP_ENERGY    → A_ENERGY_AIR_EXPLO→ NRGBANG_BLK (12)
-    // Ground exptypes fall back to EXPLO2_BLK for now (no _PIC anim coverage).
     private static readonly (string Family, int Frames)[] ExpAnim = new (string, int)[]
     {
         ("EXPLO2_BLK",  13),  // 0 EXP_AIRSMALL1
         ("LGFLAK_BLK",  12),  // 1 EXP_AIRMED
         ("LGFLAK_BLK",  12),  // 2 EXP_AIRLARGE
-        ("EXPLO2_BLK",  13),  // 3 EXP_GRDSMALL  (fallback)
-        ("EXPLO2_BLK",  13),  // 4 EXP_GRDMED    (fallback)
-        ("EXPLO2_BLK",  13),  // 5 EXP_GRDLARGE  (fallback)
+        ("GEXPLO_BLK",  42),  // 3 EXP_GRDSMALL
+        ("GEXPLO_BLK",  42),  // 4 EXP_GRDMED
+        ("GEXPLO_BLK",  42),  // 5 EXP_GRDLARGE
         ("EXPLO2_BLK",  13),  // 6 (unused)
         ("EXPLO2_BLK",  13),  // 7 (unused)
         ("NRGBANG_BLK", 12),  // 8 EXP_ENERGY
@@ -76,6 +79,7 @@ public partial class DebugRenderer : Node2D
     private string? _tilesRoot;
     private Texture2D? _enemyBulletTex;
     private Texture2D? _playerBulletTex;
+    private readonly Dictionary<(string Family, int Frame), Texture2D?> _playerBulletFrames = new();
     // Per-EnemyShotType BLK animation. Each entry is the multi-frame sequence
     // ESHOT.C ESHOT_Init builds (ESHOT_BLK has 2 frames, EMISLE_BLK has 2,
     // ELASER_BLK has 4, MINE_BLK has 2). Null entries fall back to ESHOT_BLK_00.
@@ -84,6 +88,7 @@ public partial class DebugRenderer : Node2D
     // smoke entities (would need a new collection); we synthesise a short
     // history by drawing 4 SMOKTRAL_BLK frames stacked behind the missile.
     private readonly Texture2D?[] _smokeFrames = new Texture2D?[4];
+    private readonly Texture2D?[] _bonusGlowFrames = new Texture2D?[4];
     // Score-digit sprites: numbers[0..9] = N0..N9, numbers[10] = N$.
     private readonly Texture2D?[] _digitTex = new Texture2D?[11];
 
@@ -128,6 +133,8 @@ public partial class DebugRenderer : Node2D
         // entities C spawns every other tick via ANIMS_StartAAnim.
         for (int i = 0; i < 4; i++)
             _smokeFrames[i] = LoadSpriteFromPath(Path.Combine(bulletsRoot, $"SMOKTRAL_BLK_{i:D2}.png"));
+        for (int i = 0; i < 4; i++)
+            _bonusGlowFrames[i] = LoadSpriteFromPath(Path.Combine(bulletsRoot, $"ICNGLW_BLK_{i:D2}.png"));
 
         // Score-digit sprite array (RAP.C: numbers[0..10] = N0..N9 + $).
         string spritesRoot = ProjectSettings.GlobalizePath("res://assets/sprites");
@@ -416,7 +423,8 @@ public partial class DebugRenderer : Node2D
             {
                 if (mapspot < 0 || mapspot >= tiles.Count) continue;
                 var t = tiles[mapspot];
-                var tex = LoadTile(t.FGame, t.Flats);
+                int flats = _wave.RenderedFlatFor(mapspot);
+                var tex = LoadTile(t.FGame, flats);
                 if (tex != null) DrawTexture(tex, new Vector2(x, y));
             }
         }
@@ -446,7 +454,7 @@ public partial class DebugRenderer : Node2D
         foreach (var e in _wave.GetEnemies())
         {
             if (!e.Alive) continue;
-            if (e.Meta.Shadow == 0 || e.Meta.Ground == 0) continue;
+            if (e.Meta.Shadow == 0 || !e.IsGround) continue;
             var tex = LoadSprite(e.Meta.IName);
             if (tex == null) continue;
             DrawGroundShadow(tex, e.X, e.Y);
@@ -458,7 +466,7 @@ public partial class DebugRenderer : Node2D
         foreach (var e in _wave.GetEnemies())
         {
             if (!e.Alive) continue;
-            if (e.Meta.Shadow == 0 || e.Meta.Ground != 0) continue;
+            if (e.Meta.Shadow == 0 || e.IsGround) continue;
             var tex = LoadSprite(e.Meta.IName);
             if (tex == null) continue;
             DrawSkyShadow(tex, e.X, e.Y, e.HalfW * 2, e.HalfH * 2);
@@ -480,7 +488,7 @@ public partial class DebugRenderer : Node2D
                 : LoadSprite(e.Meta.IName);
             if (tex != null)
             {
-                DrawTexture(tex, new Vector2(e.X, e.Y));
+                DrawWorldTexture(tex, e.X, e.Y);
             }
             else
             {
@@ -490,7 +498,7 @@ public partial class DebugRenderer : Node2D
             // Sky enemies get engine-flame puffs trailing upward (toward top of
             // screen, since ships fly downward). Ground enemies (groundflag != 0)
             // never call FLAME_Up in C.
-            if (e.Meta.Ground == 0 && e.Meta.NumEngs > 0)
+            if (!e.IsGround && e.Meta.NumEngs > 0)
                 DrawEngineFlames(e, eframe);
         }
 
@@ -547,14 +555,24 @@ public partial class DebugRenderer : Node2D
         foreach (var b in _wave.GetPlayerBullets())
         {
             if (!b.Alive) continue;
-            if (_playerBulletTex != null)
-                DrawTexture(_playerBulletTex, new Vector2(b.X, b.Y));
+            Texture2D? tex = b.PlayerWeapon is WeaponType weapon
+                ? LoadPlayerBulletTexture(weapon, b.FrameCounter)
+                : _playerBulletTex;
+            if (tex != null)
+                DrawTexture(tex, new Vector2(b.X, b.Y));
             else
                 DrawRect(new Rect2(b.X, b.Y, 4, 4), new Color(0, 1, 1));
         }
 
+        DrawBonuses();
+
         DrawExplosions();
         DrawScoreHud();
+        DrawShieldHud();
+        DrawCurrentWeaponHud();
+        DrawMegaBombHud();
+        DrawScannerHud();
+        DrawWarningHud();
 
         // Bottom debug overlay is only useful for visual-parity debugging;
         // it intrudes on the rendered scene in screenshots. Set
@@ -771,5 +789,159 @@ public partial class DebugRenderer : Node2D
                 DrawTexture(_digitTex[d]!, new Vector2(x, MapTop));
             x += 8;
         }
+    }
+
+    private void DrawShieldHud()
+    {
+        if (_wave == null) return;
+        const int MapRight = 320 - 16;  // SOURCE/MAP.H
+        foreach (var segment in HudShieldBar.Build(MapRight + 4, _wave.PlayerLogic.Shield))
+        {
+            DrawRect(new Rect2(segment.X, segment.Y, segment.Width, segment.Height),
+                ShieldPaletteColor(segment.PaletteIndex));
+        }
+    }
+
+    private static Color ShieldPaletteColor(int paletteIndex)
+    {
+        if (paletteIndex == 0) return new Color(0, 0, 0, 1);
+        var rgb = HudPalette.Color(paletteIndex);
+        return new Color(rgb.R / 255f, rgb.G / 255f, rgb.B / 255f, 1);
+    }
+
+    private void DrawCurrentWeaponHud()
+    {
+        if (_wave?.Shooter.SpecialWeapon is not WeaponType weapon) return;
+        const int MapTop = 2;           // SOURCE/MAP.H
+        const int MapRight = 320 - 16;  // SOURCE/MAP.H
+        string spriteName = HudWeaponIcon.SpriteNameFor(weapon);
+        if (!_spritePaths.TryGetValue(spriteName, out string? path)) return;
+        var tex = LoadSpriteFromPath(path);
+        if (tex != null)
+            DrawTexture(tex, new Vector2(MapRight - 18, MapTop));
+    }
+
+    private void DrawMegaBombHud()
+    {
+        if (_wave == null || _wave.Shooter.MegaBombCount <= 0) return;
+        if (!_spritePaths.TryGetValue("SMBOMB_PIC", out string? path)) return;
+        var tex = LoadSpriteFromPath(path);
+        if (tex == null) return;
+        foreach (var pos in HudMegaBombIndicator.Build(_wave.Shooter.MegaBombCount))
+            DrawTexture(tex, new Vector2(pos.X, pos.Y));
+    }
+
+    private void DrawScannerHud()
+    {
+        if (_wave == null || !_wave.HasSecretsDetector) return;
+        foreach (var line in HudScannerIndicator.BuildIdle(_scannerState.CurrentDpos))
+            DrawRect(new Rect2(line.X, line.Y, 1, line.Height),
+                ScannerPaletteColor(line.PaletteIndex));
+        if (_lastScannerFrame != SimClock.Frame)
+        {
+            _scannerState.AfterSimTick();
+            _lastScannerFrame = SimClock.Frame;
+        }
+        else
+        {
+            _scannerState.AfterRenderFrame();
+        }
+    }
+
+    private void DrawWarningHud()
+    {
+        if (_wave == null) return;
+        if (!HudWarning.ShieldLowVisible(_wave.PlayerLogic.Shield, SimClock.Frame)) return;
+        if (HudWarning.SystemDamageVisible(_wave.PlayerLogic.Shield, _wave.SystemDamageWarningUntilFrame, SimClock.Frame)
+            && _spritePaths.TryGetValue("WEPDEST_PIC", out string? damagePath))
+        {
+            var damageTex = LoadSpriteFromPath(damagePath);
+            if (damageTex != null)
+                DrawTexture(damageTex, new Vector2(HudWarning.CenterX((int)damageTex.GetWidth()), HudWarning.SystemDamageY));
+        }
+
+        if (!_spritePaths.TryGetValue("SHLDLOW_PIC", out string? path)) return;
+        var tex = LoadSpriteFromPath(path);
+        if (tex == null) return;
+        DrawTexture(tex, new Vector2(HudWarning.CenterX((int)tex.GetWidth()), HudWarning.MapBottom));
+    }
+
+    private static Color ScannerPaletteColor(int paletteIndex)
+    {
+        var rgb = HudPalette.Color(paletteIndex);
+        return new Color(rgb.R / 255f, rgb.G / 255f, rgb.B / 255f, 1);
+    }
+
+    private Texture2D? LoadPlayerBulletTexture(WeaponType weapon, int frameCounter)
+    {
+        var (family, frame) = PlayerBulletSprite.FrameFor(weapon, frameCounter);
+        var key = (family, frame);
+        if (_playerBulletFrames.TryGetValue(key, out var cached)) return cached;
+
+        string path;
+        if (family.EndsWith("_PIC", System.StringComparison.Ordinal))
+        {
+            if (!_spritePaths.TryGetValue(family, out path!))
+            {
+                _playerBulletFrames[key] = null;
+                return null;
+            }
+        }
+        else
+        {
+            string root = _blkRoot ?? ProjectSettings.GlobalizePath("res://assets/bullets");
+            path = Path.Combine(root, $"{family}_{frame:D2}.png");
+        }
+        var tex = LoadSpriteFromPath(path);
+        _playerBulletFrames[key] = tex;
+        return tex;
+    }
+
+    private void DrawBonuses()
+    {
+        if (_wave == null) return;
+        foreach (var bonus in _wave.GetBonuses())
+        {
+            if (!bonus.Alive) continue;
+            var (dx, dy) = BonusSprite.DrawOffset(bonus.Pos);
+            if (bonus.DisplayAsPickedUpMoney)
+            {
+                if (_spritePaths.TryGetValue("N$_PIC", out string? moneyPath))
+                {
+                    var moneyTex = LoadSpriteFromPath(moneyPath);
+                    if (moneyTex != null)
+                        DrawWorldTexture(moneyTex, bonus.X - BonusLogic.Width / 2 + dx,
+                            bonus.Y - BonusLogic.Height / 2 + dy);
+                }
+                continue;
+            }
+            string spriteName = BonusSprite.SpriteNameFor(bonus.ObjType, bonus.Frame);
+            Texture2D? tex = LoadSpriteFrame(spriteName, bonus.Frame);
+            Texture2D? glow = _bonusGlowFrames[bonus.GlowFrame % _bonusGlowFrames.Length];
+            if (tex != null)
+                DrawWorldTexture(tex, bonus.X - BonusLogic.Width / 2 + dx,
+                    bonus.Y - BonusLogic.Height / 2 + dy);
+            if (glow != null)
+            {
+                int gx = bonus.X - (int)glow.GetWidth() / 2 + dx;
+                int gy = bonus.Y - (int)glow.GetHeight() / 2 + dy;
+                DrawTexture(glow, new Vector2(gx, gy));
+            }
+        }
+    }
+
+    private void DrawWorldTexture(Texture2D tex, int x, int y)
+    {
+        const int MapLeft = 16;
+        const int MapRight = 320 - 16;
+        int w = (int)tex.GetWidth();
+        int h = (int)tex.GetHeight();
+        int left = System.Math.Max(x, MapLeft);
+        int right = System.Math.Min(x + w, MapRight);
+        if (right <= left) return;
+
+        var dst = new Rect2(left, y, right - left, h);
+        var src = new Rect2(left - x, 0, right - left, h);
+        DrawTextureRectRegion(tex, dst, src);
     }
 }

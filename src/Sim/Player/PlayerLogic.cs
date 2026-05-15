@@ -54,6 +54,21 @@ public sealed class PlayerLogic
         _gAddY = 0;
     }
 
+    public void ApplyDemoFrame(int x, int y, int pic)
+    {
+        X = x;
+        Y = y;
+        Pic = pic;
+        _oldX = x;
+        _gAddX = 0;
+        _gAddY = 0;
+    }
+
+    public void SetShield(int shield)
+    {
+        Shield = System.Math.Clamp(shield, 0, MaxShield);
+    }
+
     /// <summary>
     /// Apply shield damage. Shield is clamped to [0, MaxShield].
     /// Returns true if the player died (shield reached 0).

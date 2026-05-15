@@ -26,6 +26,8 @@ public static class BonusEffectDispatcher
     /// </summary>
     public static readonly int[] ItemBuyCost = { 93800, 76000, 55700, 35200, 122500, 50 };
 
+    public static bool IsMoneyBonus(int objType) => objType is >= 18 and <= 23;
+
     public struct Result
     {
         /// <summary>True iff GrantWeapon claimed the type (0..14).</summary>

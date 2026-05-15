@@ -1,4 +1,7 @@
+using System;
 using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
 
 namespace Raptor.Sim.MazeLevel;
 
@@ -17,6 +20,8 @@ namespace Raptor.Sim.MazeLevel;
 /// </summary>
 public sealed class TileState
 {
+    /// <summary>Absolute MAP_SIZE index for this tile (mirrors TILESPOT.mapspot).</summary>
+    public int MapSpot { get; set; } = -1;
     /// <summary>Top-left screen X of this tile (= MAP_LEFT + col*32).</summary>
     public int ScreenX { get; set; }
     /// <summary>Top-left screen Y of this tile (= tileyoff + row*32).</summary>
@@ -53,6 +58,9 @@ public sealed class TileState
 /// </summary>
 public static class TileDamageDispatcher
 {
+    private static readonly Lazy<StreamWriter?> TileTrace = new(OpenTileTrace);
+    public static int TraceIter { get; set; } = -1;
+
     public struct DamageResult
     {
         /// <summary>True iff a destructible tile was hit and damaged.</summary>
@@ -63,6 +71,8 @@ public static class TileDamageDispatcher
         public int Bounty;
         /// <summary>True iff this hit reduced the tile's Hits to ≤ 0 for the first time.</summary>
         public bool JustDestroyed;
+        /// <summary>Absolute MAP_SIZE index of the damaged tile, or -1.</summary>
+        public int MapSpot;
     }
 
     /// <summary>
@@ -71,17 +81,30 @@ public static class TileDamageDispatcher
     /// from top-left → bottom-right, row-major).
     /// </summary>
     public static DamageResult TileIsHit(IList<TileState> tiles, int x, int y, int damage)
-        => DispatchHit(tiles, x, y, damage, splashAbove: false, splashDamage: 0);
+        => DispatchHit(tiles, x, y, damage, splashAbove: false, splashDamage: 0,
+            mapCols: 9, deadAtPassStart: null);
+
+    internal static DamageResult TileIsHit(IList<TileState> tiles, int x, int y, int damage,
+                                           ISet<TileState> deadAtPassStart)
+        => DispatchHit(tiles, x, y, damage, splashAbove: false, splashDamage: 0,
+            mapCols: 9, deadAtPassStart: deadAtPassStart);
 
     /// <summary>
     /// Tile-Bomb dispatch. Ports SOURCE/TILE.C:499-540.
     /// On hit also splashes (damage &gt;&gt; 1) onto the tile above (mapspot − cols).
     /// </summary>
     public static DamageResult TileBomb(IList<TileState> tiles, int x, int y, int damage, int mapCols)
-        => DispatchHit(tiles, x, y, damage, splashAbove: true, splashDamage: damage >> 1, mapCols: mapCols);
+        => DispatchHit(tiles, x, y, damage, splashAbove: true, splashDamage: damage >> 1,
+            mapCols: mapCols, deadAtPassStart: null);
+
+    internal static DamageResult TileBomb(IList<TileState> tiles, int x, int y, int damage,
+                                          int mapCols, ISet<TileState> deadAtPassStart)
+        => DispatchHit(tiles, x, y, damage, splashAbove: true, splashDamage: damage >> 1,
+            mapCols: mapCols, deadAtPassStart: deadAtPassStart);
 
     private static DamageResult DispatchHit(IList<TileState> tiles, int x, int y, int damage,
-                                            bool splashAbove, int splashDamage, int mapCols = 9)
+                                            bool splashAbove, int splashDamage, int mapCols,
+                                            ISet<TileState>? deadAtPassStart)
     {
         for (int i = 0; i < tiles.Count; i++)
         {
@@ -89,14 +112,20 @@ public static class TileDamageDispatcher
             if (x < t.ScreenX || x >= t.ScreenX + 32) continue;
             if (y < t.ScreenY || y >= t.ScreenY + 32) continue;
             if (!t.IsDestructible) continue;
-
+            if (t.Dead && (deadAtPassStart == null || deadAtPassStart.Contains(t))) continue;
             int hitsBefore = t.Hits;
             t.Hits -= damage;
-            bool justDestroyed = hitsBefore > 0 && t.Hits <= 0;
+            Trace("hit", t, x, y, damage, hitsBefore, t.Hits);
+            bool justDestroyed = hitsBefore >= 0 && t.Hits < 0 && !t.Dead;
+            if (justDestroyed) t.Dead = true;
 
             // Splash to the tile one row above (i - mapCols). C: `if (ts->mapspot > MAP_COLS)`.
             if (splashAbove && i >= mapCols && tiles[i - mapCols].IsDestructible)
+            {
+                int splashBefore = tiles[i - mapCols].Hits;
                 tiles[i - mapCols].Hits -= splashDamage;
+                Trace("splash", tiles[i - mapCols], -1, -1, splashDamage, splashBefore, tiles[i - mapCols].Hits);
+            }
 
             return new DamageResult
             {
@@ -104,8 +133,29 @@ public static class TileDamageDispatcher
                 HitIndex = i,
                 Bounty = justDestroyed ? t.Bounty : 0,
                 JustDestroyed = justDestroyed,
+                MapSpot = t.MapSpot,
             };
         }
-        return new DamageResult { Hit = false, HitIndex = -1 };
+        return new DamageResult { Hit = false, HitIndex = -1, MapSpot = -1 };
+    }
+
+    internal static void TraceMapSpot(string kind, int mapSpot, int x, int y, int damage, int before, int after, bool dead)
+    {
+        var trace = TileTrace.Value;
+        if (trace == null) return;
+        trace.WriteLine(string.Format(CultureInfo.InvariantCulture,
+            "i={0} kind={1} mapspot={2} x={3} y={4} damage={5} before={6} after={7} dead={8}",
+            TraceIter, kind, mapSpot, x, y, damage, before, after, dead ? 1 : 0));
+        trace.Flush();
+    }
+
+    private static void Trace(string kind, TileState tile, int x, int y, int damage, int before, int after)
+        => TraceMapSpot(kind, tile.MapSpot, x, y, damage, before, after, tile.Dead);
+
+    private static StreamWriter? OpenTileTrace()
+    {
+        string? path = System.Environment.GetEnvironmentVariable("RAPTOR_TILE_TRACE");
+        if (string.IsNullOrWhiteSpace(path)) return null;
+        return new StreamWriter(path) { AutoFlush = true };
     }
 }

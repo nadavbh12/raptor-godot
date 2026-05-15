@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using Raptor.Sim.Bullet;
 using Raptor.Sim.Enemy;
+using Raptor.Sim.MazeLevel;
+using Raptor.Sim;
 
 namespace Raptor.Sim.Shots;
 
@@ -22,30 +24,59 @@ namespace Raptor.Sim.Shots;
 /// </summary>
 internal static class ShotDoneDispatcher
 {
-    public static void Dispatch(BulletLogic b,
-                                IList<BulletLogic> enemyBullets,
-                                IList<EnemyLogic> enemies,
-                                Random? rng)
+    public readonly struct DispatchResult
+    {
+        public DispatchResult(int tileBounty)
+        {
+            TileBounty = tileBounty;
+        }
+
+        public int TileBounty { get; }
+    }
+
+    public static DispatchResult Dispatch(BulletLogic b,
+                                          IList<BulletLogic> enemyBullets,
+                                          IList<EnemyLogic> enemies,
+                                          Random? rng,
+                                          IList<TileState>? tiles = null)
     {
         if (b.Delayed)
         {
-            int scatter = (rng?.Next(32) ?? 16) - 16;
+            int scatter = DeterministicRandom.NextOrMidpoint(rng, 32, 16) - 16;
             b.ReInitBresenhamTarget(b.Mx + scatter, 0);
             b.Delayed = false;
-            return;
+            return new DispatchResult(0);
         }
         switch (b.PlayerWeapon)
         {
             case WeaponType.MegaBomb:
                 foreach (var eb in enemyBullets) eb.Kill();
-                foreach (var e in enemies) if (e.Alive) e.TakeDamage(b.Damage);
+                foreach (var e in enemies) if (e.Alive) e.TakeDamage(b.Damage, deferRemovalForDump: true);
+                int bounty = tiles == null ? 0 : DamageAllTiles(tiles, damage: 20);
                 b.Kill();
-                return;
+                return new DispatchResult(bounty);
             case WeaponType.Turret:
-                return;
+                return new DispatchResult(0);
             default:
                 b.Kill();
-                return;
+                return new DispatchResult(0);
         }
+    }
+
+    private static int DamageAllTiles(IList<TileState> tiles, int damage)
+    {
+        int bounty = 0;
+        foreach (var tile in tiles)
+        {
+            if (!tile.IsDestructible) continue;
+            int before = tile.Hits;
+            tile.Hits -= damage;
+            if (before >= 0 && tile.Hits < 0 && !tile.Dead)
+            {
+                bounty += tile.Bounty;
+                tile.Dead = true;
+            }
+        }
+        return bounty;
     }
 }

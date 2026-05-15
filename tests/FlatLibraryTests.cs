@@ -50,6 +50,7 @@ public class FlatLibraryTests
         if (!File.Exists(path)) return;
         var lib = FlatLibrary.LoadFromFile(path);
         Assert.True(lib.IsDestructible(117));
+        Assert.Equal(420, lib.DestroyedFlatFor(117));
         Assert.Equal(15, lib.HitsFor(117));
         Assert.Equal(50, lib.BountyFor(117));
     }

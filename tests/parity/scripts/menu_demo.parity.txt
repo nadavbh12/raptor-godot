@@ -1,7 +1,8 @@
 {"fc":0,"iter":-1,"win":"MENU","player_x":144,"player_y":160,"score":0,"shield":0,"enemies":0,"pbullets":0,"ebullets":0,"obj_hash":"cbf29ce484222325"}
-{"fc":140,"iter":-1,"win":"MENU","player_x":142,"player_y":158,"score":10000,"shield":100,"enemies":4,"pbullets":0,"ebullets":0,"obj_hash":"5e79d88f800a65c6"}
-{"fc":280,"iter":-1,"win":"MENU","player_x":140,"player_y":156,"score":10000,"shield":100,"enemies":4,"pbullets":0,"ebullets":0,"obj_hash":"5e79d88f800a65c6"}
-{"fc":350,"iter":-1,"win":"MENU","player_x":147,"player_y":141,"score":10000,"shield":100,"enemies":4,"pbullets":0,"ebullets":0,"obj_hash":"5e79d88f800a65c6"}
-{"fc":420,"iter":-1,"win":"MENU","player_x":160,"player_y":141,"score":10000,"shield":100,"enemies":4,"pbullets":0,"ebullets":0,"obj_hash":"5e79d88f800a65c6"}
-{"fc":490,"iter":-1,"win":"MENU","player_x":125,"player_y":141,"score":10000,"shield":100,"enemies":8,"pbullets":25,"ebullets":0,"obj_hash":"5e79d88f800a65c6"}
-{"fc":560,"iter":-1,"win":"MENU","player_x":43,"player_y":141,"score":10700,"shield":100,"enemies":6,"pbullets":25,"ebullets":3,"obj_hash":"5e79d88f800a65c6"}
+{"fc":9,"iter":0,"win":"MISSION_1","player_x":142,"player_y":158,"score":10000,"shield":100,"enemies":4,"pbullets":0,"ebullets":0,"obj_hash":"5e79d88f800a65c6"}
+{"fc":193,"iter":18,"win":"MISSION_1","player_x":138,"player_y":141,"score":10000,"shield":100,"enemies":4,"pbullets":0,"ebullets":0,"obj_hash":"5e79d88f800a65c6"}
+{"fc":247,"iter":36,"win":"MISSION_1","player_x":160,"player_y":141,"score":10000,"shield":100,"enemies":4,"pbullets":0,"ebullets":0,"obj_hash":"5e79d88f800a65c6"}
+{"fc":301,"iter":54,"win":"MISSION_1","player_x":159,"player_y":140,"score":10000,"shield":100,"enemies":4,"pbullets":0,"ebullets":0,"obj_hash":"5e79d88f800a65c6"}
+{"fc":355,"iter":72,"win":"MISSION_1","player_x":121,"player_y":141,"score":10000,"shield":100,"enemies":8,"pbullets":29,"ebullets":0,"obj_hash":"5e79d88f800a65c6"}
+{"fc":409,"iter":90,"win":"MISSION_1","player_x":51,"player_y":141,"score":10700,"shield":100,"enemies":6,"pbullets":30,"ebullets":2,"obj_hash":"5e79d88f800a65c6"}
+{"fc":463,"iter":108,"win":"MISSION_1","player_x":49,"player_y":143,"score":11400,"shield":100,"enemies":4,"pbullets":0,"ebullets":1,"obj_hash":"5e79d88f800a65c6"}

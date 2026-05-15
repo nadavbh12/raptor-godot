@@ -18,6 +18,7 @@
 #   SKIP_UNTIL_C          drop pairs where C is mid-fade-in below this mfc (default: 200)
 #   FPS                   output framerate (default: 24)
 #   REUSE_C, REUSE_GODOT  set to 1 to skip re-extracting that side
+#   GODOT_BIN             Godot executable (default: command -v godot)
 
 set -euo pipefail
 
@@ -45,6 +46,7 @@ if [[ "${REUSE_C:-0}" -ne 1 ]]; then
     echo "[compare] extracting C frames ($SCRIPT_NAME)..."
     CBIN="$DOSRAPTOR/build/raptor.app/Contents/MacOS/raptor"
     rm -f "$C_DIR"/*.bmp "$C_DIR"/*.png "$C_DIR"/parity.txt "$C_DIR"/log.txt
+    SDL_AUDIODRIVER=dummy \
     RAPTOR_SKIPINTRO=1 \
     RAPTOR_PLAYTHROUGH="$SCRIPT_PATH" \
     RAPTOR_PARITY_OUT="$C_DIR/parity.txt" \
@@ -67,13 +69,15 @@ fi
 if [[ "${REUSE_GODOT:-0}" -ne 1 ]]; then
     echo "[compare] extracting Godot frames..."
     rm -f "$G_DIR"/*.png "$G_DIR"/parity.txt "$G_DIR"/log.txt
-    GODOT_BIN="$(realpath "$(command -v godot)")"
+    GODOT_BIN="${GODOT_BIN:-$(command -v godot)}"
+    GODOT_BIN="$(realpath "$GODOT_BIN")"
     RAPTOR_PLAYTHROUGH="$SCRIPT_PATH" \
     RAPTOR_PARITY_OUT="$G_DIR/parity.txt" \
     RAPTOR_TEST_FAST=1 \
     RAPTOR_SHOT_DIR="$G_DIR" \
     RAPTOR_SHOT_EVERY_FC=5 \
     "$GODOT_BIN" --path "$REPO" \
+        --audio-driver Dummy \
         --position 99999,99999 --resolution 320x200 \
         --quit-after 20000 >"$G_DIR/log.txt" 2>&1
     echo "[compare]   frames: $(ls "$G_DIR"/*.png | wc -l | xargs)"

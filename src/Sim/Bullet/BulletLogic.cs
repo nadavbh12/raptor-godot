@@ -93,12 +93,25 @@ public sealed class BulletLogic
     private int _berr;             // Bresenham error accumulator
     private int _bmaxloop;         // remaining steps until target reached
     // Mirrors C `shot->move.done`. Set true when Bresenham completes
-    // (_bmaxloop hits 0 during the Tick that reaches the target). The
-    // SHOTS.C shot_done block (line 1218) reads this at the start of the
-    // NEXT iter; WaveController.PhaseMovement does the same.
+    // (_bmaxloop hits 0 during the Tick that reaches the target), or when a
+    // straight player shot's move.y crosses the top edge at the end of the
+    // tick. The SHOTS.C shot_done block (line 1218) reads this at the start of
+    // the NEXT iter; WaveController.PhaseMovement does the same.
     private bool _bresenhamDone;
-    /// <summary>True after a Tick in which the Bresenham bullet reached its target.</summary>
-    public bool ReachedTarget => _bresenhamDone;
+    private readonly bool _playerAimed;
+    private readonly int _baHlx, _baHly;
+    private bool _playerStraightDone;
+    private bool _deferredDoneFlag;
+    /// <summary>True when C `shot->move.done` is set.</summary>
+    public bool ReachedTarget => _bresenhamDone || _playerStraightDone;
+    /// <summary>True when C will dispatch shot_done at the start of the next SHOTS_Think pass.</summary>
+    public bool PendingShotDone => ReachedTarget || _deferredDoneFlag;
+    /// <summary>True when C `shot->doneflag` was set by a hit in this pass.</summary>
+    public bool DeferredDoneFlag => _deferredDoneFlag;
+    /// <summary>Diagnostic view of C `shot->doneflag` after the current pass.</summary>
+    public bool DoneFlagForDump => _deferredDoneFlag || _playerStraightDone;
+    /// <summary>True for player use_plot shots (MiniGun, DumbMissile, MegaBomb).</summary>
+    public bool IsPlayerAimedBresenham => _bresenham && _playerAimed;
     /// <summary>
     /// Mirrors C `cur->delayflag` (initial true for DUMB_MISSLE only). When
     /// true, the first ReachedTarget event re-targets the bullet to a new
@@ -112,8 +125,39 @@ public sealed class BulletLogic
     /// scatter, mirroring the C `switch (lib->type)` branch.
     /// </summary>
     public Shots.WeaponType? PlayerWeapon { get; set; }
+    /// <summary>
+    /// Mirrors C SHOT_LIB.type for dump comparison. This normally matches
+    /// PlayerWeapon, except the original C table stores S_MISSLE_PODS in the
+    /// S_AIR_MISSLE entry.
+    /// </summary>
+    public Shots.WeaponType? CWeaponTypeForDump { get; set; }
     /// <summary>Clears the ReachedTarget flag after the controller dispatched its event.</summary>
-    public void ClearReachedTarget() => _bresenhamDone = false;
+    public void ClearReachedTarget()
+    {
+        _bresenhamDone = false;
+        _playerStraightDone = false;
+        _deferredDoneFlag = false;
+    }
+    /// <summary>
+    /// Snapshot display from current move.x/y without advancing. C reaches
+    /// shot_done after the damage switch, so use_plot shots with move.done set
+    /// from the previous pass still get one final collision at their target.
+    /// </summary>
+    public void SnapshotForPendingShotDonePass()
+    {
+        if (_bresenham)
+        {
+            X = _playerAimed ? _bx - _baHlx : _bx;
+            Y = _playerAimed ? _by - _baHly : _by;
+        }
+    }
+
+    /// <summary>
+    /// Mirrors C `shot->doneflag = TRUE` after an enemy hit. That flag is not
+    /// `move.done` yet, so the current dump/display pass still sees the bullet
+    /// with reached=0; the next SHOTS_Think pass promotes it to shot_done.
+    /// </summary>
+    public void MarkDoneFlagForNextPass() => _deferredDoneFlag = true;
     /// <summary>
     /// Re-initialize the Bresenham target. Mirrors C `InitMobj(&shot->move)` in
     /// the DUMB_MISSLE delayflag branch (SHOTS.C:1224). Keeps current position
@@ -183,6 +227,11 @@ public sealed class BulletLogic
 
     /// <summary>Current per-tick speed (used by BulletDumper for parity comparison).</summary>
     public int CurSpeed => _curSpeed;
+    /// <summary>
+    /// C SHOTS_DumpForParity writes SHOTS.cnt, which is a display-only beam
+    /// counter. Non-beam player shots animate through curframe and keep cnt=0.
+    /// </summary>
+    public int CCounterForDump => _beam ? (FrameCounter % 4) : 0;
     /// <summary>Pre-advanced move target (mirrors C move.x). Used by BulletDumper.</summary>
     public int Mx => _playerStraight ? _psMoveX : _bresenham ? _bx : (int)_fx;
     /// <summary>Pre-advanced move target (mirrors C move.y). Used by BulletDumper.</summary>
@@ -250,7 +299,16 @@ public sealed class BulletLogic
     /// </summary>
     public static BulletLogic AimedAt(BulletKind kind, int x, int y, int x2, int y2,
                                       int initSpeed, int maxSpeed, int damage)
-        => new BulletLogic(kind, x, y, x2, y2, initSpeed, maxSpeed, damage, bresenhamMarker: true);
+        => new BulletLogic(kind, x, y, x2, y2, initSpeed, maxSpeed, damage,
+                           preAdvance: true, playerAimed: false, hlx: 0, hly: 0,
+                           bresenhamMarker: true);
+
+    public static BulletLogic PlayerAimedAt(int x, int y, int x2, int y2,
+                                            int initSpeed, int maxSpeed,
+                                            int hlx, int hly, int damage)
+        => new BulletLogic(BulletKind.Player, x, y, x2, y2, initSpeed, maxSpeed, damage,
+                           preAdvance: false, playerAimed: true, hlx: hlx, hly: hly,
+                           bresenhamMarker: true);
 
     /// <summary>
     /// Create a player straight-fire bullet (FORWARD_GUNS / PLASMA_GUNS /
@@ -352,7 +410,8 @@ public sealed class BulletLogic
     }
 
     private BulletLogic(BulletKind kind, int x, int y, int x2, int y2,
-                        int initSpeed, int maxSpeed, int damage, bool bresenhamMarker)
+                        int initSpeed, int maxSpeed, int damage, bool preAdvance,
+                        bool playerAimed, int hlx, int hly, bool bresenhamMarker)
     {
         Kind = kind;
         X = x; Y = y;
@@ -363,6 +422,9 @@ public sealed class BulletLogic
         _accelerating = true;
         Damage = damage;
         _bresenham = true;
+        _playerAimed = playerAimed;
+        _baHlx = hlx;
+        _baHly = hly;
 
         // InitMobj (RAP.C:339-371).
         _bx = x; _by = y;
@@ -373,13 +435,12 @@ public sealed class BulletLogic
         if (_bdelY < 0) { _bdelY = -_bdelY; _baddY = -1; }
         if (_bdelX >= _bdelY) { _berr = -(_bdelY >> 1); _bmaxloop = _bdelX + 1; }
         else                  { _berr =  (_bdelX >> 1); _bmaxloop = _bdelY + 1; }
-        // C ESHOT_Shoot ends with MoveSobj(&move, 1) — pre-advance 1 step.
-        BresenhamStep();
+        if (preAdvance)
+            BresenhamStep();
     }
 
     private void BresenhamStep()
     {
-        if (_bmaxloop == 0) { _bresenhamDone = true; return; }
         if (_bdelX >= _bdelY)
         {
             _bx += _baddX;
@@ -393,8 +454,9 @@ public sealed class BulletLogic
             if (_berr > 0) { _bx += _baddX; _berr -= _bdelY; }
         }
         _bmaxloop--;
-        // Mirrors C MoveSobj: sets move.done=TRUE when loopcnt reaches 0.
-        if (_bmaxloop == 0) _bresenhamDone = true;
+        // Mirrors C MoveSobj: it does not stop the current speed loop when
+        // maxloop reaches zero; it marks done after completing all steps.
+        if (_bmaxloop < 1) _bresenhamDone = true;
     }
 
     public void Tick()
@@ -432,17 +494,28 @@ public sealed class BulletLogic
                 _curSpeed++;
             _psMoveY += _psSign * _curSpeed;
             FrameCounter++;
-            // SHOTS.C:1262 — also kill on move.y < 0 (covers upward bullets
-            // whose move outruns the display lag).
+            // SHOTS.C:1262 — move.y < 0 marks move.done/doneflag AFTER this
+            // iter's display position was snapped. Do not kill immediately:
+            // C keeps the shot live for the current display/dump pass, then
+            // removes it through shot_done at the start of the next pass.
             if (_psSign < 0 && _psMoveY < 0)
-                Alive = false;
+            {
+                _playerStraightDone = true;
+            }
             return;
         }
         if (_bresenham)
         {
-            X = _bx;
-            Y = _by;
+            X = _playerAimed ? _bx - _baHlx : _bx;
+            Y = _playerAimed ? _by - _baHly : _by;
+            if (_playerAimed && !Delayed && _curSpeed < _maxSpeed)
+                _curSpeed++;
             for (int s = 0; s < _curSpeed; s++) BresenhamStep();
+            if (!_playerAimed && _accelerating && _curSpeed < _maxSpeed)
+                _curSpeed++;
+            FrameCounter++;
+            if (!_playerAimed && (X < 0 || X >= 320 || Y < 0 || Y >= 200)) Alive = false;
+            return;
         }
         else
         {

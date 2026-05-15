@@ -5,10 +5,7 @@ namespace Raptor.Sim.Bonus;
 /// BONUS struct + BONUS_Think. ObjType is the raw OBJ_TYPE value the bonus
 /// grants on pickup; effect application lives in WaveController.
 ///
-/// Wobble (BONUS.C:181-182's xpos[pos]/ypos[pos] rotation) is intentionally
-/// omitted — the wobble shifts the rendered position but the pickup AABB
-/// (BONUS.C:207) uses the raw cur->x/cur->y center, so wobble has no parity
-/// effect on inventory. A view layer can add it later for cosmetic motion.
+/// Wobble shifts only the rendered position; pickup still uses raw X/Y center.
 /// </summary>
 public sealed class BonusLogic
 {
@@ -16,7 +13,13 @@ public sealed class BonusLogic
     public int ObjType { get; }
     public int X       { get; private set; }
     public int Y       { get; private set; }
+    public int Pos     { get; private set; }
+    public int Frame   { get; private set; }
+    public int GlowFrame { get; private set; }
+    public bool DisplayAsPickedUpMoney { get; private set; }
+    public int PickedUpMoneyCountdown { get; private set; }
     public bool Alive  { get; private set; } = true;
+    private int _tickCount;
 
     /// <summary>
     /// BONUS_Think pickup-AABB half-width. BONUS_WIDTH=16, BONUS_HEIGHT=16
@@ -27,11 +30,12 @@ public sealed class BonusLogic
     public const int Width  = 16;
     public const int Height = 16;
 
-    public BonusLogic(int objType, int x, int y)
+    public BonusLogic(int objType, int x, int y, int initialPos = 0)
     {
         ObjType = objType;
         X = x;
         Y = y;
+        Pos = ((initialPos % 16) + 16) % 16;
     }
 
     /// <summary>
@@ -41,10 +45,37 @@ public sealed class BonusLogic
     public void Tick()
     {
         if (!Alive) return;
+        if (DisplayAsPickedUpMoney)
+        {
+            PickedUpMoneyCountdown--;
+            if (PickedUpMoneyCountdown <= 0)
+                Alive = false;
+            return;
+        }
         Y++;
+        if ((_tickCount & 1) != 0)
+        {
+            Pos = (Pos + 1) % 16;
+            Frame = (Frame + 1) % FrameCountFor(ObjType);
+        }
+        GlowFrame = (GlowFrame + 1) % 4;
+        _tickCount++;
         if (Y > 200) Alive = false;
     }
 
     /// <summary>Force-kill (used on player pickup).</summary>
     public void Kill() => Alive = false;
+
+    public void MarkPickedUpMoney()
+    {
+        DisplayAsPickedUpMoney = true;
+        PickedUpMoneyCountdown = 50;
+    }
+
+    private static int FrameCountFor(int objType) => objType switch
+    {
+        1 or 2 or 12 => 2,
+        4 or 5 or 10 or 13 or 14 or 16 or 23 => 4,
+        _ => 1,
+    };
 }

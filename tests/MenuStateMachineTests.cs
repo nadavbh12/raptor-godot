@@ -67,17 +67,6 @@ public class MenuStateMachineTests
         Assert.Equal(100 + MenuStateMachine.CreditsFadeFrames, m.StateEnteredFrame);
     }
 
-    [Fact(Skip = "Stale: dates from menu-only stage when only CREDITS was wired. NEW now correctly transitions to BRIEFING (Stage 5b). L2a tests verify menu transitions against C goldens.")]
-    public void Return_on_non_credits_item_stays_in_Menu()
-    {
-        var m = new MenuStateMachine();
-        m.EnterMenu(0);
-        // item 0 = NEW — Return should not transition.
-        bool transitioned = m.HandleInput("Return", 50);
-        Assert.False(transitioned);
-        Assert.Equal(WinState.Menu, m.State);
-    }
-
     [Fact]
     public void Return_in_Credits_enters_Unknown_keeps_anchor()
     {

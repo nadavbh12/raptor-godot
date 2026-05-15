@@ -1,5 +1,9 @@
 using System.Collections.Generic;
 using Raptor.Sim;
+using Raptor.Sim.Bullet;
+using Raptor.Sim.Enemy;
+using Raptor.Sim.Player;
+using Raptor.Sim.Shots;
 using Xunit;
 
 namespace Raptor.Tests;
@@ -57,4 +61,55 @@ public class WaveControllerTests
         Assert.Equal(2048ul, WavePhaseScheduler.ComputeSeed(2, ""));
         Assert.Equal(2048ul, WavePhaseScheduler.ComputeSeed(2, null));
     }
+
+    [Fact]
+    public void Enemy_shot_sound_consumes_c_random_pitch_slot()
+    {
+        var actual = new System.Random(1234);
+        WaveController.ConsumeEnemyShotSoundRandomForParity(actual, EnemyShotType.AtDown);
+
+        var expected = new System.Random(1234);
+        PlayerShooter.NextRandom(expected, 40, "expected.fx_enemyshot");
+
+        Assert.Equal(PlayerShooter.NextRandom(expected, 1000, "expected.next"),
+                     PlayerShooter.NextRandom(actual, 1000, "actual.next"));
+    }
+
+    [Fact]
+    public void Coconut_enemy_shot_consumes_monkey_pick_before_random_pitch()
+    {
+        var actual = new System.Random(1234);
+        WaveController.ConsumeEnemyShotSoundRandomForParity(actual, EnemyShotType.Coconuts);
+
+        var expected = new System.Random(1234);
+        PlayerShooter.NextRandom(expected, 6, "expected.coconut.pick");
+        PlayerShooter.NextRandom(expected, 40, "expected.fx_coconut");
+
+        Assert.Equal(PlayerShooter.NextRandom(expected, 1000, "expected.next"),
+                     PlayerShooter.NextRandom(actual, 1000, "actual.next"));
+    }
+
+    [Fact]
+    public void Pending_removal_enemy_can_still_body_crash_before_c_removes_it()
+    {
+        var wave = new WaveController();
+        wave.PlayerLogic.Reset();
+        var enemy = new EnemyLogic(new SpriteMeta
+        {
+            IName = "pending-crash",
+            Hits = 3,
+            Width = 24,
+            Height = 24,
+            FlightType = 1,
+            NumFlight = 0,
+        }, spawnX: 148, mapY: 164);
+        enemy.TakeDamage(99, deferRemovalForDump: true);
+        ((List<EnemyLogic>)wave.GetEnemies()).Add(enemy);
+
+        wave.PhaseMovement();
+        wave.PhaseCollisionCollect();
+
+        Assert.Equal(PlayerLogic.InitShield - 6, wave.PlayerLogic.Shield);
+    }
+
 }

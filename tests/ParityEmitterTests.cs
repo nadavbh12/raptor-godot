@@ -67,4 +67,40 @@ public class ParityEmitterTests
             File.Delete(path);
         }
     }
+
+    [Fact]
+    public void Demo_playback_uses_mission_iter_buckets_not_menu_fc_schedule()
+    {
+        var path = Path.GetTempFileName();
+        try {
+            SimClock.ResetForTest();
+            var menu = new MenuStateMachine();
+            menu.EnterMenu(0);
+
+            int gameIter = 0;
+            using var worker = new ParityEmitWorker {
+                Menu = menu,
+                GetDemoGameNum = () => 0,
+                GetGameAnchorFrame = () => 100,
+                GetGameIter = () => gameIter,
+            };
+            worker.Open(path);
+
+            for (int i = 0; i < 40; i++) {
+                gameIter = i + 1;
+                SimClock.Tick();
+                worker.Tick();
+            }
+
+            var lines = File.ReadAllLines(path);
+            Assert.Equal(3, lines.Length);
+            Assert.Contains("\"iter\":0", lines[0]);
+            Assert.Contains("\"win\":\"MISSION_1\"", lines[0]);
+            Assert.Contains("\"iter\":18", lines[1]);
+            Assert.Contains("\"win\":\"MISSION_1\"", lines[1]);
+            Assert.Contains("\"iter\":36", lines[2]);
+        } finally {
+            File.Delete(path);
+        }
+    }
 }

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Raptor.Sim.Bullet;
 using Raptor.Sim.Enemy;
+using Raptor.Sim.MazeLevel;
 using Raptor.Sim.Shots;
 using Xunit;
 
@@ -26,6 +27,16 @@ public class ShotDoneDispatcherTests
             Height = 24,
         };
         return new EnemyLogic(meta, spawnX: 100, mapY: 50);
+    }
+
+    private static List<TileState> MakeTiles()
+    {
+        return new List<TileState>
+        {
+            new() { IsDestructible = true,  Hits = 30, Bounty = 100 },
+            new() { IsDestructible = false, Hits = 30, Bounty = 200 },
+            new() { IsDestructible = true,  Hits = 10, Bounty = 300 },
+        };
     }
 
     [Fact]
@@ -79,6 +90,31 @@ public class ShotDoneDispatcherTests
         Assert.False(eb2.Alive);
         Assert.Equal(12, e1.Hits);         // 20 - 8
         Assert.False(e2.Alive);            // 5 - 8 → ≤ 0, dies
+    }
+
+    [Fact]
+    public void MegaBomb_dispatch_damages_all_destructible_tiles_by_twenty_and_reports_bounty()
+    {
+        // SHOTS.C:1234: MegaBomb calls TILE_DamageAll(), which subtracts 20
+        // from every destructible on-screen tile. TILE_Think later awards
+        // bounty only for tiles whose hits fall below zero.
+        var b = BulletLogic.AimedAt(BulletKind.Player, x: 160, y: 176,
+            x2: 160, y2: 75, initSpeed: 1, maxSpeed: 1, damage: 8);
+        b.PlayerWeapon = WeaponType.MegaBomb;
+
+        var tiles = MakeTiles();
+
+        var result = ShotDoneDispatcher.Dispatch(b,
+            enemyBullets: new List<BulletLogic>(),
+            enemies: new List<EnemyLogic>(),
+            rng: null,
+            tiles: tiles);
+
+        Assert.Equal(10, tiles[0].Hits);
+        Assert.Equal(30, tiles[1].Hits);   // indestructible: unchanged
+        Assert.Equal(-10, tiles[2].Hits);
+        Assert.Equal(300, result.TileBounty);
+        Assert.True(tiles[2].Dead);
     }
 
     [Fact]
@@ -161,5 +197,34 @@ public class ShotDoneDispatcherTests
 
         ShotDoneDispatcher.Dispatch(b, new List<BulletLogic>(), new List<EnemyLogic>(), rng);
         Assert.False(b.Alive);  // default branch removes
+    }
+
+    [Fact]
+    public void Deterministic_rng_flag_retargets_delayflag_to_current_move_x_without_advancing_rng()
+    {
+        string? previous = Environment.GetEnvironmentVariable("RAPTOR_DETERMINISTIC_RNG");
+        Environment.SetEnvironmentVariable("RAPTOR_DETERMINISTIC_RNG", "1");
+        try
+        {
+            var b = BulletLogic.AimedAt(BulletKind.Player, 160, 100, 175, 105,
+                initSpeed: 1, maxSpeed: 1, damage: 1);
+            b.PlayerWeapon = WeaponType.DumbMissile;
+            b.Delayed = true;
+            for (int i = 0; i < 50 && !b.ReachedTarget; i++) b.Tick();
+
+            int mxBefore = b.Mx;
+            var rng = new Random(1234);
+
+            ShotDoneDispatcher.Dispatch(b, new List<BulletLogic>(), new List<EnemyLogic>(), rng);
+
+            Assert.Equal(new Random(1234).Next(), rng.Next());
+            Assert.False(b.Delayed);
+            Assert.False(b.ReachedTarget);
+            Assert.Equal(mxBefore, b.Mx);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("RAPTOR_DETERMINISTIC_RNG", previous);
+        }
     }
 }

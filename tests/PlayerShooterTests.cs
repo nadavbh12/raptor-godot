@@ -1,5 +1,7 @@
+using System;
 using System.Collections.Generic;
 using Raptor.Sim.Bullet;
+using Raptor.Sim.Enemy;
 using Raptor.Sim.Shots;
 using Xunit;
 
@@ -79,6 +81,7 @@ public class PlayerShooterTests
         Assert.Equal(176, sink[0].My);
         Assert.Equal(153, sink[1].Mx);  // player_cx - o_gun1[3] - 1
         Assert.Equal(176, sink[1].My);
+        Assert.All(sink, b => Assert.Equal(WeaponType.ForwardGuns, b.PlayerWeapon));
         // After one Tick (=one SHOTS_Think iter) the bullet enters displayed
         // state: shot->x = move.x - hlx, shot->y = move.y - hly. hlx=hly=4.
         sink[0].Tick();
@@ -184,6 +187,178 @@ public class PlayerShooterTests
         Assert.False(ps.Shoot(WeaponType.Turret, 160, 176, 3, sink, enemies: null));
         Assert.Empty(sink);
         Assert.Equal(0, ps.GetCooldown(WeaponType.Turret));
+    }
+
+    [Fact]
+    public void MiniGun_with_no_visible_enemy_keeps_cooldown()
+    {
+        // SHOTS.C:637-642 sets lib->cur_shoot before ENEMY_GetRandom().
+        // SHOTS.C:769-773 removes the temporary shot when no enemy exists,
+        // but it does not clear lib->cur_shoot.
+        var ps = new PlayerShooter();
+        var sink = new List<BulletLogic>();
+
+        Assert.False(ps.Shoot(WeaponType.MiniGun, 160, 176, 3, sink, enemies: null));
+
+        Assert.Empty(sink);
+        Assert.Equal(ShotLib.Get(WeaponType.MiniGun).ShootRate, ps.GetCooldown(WeaponType.MiniGun));
+    }
+
+    [Fact]
+    public void MiniGun_does_not_target_top_edge_flush_enemy_like_c_onscreen()
+    {
+        // ENEMY.C populates onscreen[] only when `sprite->y + sprite->height > 0`.
+        // A top-edge flush sprite (sum == 0) is not eligible until the next
+        // iter. This is the full_demo iter-63 MiniGun early-fire divergence.
+        var flushEnemy = StaticEnemy(x: 100, y: -24, width: 32, height: 24);
+        var sink = new List<BulletLogic>();
+        var ps = new PlayerShooter();
+
+        Assert.False(ps.Shoot(WeaponType.MiniGun, 160, 176, 3, sink, new[] { flushEnemy }, new System.Random(1)));
+        Assert.Empty(sink);
+        Assert.Equal(ShotLib.Get(WeaponType.MiniGun).ShootRate, ps.GetCooldown(WeaponType.MiniGun));
+    }
+
+    [Fact]
+    public void MiniGun_can_target_pending_removal_enemy_from_c_onscreen_snapshot()
+    {
+        // C ENEMY_GetRandom samples onscreen[] from the ENEMY_Think snapshot.
+        // A sprite killed later in SHOTS_Think can still be in that snapshot
+        // until ENEMY_Think removes it, so pending-removal enemies remain
+        // valid MiniGun targets during that window.
+        var pending = StaticEnemy(x: 100, y: 20, width: 32, height: 24);
+        pending.TakeDamage(99, deferRemovalForDump: true);
+        var sink = new List<BulletLogic>();
+        var ps = new PlayerShooter();
+
+        Assert.True(ps.Shoot(WeaponType.MiniGun, 160, 176, 3, sink, new[] { pending }, new System.Random(1)));
+        Assert.Single(sink);
+    }
+
+    [Fact]
+    public void MiniGun_deterministic_flag_uses_middle_enemy_midpoint_without_rng()
+    {
+        string? previous = Environment.GetEnvironmentVariable("RAPTOR_DETERMINISTIC_MINIGUN");
+        string? previousGlobal = Environment.GetEnvironmentVariable("RAPTOR_DETERMINISTIC_RNG");
+        Environment.SetEnvironmentVariable("RAPTOR_DETERMINISTIC_MINIGUN", "1");
+        Environment.SetEnvironmentVariable("RAPTOR_DETERMINISTIC_RNG", null);
+        try
+        {
+            var enemies = new[]
+            {
+                StaticEnemy(x: 40, y: 20, width: 32, height: 24),
+                StaticEnemy(x: 100, y: 20, width: 32, height: 24),
+                StaticEnemy(x: 180, y: 20, width: 32, height: 24),
+            };
+            var sink = new List<BulletLogic>();
+            var ps = new PlayerShooter();
+            var rng = new System.Random(1234);
+
+            Assert.True(ps.Shoot(WeaponType.MiniGun, 160, 176, 3, sink, enemies, rng));
+
+            Assert.Equal(new System.Random(1234).Next(), rng.Next());
+            Assert.Single(sink);
+
+            var expected = BulletLogic.PlayerAimedAt(
+                x: 160, y: 176,
+                x2: 100 + 16 - 1,
+                y2: 20 + 12 + 12 - 1,
+                initSpeed: ShotLib.Get(WeaponType.MiniGun).Speed,
+                maxSpeed: ShotLib.Get(WeaponType.MiniGun).MaxSpeed,
+                hlx: ShotLib.Get(WeaponType.MiniGun).Hlx,
+                hly: ShotLib.Get(WeaponType.MiniGun).Hly,
+                damage: ShotLib.Get(WeaponType.MiniGun).Hits);
+
+            sink[0].Tick();
+            expected.Tick();
+
+            Assert.Equal(expected.X, sink[0].X);
+            Assert.Equal(expected.Y, sink[0].Y);
+            Assert.Equal(expected.Mx, sink[0].Mx);
+            Assert.Equal(expected.My, sink[0].My);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("RAPTOR_DETERMINISTIC_MINIGUN", previous);
+            Environment.SetEnvironmentVariable("RAPTOR_DETERMINISTIC_RNG", previousGlobal);
+        }
+    }
+
+    [Fact]
+    public void Deterministic_rng_flag_makes_weapon_rng_return_midpoints_without_advancing_rng()
+    {
+        string? previous = Environment.GetEnvironmentVariable("RAPTOR_DETERMINISTIC_RNG");
+        Environment.SetEnvironmentVariable("RAPTOR_DETERMINISTIC_RNG", "1");
+        try
+        {
+            var enemies = new[]
+            {
+                StaticEnemy(x: 40, y: 20, width: 32, height: 24),
+                StaticEnemy(x: 100, y: 20, width: 32, height: 24),
+                StaticEnemy(x: 180, y: 20, width: 32, height: 24),
+            };
+            var sink = new List<BulletLogic>();
+            var ps = new PlayerShooter();
+            var rng = new System.Random(1234);
+
+            Assert.True(ps.Shoot(WeaponType.MiniGun, 160, 176, 3, sink, enemies, rng));
+
+            Assert.Equal(new System.Random(1234).Next(), rng.Next());
+            Assert.Single(sink);
+
+            var expected = BulletLogic.PlayerAimedAt(
+                x: 160, y: 176,
+                x2: 100 + 16 - 1,
+                y2: 20 + 12 + 12 - 1,
+                initSpeed: ShotLib.Get(WeaponType.MiniGun).Speed,
+                maxSpeed: ShotLib.Get(WeaponType.MiniGun).MaxSpeed,
+                hlx: ShotLib.Get(WeaponType.MiniGun).Hlx,
+                hly: ShotLib.Get(WeaponType.MiniGun).Hly,
+                damage: ShotLib.Get(WeaponType.MiniGun).Hits);
+
+            sink[0].Tick();
+            expected.Tick();
+
+            Assert.Equal(expected.Mx, sink[0].Mx);
+            Assert.Equal(expected.My, sink[0].My);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("RAPTOR_DETERMINISTIC_RNG", previous);
+        }
+    }
+
+    [Fact]
+    public void MiniGun_deterministic_top_edge_pair_chooses_c_midpoint_target()
+    {
+        // First deterministic full_demo diff: both games have the same two
+        // visible helicopters after ENEMY_Think, but C's random(2) midpoint
+        // selects onscreen[1]. From player center (156,157), targeting the
+        // second enemy at x=16,y=-22 produces move.x=148 after one tick.
+        string? previous = Environment.GetEnvironmentVariable("RAPTOR_DETERMINISTIC_RNG");
+        Environment.SetEnvironmentVariable("RAPTOR_DETERMINISTIC_RNG", "1");
+        try
+        {
+            var enemies = new[]
+            {
+                StaticEnemy(x: 80, y: -22, width: 32, height: 24),
+                StaticEnemy(x: 16, y: -22, width: 32, height: 24),
+            };
+            var sink = new List<BulletLogic>();
+            var ps = new PlayerShooter();
+
+            Assert.True(ps.Shoot(WeaponType.MiniGun, 156, 157, 3, sink, enemies, new System.Random(1234)));
+            Assert.Single(sink);
+
+            sink[0].Tick();
+
+            Assert.Equal(148, sink[0].Mx);
+            Assert.Equal(148, sink[0].My);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("RAPTOR_DETERMINISTIC_RNG", previous);
+        }
     }
 
     [Fact]
@@ -332,14 +507,34 @@ public class PlayerShooterTests
     }
 
     [Fact]
-    public void GrantWeapon_specials_replace_SpecialWeapon()
+    public void GrantWeapon_specials_keep_existing_SpecialWeapon()
     {
         var ps = new PlayerShooter();
         Assert.True(ps.GrantWeapon(3 /* S_DUMB_MISSLE */));
         Assert.Equal(WeaponType.DumbMissile, ps.SpecialWeapon);
-        // Picking up a different special weapon replaces it (C plr.sweapon).
+        // C OBJS_Add only selects a special if plr.sweapon is EMPTY.
+        // S_MEGA_BOMB is not selectable (`specialw=FALSE`), so it does not
+        // replace the active special.
         Assert.True(ps.GrantWeapon(11 /* S_MEGA_BOMB */));
-        Assert.Equal(WeaponType.MegaBomb, ps.SpecialWeapon);
+        Assert.Equal(1, ps.MegaBombCount);
+        Assert.Equal(WeaponType.DumbMissile, ps.SpecialWeapon);
+    }
+
+    [Fact]
+    public void MegaBomb_inventory_counts_grants_and_consumes()
+    {
+        var ps = new PlayerShooter();
+
+        Assert.False(ps.ConsumeMegaBomb());
+        Assert.True(ps.GrantWeapon(11 /* S_MEGA_BOMB */));
+        Assert.True(ps.GrantWeapon(11 /* S_MEGA_BOMB */));
+        Assert.Equal(2, ps.MegaBombCount);
+
+        Assert.True(ps.ConsumeMegaBomb());
+        Assert.Equal(1, ps.MegaBombCount);
+        Assert.True(ps.ConsumeMegaBomb());
+        Assert.Equal(0, ps.MegaBombCount);
+        Assert.False(ps.ConsumeMegaBomb());
     }
 
     // ── Owned-specials + slot selection (OBJS_MakeSpecial port) ──────────────
@@ -353,9 +548,10 @@ public class PlayerShooterTests
         Assert.Equal(WeaponType.DumbMissile, ps.SpecialWeapon);
 
         Assert.True(ps.GrantWeapon(11));  // MegaBomb
-        Assert.Contains(WeaponType.MegaBomb, ps.OwnedSpecials);
-        Assert.Contains(WeaponType.DumbMissile, ps.OwnedSpecials);   // both retained
-        Assert.Equal(WeaponType.MegaBomb, ps.SpecialWeapon);          // newest active
+        Assert.Equal(1, ps.MegaBombCount);
+        Assert.DoesNotContain(WeaponType.MegaBomb, ps.OwnedSpecials);
+        Assert.Contains(WeaponType.DumbMissile, ps.OwnedSpecials);
+        Assert.Equal(WeaponType.DumbMissile, ps.SpecialWeapon);       // first active sticks
     }
 
     [Fact]
@@ -370,6 +566,77 @@ public class PlayerShooterTests
         // Switching to a non-owned special fails and leaves SpecialWeapon alone.
         Assert.False(ps.SelectSpecial(WeaponType.MegaBomb));
         Assert.Equal(WeaponType.DumbMissile, ps.SpecialWeapon);
+    }
+
+    [Fact]
+    public void CycleSpecial_advances_through_owned_specials_and_wraps()
+    {
+        var ps = new PlayerShooter();
+        ps.GrantWeapon((int)WeaponType.MiniGun);
+        ps.GrantWeapon((int)WeaponType.GrdMissile);
+        ps.GrantWeapon((int)WeaponType.DeathRay);
+
+        ps.CycleSpecial();
+        Assert.Equal(WeaponType.GrdMissile, ps.SpecialWeapon);
+
+        ps.CycleSpecial();
+        Assert.Equal(WeaponType.DeathRay, ps.SpecialWeapon);
+
+        ps.CycleSpecial();
+        Assert.Equal(WeaponType.MiniGun, ps.SpecialWeapon);
+    }
+
+    [Fact]
+    public void Demo_game0_shareware_loadout_cycles_only_available_specials()
+    {
+        var ps = new PlayerShooter();
+
+        DemoLoadout.Apply(ps, game: 0, registered: false);
+
+        Assert.Contains(WeaponType.MiniGun, ps.OwnedSpecials);
+        Assert.Contains(WeaponType.AirMissile, ps.OwnedSpecials);
+        Assert.DoesNotContain(WeaponType.Turret, ps.OwnedSpecials);
+        Assert.DoesNotContain(WeaponType.DeathRay, ps.OwnedSpecials);
+        Assert.Equal(WeaponType.AirMissile, ps.SpecialWeapon);
+
+        ps.CycleSpecial();
+        Assert.Equal(WeaponType.MiniGun, ps.SpecialWeapon);
+
+        ps.CycleSpecial();
+        Assert.Equal(WeaponType.AirMissile, ps.SpecialWeapon);
+    }
+
+    [Fact]
+    public void AirMissile_bullets_keep_logical_weapon_but_dump_c_lib_type_bug()
+    {
+        // C SHOTS_Init accidentally stores S_MISSLE_PODS in
+        // shot_lib[S_AIR_MISSLE].type. Gameplay still uses the AirMissile lib
+        // entry (speed/rate/hit type), but parity dumps print lib->type.
+        var ps = new PlayerShooter();
+        var sink = new List<BulletLogic>();
+
+        Assert.True(ps.Shoot(WeaponType.AirMissile, 100, 120, playerPic: 3, sink));
+
+        Assert.All(sink, b =>
+        {
+            Assert.Equal(WeaponType.AirMissile, b.PlayerWeapon);
+            Assert.Equal(WeaponType.MissilePods, b.CWeaponTypeForDump);
+        });
+    }
+
+    [Fact]
+    public void Shield_low_loss_deletes_current_special_and_cycles_to_next_owned()
+    {
+        var ps = new PlayerShooter();
+        ps.GrantWeapon((int)WeaponType.MiniGun);
+        ps.GrantWeapon((int)WeaponType.AirMissile);
+        ps.GrantWeapon((int)WeaponType.GrdMissile);
+        Assert.True(ps.SelectSpecial(WeaponType.AirMissile));
+
+        Assert.True(ps.LoseCurrentSpecialForShieldLow());
+
+        Assert.DoesNotContain(WeaponType.AirMissile, ps.OwnedSpecials);
+        Assert.Equal(WeaponType.GrdMissile, ps.SpecialWeapon);
     }
 
     [Fact]
@@ -405,6 +672,17 @@ public class PlayerShooterTests
         Assert.Null(Raptor.Test.PlaythroughDriver.KeyToSpecial("Up"));
         Assert.Null(Raptor.Test.PlaythroughDriver.KeyToSpecial("Return"));
         Assert.Null(Raptor.Test.PlaythroughDriver.KeyToSpecial(""));
+    }
+
+    [Fact]
+    public void PlaythroughDriver_IsFireKey_accepts_C_setup_A_alias()
+    {
+        Assert.True(Raptor.Test.PlaythroughDriver.IsFireKey("A"));
+        Assert.True(Raptor.Test.PlaythroughDriver.IsFireKey("Fire"));
+        Assert.True(Raptor.Test.PlaythroughDriver.IsFireKey("Ctrl"));
+
+        Assert.False(Raptor.Test.PlaythroughDriver.IsFireKey("Up"));
+        Assert.False(Raptor.Test.PlaythroughDriver.IsFireKey("Return"));
     }
 
     [Fact]
@@ -531,14 +809,50 @@ public class PlayerShooterTests
     }
 
     [Fact]
-    public void PlayerStraight_dies_when_move_passes_top_edge()
+    public void PlayerStraight_reports_reached_when_move_passes_top_edge()
     {
         // SHOTS.C:1262-1265 — `if (move.y < 0) move.done = TRUE, doneflag = TRUE`.
-        // For a bullet spawned near y=0, the first Tick advances move below zero.
+        // That happens at the end of SHOTS_Think, after the display position
+        // for the current iter was snapped, so the bullet remains live until
+        // the next shot_done pass removes it.
         var b = BulletLogic.PlayerStraight(spawnX: 160, spawnY: 4,
             initSpeed: 8, maxSpeed: 16, hlx: 4, hly: 4, damage: 1);
-        // Tick: snapshot Y=0; speed→9; move.y = 4-9 = -5 → dies.
+        // Tick: snapshot Y=0; speed->9; move.y = 4-9 = -5 -> move.done.
         b.Tick();
-        Assert.False(b.Alive);
+        Assert.True(b.Alive);
+        Assert.True(b.ReachedTarget);
+        Assert.True(b.PendingShotDone);
+        Assert.False(b.DeferredDoneFlag);
+        Assert.True(b.DoneFlagForDump);
+    }
+
+    [Fact]
+    public void Enemy_hit_doneflag_defers_shot_done_without_setting_reached()
+    {
+        // SHOTS.C enemy-hit paths set shot->doneflag=TRUE after the earlier
+        // doneflag check for that pass has already run. The bullet remains in
+        // the current display/dump with move.done still false, then shot_done
+        // removes it next pass.
+        var b = BulletLogic.PlayerStraight(spawnX: 160, spawnY: 176,
+            initSpeed: 8, maxSpeed: 16, hlx: 4, hly: 4, damage: 1);
+
+        b.MarkDoneFlagForNextPass();
+
+        Assert.True(b.Alive);
+        Assert.False(b.ReachedTarget);
+        Assert.True(b.PendingShotDone);
+        Assert.True(b.DeferredDoneFlag);
+        Assert.True(b.DoneFlagForDump);
+    }
+
+    private static EnemyLogic StaticEnemy(int x, int y, int width, int height)
+    {
+        return new EnemyLogic(new SpriteMeta
+        {
+            Hits = 7,
+            NumFlight = 0,
+            Width = width,
+            Height = height,
+        }, x, y);
     }
 }
