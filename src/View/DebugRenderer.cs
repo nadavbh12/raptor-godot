@@ -12,6 +12,8 @@ namespace Raptor.View;
 
 public partial class DebugRenderer : Node2D
 {
+    internal const float GroundShadowAlpha = 0.45f;
+
     private WaveController? _wave;
     private MenuStateMachine? _menu;
     private string? _shotDir;
@@ -686,7 +688,7 @@ public partial class DebugRenderer : Node2D
     private void DrawGroundShadow(Texture2D tex, int x, int y)
     {
         var shadowTex = GetOrCreateShadow(tex);
-        DrawTexture(shadowTex, new Vector2(x - 3, y + 4), new Color(1, 1, 1, 0.35f));
+        DrawTexture(shadowTex, new Vector2(x - 3, y + 4), new Color(1, 1, 1, GroundShadowAlpha));
     }
 
     /// <summary>
@@ -906,13 +908,14 @@ public partial class DebugRenderer : Node2D
             var (dx, dy) = BonusSprite.DrawOffset(bonus.Pos);
             if (bonus.DisplayAsPickedUpMoney)
             {
-                if (_spritePaths.TryGetValue("N$_PIC", out string? moneyPath))
+                var moneyTex = _digitTex[10];
+                if (moneyTex == null && _spritePaths.TryGetValue(BonusSprite.PickedUpMoneySpriteName, out string? moneyPath))
                 {
-                    var moneyTex = LoadSpriteFromPath(moneyPath);
-                    if (moneyTex != null)
-                        DrawWorldTexture(moneyTex, bonus.X - BonusLogic.Width / 2 + dx,
-                            bonus.Y - BonusLogic.Height / 2 + dy);
+                    moneyTex = LoadSpriteFromPath(moneyPath);
                 }
+                if (moneyTex != null)
+                    DrawWorldTexture(moneyTex, bonus.X - BonusLogic.Width / 2 + dx,
+                        bonus.Y - BonusLogic.Height / 2 + dy);
                 continue;
             }
             string spriteName = BonusSprite.SpriteNameFor(bonus.ObjType, bonus.Frame);
@@ -925,7 +928,7 @@ public partial class DebugRenderer : Node2D
             {
                 int gx = bonus.X - (int)glow.GetWidth() / 2 + dx;
                 int gy = bonus.Y - (int)glow.GetHeight() / 2 + dy;
-                DrawTexture(glow, new Vector2(gx, gy));
+                DrawTexture(glow, new Vector2(gx, gy), new Color(1, 1, 1, BonusSprite.GlowAlpha));
             }
         }
     }

@@ -13,7 +13,7 @@ namespace Raptor.Sim.Bonus;
 ///   S_SUPER_SHIELD (15)       — Heal = MaxShield (full restore).
 ///   S_ENERGY (16)             — Heal = MaxShield / 4 (BONUS.C:214).
 ///   S_DETECT (17)             — sets DetectorActivated; moneyflag = FALSE → no score.
-///   S_ITEMBUY1..S_ITEMBUY6 (18..23) — adds lib->cost to plr.score (OBJECTS.C:706-710).
+///   S_ITEMBUY1..S_ITEMBUY6 (18..24 in extracted map data) — adds lib->cost to plr.score (OBJECTS.C:706-710).
 ///
 /// Lives outside <see cref="WaveController"/> so it can be unit-tested without
 /// constructing a Godot Node.
@@ -26,7 +26,7 @@ public static class BonusEffectDispatcher
     /// </summary>
     public static readonly int[] ItemBuyCost = { 93800, 76000, 55700, 35200, 122500, 50 };
 
-    public static bool IsMoneyBonus(int objType) => objType is >= 18 and <= 23;
+    public static bool IsMoneyBonus(int objType) => objType is >= 18 and <= 24;
 
     public struct Result
     {
@@ -61,6 +61,9 @@ public static class BonusEffectDispatcher
                 break;
             case >= 18 and <= 23:       // S_ITEMBUY1..6
                 r.ScoreAdd = (uint)ItemBuyCost[objType - 18];
+                break;
+            case 24:                    // Extracted S_ITEMBUY6 map value.
+                r.ScoreAdd = 50;
                 break;
         }
         return r;

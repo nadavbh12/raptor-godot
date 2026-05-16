@@ -70,6 +70,7 @@ public class BonusEffectDispatcherTests
     [InlineData(21, 35200u)]
     [InlineData(22, 122500u)]
     [InlineData(23, 50u)]
+    [InlineData(24, 50u)]
     public void ItemBuy_adds_cost_to_score(int objType, uint expectedCost)
     {
         var ps = new PlayerShooter();

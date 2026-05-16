@@ -2,6 +2,9 @@ namespace Raptor.View;
 
 internal static class BonusSprite
 {
+    public const string PickedUpMoneySpriteName = "N$_PIC";
+    public const float GlowAlpha = 0.6f;
+
     public static string SpriteNameFor(int objType, int frame) => objType switch
     {
         0 => "BONUS00_PIC",
@@ -28,13 +31,14 @@ internal static class BonusSprite
         21 => "BONUS19_PIC",
         22 => "BONUS20_PIC",
         23 => "BONUS22_PIC",
+        24 => "BONUS22_PIC",
         _ => "BONUS00_PIC",
     };
 
     public static int FrameCountFor(int objType) => objType switch
     {
         1 or 2 or 12 => 2,
-        4 or 5 or 10 or 13 or 14 or 16 or 23 => 4,
+        4 or 5 or 10 or 13 or 14 or 16 or 23 or 24 => 4,
         _ => 1,
     };
 

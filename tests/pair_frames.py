@@ -71,6 +71,80 @@ def find_nearest(frames, target):
     return min(candidates, key=lambda x: abs(x[0] - target))
 
 
+def interp_from_anchors(value, anchors):
+    """Map a raw frame coordinate to a label-relative coordinate.
+
+    anchors is a sorted list of (raw_coordinate, label_index). Values between
+    labels are linearly interpolated; values outside the labeled range are
+    extrapolated from the nearest labeled segment.
+    """
+    if len(anchors) < 2:
+        return None
+    for i in range(len(anchors) - 1):
+        x0, y0 = anchors[i]
+        x1, y1 = anchors[i + 1]
+        if x0 <= value <= x1:
+            t = (value - x0) / (x1 - x0)
+            return y0 + t * (y1 - y0)
+    if value < anchors[0][0]:
+        x0, y0 = anchors[0]
+        x1, y1 = anchors[1]
+    else:
+        x0, y0 = anchors[-2]
+        x1, y1 = anchors[-1]
+    t = (value - x0) / (x1 - x0)
+    return y0 + t * (y1 - y0)
+
+
+def label_anchors(c_dir, g_dir):
+    c_labels = {}
+    g_labels = {}
+    for f in os.listdir(c_dir):
+        m = re.match(r'^(\d{5})_(\d{2}_.+)\.png$', f)
+        if m:
+            c_labels[m.group(2)] = int(m.group(1))
+    for f in os.listdir(g_dir):
+        m = re.match(r'^fc(\d+)_label_(.+)\.png$', f)
+        if m:
+            g_labels[m.group(2)] = int(m.group(1))
+    common = sorted(set(c_labels) & set(g_labels))
+    if len(common) < 2:
+        return None, None, []
+    c_anchors = sorted((c_labels[label], i) for i, label in enumerate(common))
+    g_anchors = sorted((g_labels[label], i) for i, label in enumerate(common))
+    return c_anchors, g_anchors, common
+
+
+def load_c_frames_label_aligned(c_dir, c_anchors):
+    out = []
+    for f in sorted(os.listdir(c_dir)):
+        if not f.endswith('.png'):
+            continue
+        m = re.match(r'^(\d{5})_', f)
+        if not m:
+            continue
+        coord = interp_from_anchors(int(m.group(1)), c_anchors)
+        if coord is not None:
+            out.append((coord, os.path.join(c_dir, f)))
+    out.sort()
+    return out
+
+
+def load_g_frames_label_aligned(g_dir, g_anchors):
+    out = []
+    for f in sorted(os.listdir(g_dir)):
+        if not f.endswith('.png'):
+            continue
+        m = re.match(r'^fc(\d+)_', f)
+        if not m:
+            continue
+        coord = interp_from_anchors(int(m.group(1)), g_anchors)
+        if coord is not None:
+            out.append((coord, os.path.join(g_dir, f)))
+    out.sort()
+    return out
+
+
 def load_c_frames(c_dir, min_seq=302):
     """Read C png filenames, derive mission_fc per file via label interpolation.
 
@@ -130,6 +204,10 @@ def main():
     ap.add_argument('--skip-until-c', type=int, default=200,
                     help='Drop Godot frames whose paired C frame would still be in fade-in '
                          '(C mfc < this threshold). C\'s palette fade lasts ~120-150 frames.')
+    ap.add_argument('--label-align', action='store_true',
+                    help='Pair frames by matching script dump labels in both directories, '
+                         'then linearly interpolating between labels. This is preferred for '
+                         'full_demo/menu_demo where fixed mission_fc offsets drift.')
     args = ap.parse_args()
 
     out_c = os.path.join(args.out_dir, 'c')
@@ -140,27 +218,43 @@ def main():
         for f in os.listdir(d):
             os.remove(os.path.join(d, f))
 
-    c_frames = load_c_frames(args.c_dir)
-    g_frames = load_g_frames(args.g_dir, args.anchor)
+    if args.label_align:
+        c_anchors, g_anchors, labels = label_anchors(args.c_dir, args.g_dir)
+        if not c_anchors or not g_anchors:
+            print("error: --label-align needs at least two common labels", file=sys.stderr)
+            sys.exit(1)
+        c_frames = load_c_frames_label_aligned(args.c_dir, c_anchors)
+        g_frames = load_g_frames_label_aligned(args.g_dir, g_anchors)
+    else:
+        labels = []
+        c_frames = load_c_frames(args.c_dir)
+        g_frames = load_g_frames(args.g_dir, args.anchor)
     if not c_frames or not g_frames:
         print(f"error: empty frame set (c={len(c_frames)}, g={len(g_frames)})", file=sys.stderr)
         sys.exit(1)
 
     c_max = c_frames[-1][0]
-    g_frames = [(fc, p) for (fc, p) in g_frames
-                if fc + args.offset >= args.skip_until_c and fc + args.offset <= c_max]
+    if args.label_align:
+        g_frames = [(fc, p) for (fc, p) in g_frames if 0 <= fc <= c_max]
+    else:
+        g_frames = [(fc, p) for (fc, p) in g_frames
+                    if fc + args.offset >= args.skip_until_c and fc + args.offset <= c_max]
 
     pairs = []
     for gfc, gp in g_frames:
-        cfc, cp = find_nearest(c_frames, gfc + args.offset)
+        target = gfc if args.label_align else gfc + args.offset
+        cfc, cp = find_nearest(c_frames, target)
         pairs.append((gfc, gp, cfc, cp))
 
     for i, (_, gp, _, cp) in enumerate(pairs):
         shutil.copy(cp, os.path.join(out_c, f'{i:04d}.png'))
         shutil.copy(gp, os.path.join(out_g, f'{i:04d}.png'))
 
-    print(f"anchor={args.anchor}  offset={args.offset}  "
-          f"skip_until_c={args.skip_until_c}")
+    if args.label_align:
+        print(f"label_align=1  labels={len(labels)}  first={labels[0]}  last={labels[-1]}")
+    else:
+        print(f"anchor={args.anchor}  offset={args.offset}  "
+              f"skip_until_c={args.skip_until_c}")
     print(f"C source:   {len(c_frames)} mission frames "
           f"({c_frames[0][0]:.0f}..{c_frames[-1][0]:.0f})")
     print(f"G source:   {len(g_frames)} (kept after trim)")

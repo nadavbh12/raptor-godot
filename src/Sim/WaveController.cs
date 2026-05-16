@@ -127,6 +127,7 @@ public partial class WaveController : Node
     // Fired right after _gameLoopIter advances; PositionDumper subscribes to
     // emit at iter ends, mirroring C's parity_tick semantics.
     public event Action? OnIterEnd;
+    public event Action<string>? OnBonusTrace;
 
     // ── Game-loop rate throttle ──────────────────────────────────────────────
     // The C game loop has `while (FRAME_COUNT - local_cnt < 3) legacy_pump();`
@@ -892,6 +893,8 @@ public partial class WaveController : Node
 
     internal void PhaseMovement()
     {
+        _playerWasAliveAtCollisionStart = PlayerLogic.Alive;
+
         // C aims ATPLAYER bullets at player CENTER (player_cx/cy = playerx + PLAYERWIDTH/2, playery + PLAYERHEIGHT/2).
         // Pass center coords so enemy.Tick / MakeBullet hands the bullet's Bresenham its true target.
         int px = PlayerLogic.X + 16;
@@ -912,6 +915,14 @@ public partial class WaveController : Node
             if (extras != null)
                 foreach (var b in extras) AddEnemyBullet(b);
         }
+
+        // C handles body collision and enemy death side effects inside
+        // ENEMY_Think, before BONUS_Think. A shot-killed enemy can still
+        // body-crash this iter, then drop a bonus that immediately gets the
+        // same BONUS_Think drift/pickup opportunity.
+        ApplyBodyCrashCollisions(px, py);
+        ProcessPendingEnemyRemovalsForParity();
+
         RebuildWeaponTargetSnapshot();
 
         // C reaches shot_done after the damage switch. Straight shots set both
@@ -988,7 +999,6 @@ public partial class WaveController : Node
 
         _playerHit = false;
         _playerHitDmg = 0;
-        _playerWasAliveAtCollisionStart = PlayerLogic.Alive;
 
         foreach (var b in _enemyBullets)
         {
@@ -1006,12 +1016,6 @@ public partial class WaveController : Node
                 _explosions.Add(new Explosion(ExpAirSmall2, b.X, b.Y, SimClock.Frame));
             }
         }
-
-        // Body collision: enemy bounding box vs player centre.
-        // C performs this in ENEMY_Think, before SHOTS_Think, so body-crash
-        // damage/removal must happen before player bullets are tested.
-        ApplyBodyCrashCollisions(px, py);
-        ProcessPendingEnemyRemovalsForParity();
 
         // Player bullets vs enemy/tile collision. C SHOTS.C dispatches this as
         // per-hit-type if/else chains, so S_ALL/S_GROUND only test tiles after
@@ -1059,14 +1063,12 @@ public partial class WaveController : Node
         // Bonus pickup. BONUS.C:207 — `cur->x > playerx && cur->x < playerx+PW
         // && cur->y > playery && cur->y < playery+PH`. The bonus CENTER (cur->x,
         // cur->y) must be inside the player's top-left-anchored rect.
-        const int playerW = 32; const int playerH = 32;
         int plx = PlayerLogic.X;
         int ply = PlayerLogic.Y;
         _pickedUpBonuses.Clear();
         foreach (var bn in _bonuses)
         {
-            if (!bn.Alive) continue;
-            if (bn.X > plx && bn.X < plx + playerW && bn.Y > ply && bn.Y < ply + playerH)
+            if (bn.CanBePickedUpBy(plx, ply))
                 _pickedUpBonuses.Add(bn);
         }
     }
@@ -1178,11 +1180,18 @@ public partial class WaveController : Node
         // CollisionResolve so all death/pickup events fire after collection.
         foreach (var b in _pickedUpBonuses)
         {
+            TraceBonus("pickup", b);
             ApplyBonusEffect(b.ObjType);
             if (Bonus.BonusEffectDispatcher.IsMoneyBonus(b.ObjType))
+            {
                 b.MarkPickedUpMoney();
+                TraceBonus("pickup_money", b);
+            }
             else
+            {
                 b.Kill();
+                TraceBonus("pickup_remove", b);
+            }
         }
         _pickedUpBonuses.Clear();
 
@@ -1197,7 +1206,9 @@ public partial class WaveController : Node
     // C exptype constants used for cosmetic-only explosion events (SOURCE/MAP.H).
     private const int ExpAirLarge  = 2;   // EXP_AIRLARGE → LGFLAK_BLK
     private const int ExpGrdLarge  = 5;   // EXP_GRDLARGE → GEXPLO_BLK
+    private const int ExpEnergy    = 8;   // EXP_ENERGY → NRGBANG_BLK + S_ITEMBUY6 bonus
     private const int ExpAirSmall2 = 10;  // EXP_AIRSMALL2 → SMFLAK_BLK
+    private const int ItemBuy6ObjType = 23;
 
     // Spawn explosion(s) at the enemy's death position. Mirrors ENEMY.C:1066-1115
     // — primary explosion at (x+hlx, y+hly), and for EXP_AIRLARGE the C code
@@ -1209,6 +1220,8 @@ public partial class WaveController : Node
     // is set. That spawn happens here for cohesion: any path that called
     // SpawnExplosion also wants the C drop side-effect.
     private const int ExpAirLargeCode = 2;  // EXP_AIRLARGE (SOURCE/MAP.H)
+    internal static int BonusSpawnXFromEnemyX(int enemyX) => enemyX + 16; // BONUS_Add adds MAP_LEFT.
+    internal static int? BonusForExplosionType(int expType) => expType == ExpEnergy ? ItemBuy6ObjType : null;
 
     private void ConsumeEnemyDeathSoundRandom()
     {
@@ -1290,10 +1303,31 @@ public partial class WaveController : Node
     private void SpawnBonusFor(EnemyLogic e)
     {
         if (e.Meta.Bonus < 0) return;
-        // C: BONUS_Add(curlib->bonus, sprite->x, sprite->y). The bonus spawns
-        // at the enemy's TOP-LEFT corner (sprite->x/y), not center.
+        SpawnBonus(e.Meta.Bonus, e.X, e.Y);
+    }
+
+    private void SpawnBonus(int objType, int enemyX, int enemyY)
+    {
+        // C: BONUS_Add(type, sprite->x, sprite->y), then BONUS_Add stores
+        // cur->x = x + MAP_LEFT. The bonus X is therefore enemy x + 16.
         int initialPos = PlayerShooter.NextRandom(_shooterRng, 16, "bonus.pos");
-        _bonuses.Add(new BonusLogic(e.Meta.Bonus, e.X, e.Y, initialPos));
+        var bonus = new BonusLogic(objType, BonusSpawnXFromEnemyX(enemyX), enemyY, initialPos);
+        _bonuses.Add(bonus);
+        TraceBonus("add", bonus);
+    }
+
+    private void TraceBonus(string eventName, BonusLogic b)
+    {
+        OnBonusTrace?.Invoke(BonusTraceLine(eventName, b));
+    }
+
+    internal string BonusTraceLine(string eventName, BonusLogic b)
+    {
+        var (dx, dy) = View.BonusSprite.DrawOffset(b.Pos);
+        int bx = b.X - BonusLogic.Width / 2 + dx;
+        int by = b.Y - BonusLogic.Height / 2 + dy;
+        return string.Create(System.Globalization.CultureInfo.InvariantCulture,
+            $"i={GameLoopIter} event={eventName} type={b.ObjType} x={b.X} y={b.Y} bx={bx} by={by} pos={b.Pos} frame={b.Frame} glow={b.GlowFrame} d={(b.DisplayAsPickedUpMoney ? 1 : 0)} cnt={b.PickedUpMoneyCountdown} money={(Bonus.BonusEffectDispatcher.IsMoneyBonus(b.ObjType) ? 1 : 0)} px={PlayerLogic.X} py={PlayerLogic.Y}");
     }
     private void SpawnExplosion(EnemyLogic e)
     {
@@ -1301,6 +1335,8 @@ public partial class WaveController : Node
         int cy = e.Y + e.Meta.HalfY;
         int fc = SimClock.Frame;
         _explosions.Add(new Explosion(e.Meta.ExpType, cx, cy, fc));
+        if (BonusForExplosionType(e.Meta.ExpType) is { } bonusType)
+            SpawnBonus(bonusType, e.X, e.Y);
         if (e.Meta.ExpType == ExpAirLargeCode)
         {
             int w = e.Meta.Width;

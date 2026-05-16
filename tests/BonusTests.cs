@@ -93,6 +93,39 @@ public class BonusTests
     }
 
     [Fact]
+    public void Picked_up_money_keeps_c_drift_and_wobble_while_counting_down()
+    {
+        // BONUS.C computes the display position, then still advances y/pos even
+        // while dflag is set. The rendered pickup should be a moving '$', not a
+        // frozen marker.
+        var b = new BonusLogic(objType: 23 /* S_ITEMBUY6 */, x: 100, y: 50, initialPos: 15);
+        b.MarkPickedUpMoney();
+
+        b.Tick();
+        Assert.Equal(51, b.Y);
+        Assert.Equal(15, b.Pos);
+        Assert.Equal(49, b.PickedUpMoneyCountdown);
+
+        b.Tick();
+        Assert.Equal(52, b.Y);
+        Assert.Equal(0, b.Pos);
+        Assert.Equal(48, b.PickedUpMoneyCountdown);
+    }
+
+    [Fact]
+    public void Picked_up_money_cannot_be_collected_again_while_showing_dollar()
+    {
+        // BONUS.C pickup path is guarded by !cur->dflag.
+        var b = new BonusLogic(objType: 23 /* S_ITEMBUY6 */, x: 150, y: 166);
+
+        Assert.True(b.CanBePickedUpBy(playerX: 144, playerY: 160));
+
+        b.MarkPickedUpMoney();
+
+        Assert.False(b.CanBePickedUpBy(playerX: 144, playerY: 160));
+    }
+
+    [Fact]
     public void ObjType_is_preserved_for_dispatch()
     {
         // The raw OBJ_TYPE value is what ApplyBonusEffect dispatches on; verify

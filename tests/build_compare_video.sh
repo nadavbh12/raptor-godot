@@ -17,6 +17,7 @@
 #   ANCHOR                Godot mission-start abs SimClock.Frame (default: 2038)
 #   SKIP_UNTIL_C          drop pairs where C is mid-fade-in below this mfc (default: 200)
 #   FPS                   output framerate (default: 24)
+#   LABEL_ALIGN           set to 1 to align by matching script dump labels
 #   REUSE_C, REUSE_GODOT  set to 1 to skip re-extracting that side
 #   GODOT_BIN             Godot executable (default: command -v godot)
 
@@ -31,6 +32,7 @@ OFFSET="${OFFSET:-144}"
 ANCHOR="${ANCHOR:-2038}"
 SKIP_UNTIL_C="${SKIP_UNTIL_C:-200}"
 FPS="${FPS:-24}"
+LABEL_ALIGN="${LABEL_ALIGN:-0}"
 
 C_DIR=/tmp/c_1s
 G_DIR=/tmp/godot_1s
@@ -85,9 +87,15 @@ fi
 
 # 3. Pair by mission_fc + tuned offset.
 echo "[compare] pairing frames (offset=$OFFSET anchor=$ANCHOR skip=$SKIP_UNTIL_C)..."
-python3 "$REPO/tests/pair_frames.py" \
-    --c-dir "$C_DIR" --g-dir "$G_DIR" --out-dir "$PAIR_DIR" \
-    --offset "$OFFSET" --anchor "$ANCHOR" --skip-until-c "$SKIP_UNTIL_C"
+if [[ "$LABEL_ALIGN" -eq 1 ]]; then
+    python3 "$REPO/tests/pair_frames.py" \
+        --c-dir "$C_DIR" --g-dir "$G_DIR" --out-dir "$PAIR_DIR" \
+        --label-align
+else
+    python3 "$REPO/tests/pair_frames.py" \
+        --c-dir "$C_DIR" --g-dir "$G_DIR" --out-dir "$PAIR_DIR" \
+        --offset "$OFFSET" --anchor "$ANCHOR" --skip-until-c "$SKIP_UNTIL_C"
+fi
 
 # 4. Encode each side then hstack.
 echo "[compare] encoding videos @ ${FPS}fps..."

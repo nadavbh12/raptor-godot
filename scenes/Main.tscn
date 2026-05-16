@@ -1,4 +1,4 @@
-[gd_scene load_steps=9 format=3 uid="uid://main_scene"]
+[gd_scene load_steps=10 format=3 uid="uid://main_scene"]
 
 [ext_resource type="Script" path="res://src/Test/ParityEmitter.cs" id="1_parity"]
 [ext_resource type="Script" path="res://src/Sim/MenuController.cs" id="2_menu"]
@@ -7,6 +7,7 @@
 [ext_resource type="Script" path="res://src/View/DebugRenderer.cs" id="5_debug"]
 [ext_resource type="Script" path="res://src/Test/PositionDumper.cs" id="6_pos"]
 [ext_resource type="Script" path="res://src/Test/BulletDumper.cs" id="7_bull"]
+[ext_resource type="Script" path="res://src/Test/BonusDumper.cs" id="8_bonus"]
 
 [node name="Main" type="Node2D"]
 
@@ -30,3 +31,6 @@ script = ExtResource("6_pos")
 
 [node name="BulletDumper" type="Node" parent="."]
 script = ExtResource("7_bull")
+
+[node name="BonusDumper" type="Node" parent="."]
+script = ExtResource("8_bonus")

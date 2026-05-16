@@ -45,13 +45,7 @@ public sealed class BonusLogic
     public void Tick()
     {
         if (!Alive) return;
-        if (DisplayAsPickedUpMoney)
-        {
-            PickedUpMoneyCountdown--;
-            if (PickedUpMoneyCountdown <= 0)
-                Alive = false;
-            return;
-        }
+
         Y++;
         if ((_tickCount & 1) != 0)
         {
@@ -60,6 +54,15 @@ public sealed class BonusLogic
         }
         GlowFrame = (GlowFrame + 1) % 4;
         _tickCount++;
+
+        if (DisplayAsPickedUpMoney)
+        {
+            PickedUpMoneyCountdown--;
+            if (PickedUpMoneyCountdown <= 0)
+                Alive = false;
+            return;
+        }
+
         if (Y > 200) Alive = false;
     }
 
@@ -72,10 +75,20 @@ public sealed class BonusLogic
         PickedUpMoneyCountdown = 50;
     }
 
+    public bool CanBePickedUpBy(int playerX, int playerY, int playerWidth = 32, int playerHeight = 32)
+    {
+        return Alive
+            && !DisplayAsPickedUpMoney
+            && X > playerX
+            && X < playerX + playerWidth
+            && Y > playerY
+            && Y < playerY + playerHeight;
+    }
+
     private static int FrameCountFor(int objType) => objType switch
     {
         1 or 2 or 12 => 2,
-        4 or 5 or 10 or 13 or 14 or 16 or 23 => 4,
+        4 or 5 or 10 or 13 or 14 or 16 or 23 or 24 => 4,
         _ => 1,
     };
 }
