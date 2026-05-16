@@ -853,9 +853,8 @@ public partial class DebugRenderer : Node2D
     private void DrawWarningHud()
     {
         if (_wave == null) return;
-        if (!HudWarning.ShieldLowVisible(_wave.PlayerLogic.Shield, SimClock.Frame)) return;
-        if (HudWarning.SystemDamageVisible(_wave.PlayerLogic.Shield, _wave.SystemDamageWarningUntilFrame, SimClock.Frame)
-            && _spritePaths.TryGetValue("WEPDEST_PIC", out string? damagePath))
+        if (!_wave.ShieldLowWarningVisible) return;
+        if (_wave.SystemDamageWarningVisible && _spritePaths.TryGetValue("WEPDEST_PIC", out string? damagePath))
         {
             var damageTex = LoadSpriteFromPath(damagePath);
             if (damageTex != null)

@@ -244,7 +244,9 @@ public partial class WaveController : Node
     private const int ShieldLow = 10;
     private int _thinkCnt = 0;
     private int _oldShieldForLowLoss = -1;
-    public int SystemDamageWarningUntilFrame { get; private set; } = -1;
+    private readonly View.HudWarning.State _hudWarningState = new();
+    public bool ShieldLowWarningVisible { get; private set; }
+    public bool SystemDamageWarningVisible { get; private set; }
     private static readonly Lazy<StreamWriter?> ShieldTrace = new(OpenShieldTrace);
 
     // ── Map scroll state (mirrors C's TILE.C) ─────────────────────────────────
@@ -1406,13 +1408,16 @@ public partial class WaveController : Node
             PlayerLogic.Heal(1);
         }
 
+        bool systemDamaged = false;
         if (_oldShieldForLowLoss >= 0
             && PlayerLogic.Shield <= ShieldLow
             && PlayerLogic.Shield < _oldShieldForLowLoss)
         {
-            if (Shooter.LoseCurrentSpecialForShieldLow())
-                SystemDamageWarningUntilFrame = SimClock.Frame + View.HudWarning.SystemDamageDurationFrames;
+            systemDamaged = Shooter.LoseCurrentSpecialForShieldLow();
         }
+        _hudWarningState.Tick(PlayerLogic.Shield, _gameLoopIter, systemDamaged);
+        ShieldLowWarningVisible = _hudWarningState.ShieldLowVisible;
+        SystemDamageWarningVisible = _hudWarningState.SystemDamageVisible;
         TraceShield();
         _oldShieldForLowLoss = PlayerLogic.Shield;
     }
