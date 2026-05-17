@@ -760,12 +760,24 @@ public partial class DebugRenderer : Node2D
         // SWD fields handle the sector buttons (FONT1_FNT, FLD_BUTTON
         // INVISABLE = text-only), the indicator lights (LIGHTOFF_PIC at the
         // three FLD_ICON slots), and the action buttons (BUTTON1-4_PIC).
-        // C indicates the active sector by giving its button a different
-        // fontbasecolor — AUTO-PILOT carries basecolor=64 in the SWD, so it
-        // renders in the brighter palette ramp.
+        // AUTO-PILOT field already carries basecolor=64 in the SWD (vs the
+        // other sectors' 82), so the brighter palette ramp comes through.
         var swd = LoadSwd("SHIPCOMP_SWD");
         if (swd == null) return;
-        SwdRenderer.Draw(_swdHost, swd, selectedFieldId: -1);
+
+        // WIN_ShipComp does SWD_SetActiveField(SHIPCOMP_SWD, COMP_AUTO)
+        // followed by PTR_SetPos to its center. COMP_AUTO is field id=4.
+        const int CompAutoId = 4;
+        SwdRenderer.Draw(_swdHost, swd, selectedFieldId: CompAutoId);
+
+        foreach (var f in swd.Fields)
+        {
+            if (f.Id != CompAutoId) continue;
+            int cx = swd.Window.X + f.X + f.Lx / 2;
+            int cy = swd.Window.Y + f.Y + f.Ly / 2;
+            DrawUiSprite(MenuChrome.Cursor with { X = cx - 7, Y = cy - 8 });
+            break;
+        }
     }
 
     private void DrawDifficultyOverlay(Font font)
