@@ -18,15 +18,32 @@ internal sealed class SwdRenderer
         Texture2D? LoadSprite(string itemName);   // resolves "MENU1_PIC" → Texture2D
         void DrawText(string text, int x, int y, string fontName, int basecolor);
         int MeasureText(string text, string fontName);
+        int FontHeight(string fontName);
     }
 
-    // Selected-field brighten: C's GFX_ShadeShape(LIGHT, ...). Approximated
-    // by the same per-channel modulate the main-menu highlight uses. Same
-    // numbers — keep them in one place.
-    private static readonly Color LightShade = new(1.30f, 1.60f, 3.30f);
+    // Selected-field brighten: C's GFX_ShadeShape(LIGHT, ...). C's actual
+    // implementation is a palette LUT that lightens each index toward white
+    // preserving hue. A multiplicative modulate cannot replicate that — the
+    // (1.30, 1.60, 3.30) tuned for orange MENU1 sprites turns gray
+    // STEXTURE_PIC blue. Uniform 1.5× brighten preserves hue across sprite
+    // types (orange / gray / portrait alike) at the cost of being slightly
+    // less bright than C on the main menu.
+    private static readonly Color LightShade = new(1.5f, 1.5f, 1.5f);
+
+    // C's HShadeLine / VShadeLine palette-shift each pixel by ±36 (8-bit
+    // equivalent of ±9 in the 6-bit DOS palette space) and snap to the
+    // nearest palette entry. Translucent-overlay approximations:
+    //   LIGHT: ~0.18 white   (base + 0.18*(255-base) ≈ base + 36 for low bases)
+    //   DARK:  ~0.70 black   (heavy darken; clamps low bases to near 0)
+    // The DARK alpha is intentionally high since C's subtractive shade
+    // clamps dark pixels to 0; multiplicative blending can't replicate that
+    // exactly, but high alpha gets close on the typical dark STEXTURE tile.
+    private static readonly Color LineLight = new(1f, 1f, 1f, 0.18f);
+    private static readonly Color LineDark  = new(0f, 0f, 0f, 0.70f);
 
     public static void Draw(IHost host, SwdWindow swd, int selectedFieldId = -1)
     {
+        DrawWindowShadow(host, swd);
         DrawWindowBackground(host, swd);
 
         foreach (var f in swd.Fields)
@@ -59,12 +76,12 @@ internal sealed class SwdRenderer
                 case 3:  // FLD_INPUT (skip read-only render; caller overlays)
                     break;
 
-                case 7:  // FLD_BUMPIN (inset panel — used as a frame)
-                case 8:  // FLD_BUMPOUT
-                    // No-op for now: the field's purpose in C is to draw a
-                    // beveled fill, but the textured background sprite often
-                    // supplies the same look at the same coords. Revisit if
-                    // a screen turns out to need it.
+                case 7:  // FLD_BUMPIN — inset dark panel (sunken look)
+                    DrawBumpIn(host, sx, sy, f.Lx, f.Ly, f.Color);
+                    break;
+
+                case 8:  // FLD_BUMPOUT — raised panel (placeholder)
+                    DrawBumpIn(host, sx, sy, f.Lx, f.Ly, f.Color);
                     break;
 
                 case 9:  // FLD_ICON — draw the item picture at field x/y
@@ -78,6 +95,23 @@ internal sealed class SwdRenderer
                     break;
             }
         }
+    }
+
+    // SWD_ShowWindow (swdapi.c:1295): when cwin->shadow is set, two DARK
+    // bands form an L-shaped drop shadow on the lower-left of the dialog.
+    // The shadow is 8 px thick and offset (-8, +8) from the window origin.
+    private static void DrawWindowShadow(IHost host, SwdWindow swd)
+    {
+        if (swd.Window.Shadow == 0) return;
+        int x = swd.Window.X - 8;
+        int y = swd.Window.Y + 8;
+        int y2 = swd.Window.Y + swd.Window.Ly;
+        int lx = swd.Window.Lx;
+        // GFX_ShadeArea(DARK, ...) palette-darkens the pixels underneath.
+        // A ~55% black overlay reads close to the C build's dark band.
+        var darken = new Color(0, 0, 0, 0.55f);
+        host.DrawCanvasRect(new Rect2(x,  y,  8,  swd.Window.Ly - 8), darken);
+        host.DrawCanvasRect(new Rect2(x,  y2, lx, 8), darken);
     }
 
     private static void DrawWindowBackground(IHost host, SwdWindow swd)
@@ -141,18 +175,49 @@ internal sealed class SwdRenderer
                             new Rect2(0, 0, srcW, srcH), mod);
                     }
                 }
+
+                // SWD_ShadeButton(NORMAL) — raised-button bevel. C ranges
+                // shadeline positions match the source exactly so 1-pixel
+                // edges land where they do in the C build.
+                host.DrawCanvasRect(new Rect2(sx + 1, sy,            f.Lx - 1, 1), LineLight);
+                host.DrawCanvasRect(new Rect2(sx + f.Lx - 1, sy + 1, 1, f.Ly - 2), LineLight);
+                host.DrawCanvasRect(new Rect2(sx,     sy + f.Ly - 1, f.Lx,     1), LineDark);
+                host.DrawCanvasRect(new Rect2(sx,     sy,            1, f.Ly - 1), LineDark);
             }
         }
 
-        // Overlay the button's text label. C centers via
-        //   text_x = fld_x + (lx - GFX_StrPixelLen(text)) / 2
-        //   text_y = fld_y + (ly - fontheight) / 2
+        // Overlay the button's text label. C centers via SWD_PutField
+        // lines 326-328:
+        //   text_x = ((lx - GFX_StrPixelLen(text)) >> 1) + fld_x
+        //   text_y = ((ly - fontheight)            >> 1) + fld_y
         if (!string.IsNullOrEmpty(f.Text) && !string.IsNullOrEmpty(f.FontName))
         {
             int tw = host.MeasureText(f.Text, f.FontName);
-            int x = sx + Math.Max(0, (f.Lx - tw) / 2);
-            int y = sy + Math.Max(0, (f.Ly - 6) / 2);  // ~6 = typical glyph cap height
+            int fh = host.FontHeight(f.FontName);
+            int x = sx + (f.Lx - tw) / 2;
+            int y = sy + (f.Ly - fh) / 2;
             host.DrawText(f.Text, x, y, f.FontName, f.FontBaseColor);
         }
+    }
+
+    // FLD_BUMPIN: inner DARK shade + LOWER_LEFT light box. C uses palette
+    // LUTs we can't replicate exactly without a shader, but a translucent
+    // black overlay on the inner rect plus 1-px bevel lines approximates
+    // the sunken-panel look closely enough for pixel-parity work.
+    private static void DrawBumpIn(IHost host, int x, int y, int lx, int ly, int color)
+    {
+        if (lx <= 2 || ly <= 2) return;
+        // GFX_ShadeArea(DARK, x+1, y, lx-1, ly-1) when color != 0, else
+        // GFX_ColorBox(x+1, y+1, lx-2, ly-2, 0). Both produce a near-black
+        // inset; ~45% alpha black sits naturally over the TEXTURE_PIC tile.
+        host.DrawCanvasRect(new Rect2(x + 1, y, lx - 1, ly - 1),
+            new Color(0, 0, 0, 0.45f));
+        // GFX_LightBox(LOWER_LEFT, ...): bottom + left edges look lit,
+        // top + right edges look shadowed (sunken effect). Uses the same
+        // ±36-equivalent alphas as the button bevel for consistency.
+        host.DrawCanvasRect(new Rect2(x, y, lx, 1), LineDark);                  // top edge
+        host.DrawCanvasRect(new Rect2(x + lx - 1, y, 1, ly), LineDark);          // right edge
+        host.DrawCanvasRect(new Rect2(x, y + ly - 1, lx, 1), LineLight);         // bottom edge
+        host.DrawCanvasRect(new Rect2(x, y, 1, ly), LineLight);                  // left edge
     }
 }

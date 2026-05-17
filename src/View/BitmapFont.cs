@@ -80,18 +80,17 @@ internal sealed class BitmapFont
         return pal;
     }
 
+    // Mirrors GFX_StrPixelLen: sums width + fontspacing for every character
+    // (including the last). The DOS code uses this for centering math, so
+    // matching its exact value matters for FLD_BUTTON layout.
     public int Measure(string text)
     {
         int w = 0;
-        bool first = true;
         foreach (char c in text)
         {
             int code = (byte)c;
             var g = _glyphs[code];
-            if (g.W == 0) continue;
-            if (!first) w += FontSpacing;
-            w += g.W;
-            first = false;
+            w += g.W + FontSpacing;
         }
         return w;
     }

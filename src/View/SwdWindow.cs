@@ -18,7 +18,7 @@ internal sealed class SwdWindow
 
     public readonly record struct WindowSpec(
         string Name, string ItemName, int X, int Y, int Lx, int Ly,
-        int Picflag, int FirstFld);
+        int Picflag, int FirstFld, int Shadow);
 
     public readonly record struct Field(
         int Index, int Id, string Opt, int OptCode,
@@ -52,7 +52,8 @@ internal sealed class SwdWindow
             Lx: w.GetProperty("lx").GetInt32(),
             Ly: w.GetProperty("ly").GetInt32(),
             Picflag: w.GetProperty("picflag").GetInt32(),
-            FirstFld: w.GetProperty("firstfld").GetInt32());
+            FirstFld: w.GetProperty("firstfld").GetInt32(),
+            Shadow: w.GetProperty("shadow").GetInt32());
 
         var fields = new List<Field>();
         foreach (var f in root.GetProperty("fields").EnumerateArray())

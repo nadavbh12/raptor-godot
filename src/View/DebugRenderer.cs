@@ -671,7 +671,9 @@ public partial class DebugRenderer : Node2D
         DrawUiSprite(MenuChrome.Register);
         DrawUiSprite(MenuChrome.RegisterPortrait);
         DrawRegisterFieldText(ThemeDB.FallbackFont, menu);
-        DrawDosFont("CHANGE ID PICTURE", 92, 181, "FONT1_FNT", 66);
+        // REG_TEXT runtime content is "   CHANGE ID PICTURE" — see
+        // WINDOWS.C regtext[1]; draw from the field's actual x=61.
+        DrawDosFont("   CHANGE ID PICTURE", 61, 181, "FONT1_FNT", 66);
         // CURSOR_PIC (4-point compass star) at REG_VIEWID center — mirrors C's
         // SWD_SetFieldPtr(window, REG_VIEWID) → PTR_SetPos to the badge center.
         DrawUiSprite(MenuChrome.Cursor with { X = 37, Y = 118 });
@@ -727,18 +729,32 @@ public partial class DebugRenderer : Node2D
     private void DrawDifficultyOverlay(Font font)
     {
         // In C, ASKDIFF is pushed on top of REGISTER — the registration page
-        // (badge, cursor, bottom prompt) stays visible underneath.
+        // (badge, bottom prompt) stays visible underneath. The mouse cursor
+        // moves to the active field's center per WIN_AskDiff:
+        //   SWD_SetActiveField(ASKDIFF_SWD, OKREG_MED);
+        //   SWD_GetFieldXYL(...); PTR_SetPos(px+lx/2, py+ly/2);
         DrawUiSprite(MenuChrome.Register);
         DrawUiSprite(MenuChrome.RegisterPortrait);
-        DrawUiSprite(MenuChrome.Cursor with { X = 37, Y = 118 });
-        DrawDosFont("CHANGE ID PICTURE", 92, 181, "FONT1_FNT", 66);
+        // REG_TEXT field is at x=61, lx=181. The runtime sets the text to
+        // regtext[1] = "   CHANGE ID PICTURE" (3 leading spaces). Each space
+        // advances by width(9) + fontspacing(1) = 10, so 'C' lands at x=91.
+        DrawDosFont("   CHANGE ID PICTURE", 61, 181, "FONT1_FNT", 66);
 
         var swd = LoadSwd("ASKDIFF_SWD");
         if (swd != null)
         {
-            // C selects field id=8 (VETERAN) by default for new pilots — keep
-            // matching that until the menu state machine tracks live selection.
-            SwdRenderer.Draw(_swdHost, swd, selectedFieldId: 8);
+            // OKREG_MED == field index 8 (id=3) → VETERAN. C's default new
+            // pilot starts there. SWD_PutField applies GFX_ShadeShape(LIGHT)
+            // on the active field; our SwdRenderer mirrors that via the
+            // per-channel modulate.
+            const int VeteranFieldId = 3;
+            SwdRenderer.Draw(_swdHost, swd, selectedFieldId: VeteranFieldId);
+
+            // PTR_DrawCursor for the active field — center of VETERAN button
+            // (window.x + field.x + lx/2 = 85+40+49 = 174,
+            //  window.y + field.y + ly/2 = 22+77+ 6 = 105). Sprite center
+            // is at sprite-local (7, 8), so draw at (167, 97).
+            DrawUiSprite(MenuChrome.Cursor with { X = 167, Y = 97 });
         }
     }
 
@@ -879,6 +895,12 @@ public partial class DebugRenderer : Node2D
         {
             var font = _r.LoadBitmapFont(fontName);
             return font?.Measure(text) ?? 0;
+        }
+
+        public int FontHeight(string fontName)
+        {
+            var font = _r.LoadBitmapFont(fontName);
+            return font?.Height ?? 0;
         }
     }
 
