@@ -639,6 +639,12 @@ public partial class DebugRenderer : Node2D
             return;
         }
 
+        if (menu.State == WinState.Store && menu.Store != null)
+        {
+            DrawStoreOverlay(menu.Store);
+            return;
+        }
+
         if (menu.State == WinState.Help)
         {
             DrawHelpOverlay(font);
@@ -752,6 +758,115 @@ public partial class DebugRenderer : Node2D
             swd.Window.Y + caption_fld.Y,
             caption_fld.FontName,
             caption_fld.FontBaseColor);
+    }
+
+    private void DrawStoreOverlay(StoreLogic store)
+    {
+        // STORE_SWD: window paints STORE_PIC; we feed it through SwdRenderer
+        // and then override the fields whose content C sets dynamically per
+        // pilot / per item via SWD_SetFieldText / SWD_SetFieldItem (STOR_*
+        // constants in SOURCE/STORE.INC).
+        var swd = LoadSwd("STORE_SWD");
+        if (swd == null) return;
+
+        // Field indices in STORE_SWD.json (matches STORE.INC):
+        //   1 STOR_CALLSIGN  4 STOR_BUY     6 STOR_SELL    9  STOR_COST
+        //   5 STOR_BUYIT     7 STOR_COMP    10 STOR_SCORE  12 STOR_TEXTCOST
+        //   8 STOR_TEXT      13 STOR_NUM    11 STOR_STATS
+        // During the Harrold greeting C blanks the BUY/SELL/BUYIT/PREV/NEXT
+        // button items + STAT/TEXTCOST/NUM/COST text (STORE.C:200-214). We
+        // mirror by skipping all of those + the SWD's STAT/TEXTCOST defaults.
+        var overrides = new System.Collections.Generic.HashSet<int>
+            { 1, 4, 5, 6, 7, 9, 10, 11, 12, 13 };
+        if (store.ShowingGreeting)
+            overrides.UnionWith(new[] { 2, 3 });  // hide PREV / NEXT too
+        SwdRenderer.Draw(_swdHost, swd, selectedFieldId: -1,
+            skipFieldIndices: overrides);
+
+        bool buyMode = store.CurrentMode == StoreLogic.Mode.Buy;
+
+        // STOR_CALLSIGN (field 1): bare callsign text. Always shown (the
+        // pilot card sits outside the Harrold blanking).
+        var cs = swd.Fields[1];
+        DrawSwdCenteredText(cs, store.Callsign, cs.FontName, cs.FontBaseColor);
+
+        // STOR_SCORE (field 10): 7-digit money "0010000". Always shown.
+        var score = swd.Fields[10];
+        DrawDosFont(store.Money.ToString("D7"),
+            swd.Window.X + score.X, swd.Window.Y + score.Y,
+            score.FontName, score.FontBaseColor);
+
+        if (!store.ShowingGreeting)
+        {
+            // STOR_BUY (field 4): BUYLGT_PIC when buying, BUYDRK_PIC when selling.
+            // STOR_SELL (field 6): mirror of STOR_BUY. STOR_BUYIT (field 5):
+            // BUYITEM_PIC vs SELLITEM_PIC.
+            DrawSwdItemSprite(swd.Fields[4], buyMode ? "BUYLGT_PIC" : "BUYDRK_PIC");
+            DrawSwdItemSprite(swd.Fields[6], buyMode ? "SELLDRK_PIC" : "SELLGT_PIC");
+            DrawSwdItemSprite(swd.Fields[5], buyMode ? "BUYITEM_PIC" : "SELLITEM_PIC");
+
+            // STOR_STATS (field 11) "YOU HAVE" (SWD default text).
+            var stats = swd.Fields[11];
+            if (stats.Text.Length > 0)
+                DrawDosFont(stats.Text,
+                    swd.Window.X + stats.X, swd.Window.Y + stats.Y,
+                    stats.FontName, stats.FontBaseColor);
+
+            // STOR_TEXTCOST (field 12): "COST" or "RESALE" per saying[mode].
+            var textcost = swd.Fields[12];
+            DrawDosFont(buyMode ? "COST" : "RESALE",
+                swd.Window.X + textcost.X, swd.Window.Y + textcost.Y,
+                textcost.FontName, textcost.FontBaseColor);
+
+            // STOR_COST (field 9): cost / resale value.
+            var cost = swd.Fields[9];
+            DrawDosFont(store.CurrentCost.ToString("D2"),
+                swd.Window.X + cost.X, swd.Window.Y + cost.Y,
+                cost.FontName, cost.FontBaseColor);
+
+            // STOR_NUM (field 13): owned count.
+            var num = swd.Fields[13];
+            DrawDosFont(store.OwnedCount.ToString("D2"),
+                swd.Window.X + num.X, swd.Window.Y + num.Y,
+                num.FontName, num.FontBaseColor);
+        }
+
+        // STOR_COMP (field 7): center display. Showing HAR1_TXT on entry
+        // until any nav input, then the current item's ITEM??_TXT.
+        var comp = swd.Fields[7];
+        string? streamText;
+        if (store.ShowingGreeting)
+            streamText = SwdTextStream.LoadText("HAR1_TXT");
+        else
+        {
+            var obj = store.CurrentObject;
+            streamText = obj is ObjType t
+                ? SwdTextStream.LoadText($"ITEM{(int)t:D2}_TXT")
+                : null;
+        }
+        if (streamText != null)
+            SwdTextStream.Render(_swdHost, streamText,
+                swd.Window.X + comp.X, swd.Window.Y + comp.Y,
+                comp.Lx, comp.Ly,
+                comp.FontName, comp.FontBaseColor);
+    }
+
+    private void DrawSwdItemSprite(SwdWindow.Field f, string itemName)
+    {
+        var tex = _swdHost.LoadSprite(itemName);
+        if (tex != null)
+            DrawTexture(tex, new Vector2(f.X, f.Y));
+    }
+
+    private void DrawSwdCenteredText(SwdWindow.Field f, string text, string fontName, int basecolor)
+    {
+        var font = LoadBitmapFont(fontName);
+        if (font == null) return;
+        int tw = font.Measure(text);
+        int fh = font.Height;
+        int x = f.X + (f.Lx - tw) / 2;
+        int y = f.Y + (f.Ly - fh) / 2;
+        DrawDosFont(text, x, y, fontName, basecolor);
     }
 
     private void DrawShipComputerOverlay(Font font)
@@ -909,7 +1024,7 @@ public partial class DebugRenderer : Node2D
 
     // Adapter passed to SwdRenderer so it can draw onto this node without
     // depending on Godot types directly.
-    private sealed class SwdHost : SwdRenderer.IHost
+    private sealed class SwdHost : SwdRenderer.IHost, SwdTextStream.IHost
     {
         private readonly DebugRenderer _r;
         public SwdHost(DebugRenderer r) { _r = r; }

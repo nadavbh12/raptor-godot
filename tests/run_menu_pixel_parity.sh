@@ -86,6 +86,9 @@ for script in $SCRIPTS; do
     RAPTOR_RENDER_MENUS=1 \
     RAPTOR_SHOT_DIR="$g_dir" \
     RAPTOR_SHOT_BURST=0 \
+    # --position pushes the window off-screen; --display-driver headless
+    # would prevent the focus steal entirely but disables GetViewport
+    # rendering, breaking the screenshots, so we keep a real window.
     "$GODOT_BIN" --path "$REPO" \
         --audio-driver Dummy \
         --position 99999,99999 --resolution 320x200 \

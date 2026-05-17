@@ -41,13 +41,16 @@ internal sealed class SwdRenderer
     private static readonly Color LineLight = new(1f, 1f, 1f, 0.18f);
     private static readonly Color LineDark  = new(0f, 0f, 0f, 0.70f);
 
-    public static void Draw(IHost host, SwdWindow swd, int selectedFieldId = -1)
+    public static void Draw(IHost host, SwdWindow swd, int selectedFieldId = -1,
+        System.Collections.Generic.HashSet<int>? skipFieldIndices = null)
     {
         DrawWindowShadow(host, swd);
         DrawWindowBackground(host, swd);
 
         foreach (var f in swd.Fields)
         {
+            if (skipFieldIndices != null && skipFieldIndices.Contains(f.Index))
+                continue;
             int sx = swd.Window.X + f.X;
             int sy = swd.Window.Y + f.Y;
             bool selected = (selectedFieldId >= 0 && f.Id == selectedFieldId);

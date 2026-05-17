@@ -1,6 +1,11 @@
 <Project Sdk="Godot.NET.Sdk/4.3.0">
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
+    <!-- Allow rolling forward to .NET 10+ when only newer runtimes are
+         installed. Without this Godot Mono fails assembly load with
+         ".NET: Assemblies not found" and crashes during startup
+         (CSharpScript::reload). -->
+    <RollForward>Major</RollForward>
     <EnableDynamicLoading>true</EnableDynamicLoading>
     <RootNamespace>Raptor</RootNamespace>
     <Nullable>enable</Nullable>

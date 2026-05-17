@@ -186,6 +186,9 @@ public sealed class MenuStateMachine
             case WinState.Hangar:
                 return HandleHangarInput(action, currentFrame);
 
+            case WinState.Store:
+                return HandleStoreInput(action, currentFrame);
+
             case WinState.Unknown:
                 if (_inSectorSelect && action == "Return")
                 {
@@ -315,8 +318,46 @@ public sealed class MenuStateMachine
                 EnterState(WinState.Unknown, currentFrame, reAnchor: false);
                 return true;
             }
-            // Other positions: stub (SUPPLIES, MAINMENU, QSAVE).
+            if (_hangarPos == 1)  // SUPPLIES → STORE_Enter
+            {
+                Store = new StoreLogic();
+                EnterState(WinState.Store, currentFrame, reAnchor: true);
+                return true;
+            }
+            // MAINMENU, QSAVE: stub.
             return false;
+        }
+        return false;
+    }
+
+    // Reference to the live store state, null unless WinState == Store.
+    internal StoreLogic? Store { get; private set; }
+
+    private bool HandleStoreInput(string action, int currentFrame)
+    {
+        if (Store == null) return false;
+        switch (action)
+        {
+            case "Right":
+            case "Up":
+            case "PageUp":
+                Store.NextItem();
+                return false;
+
+            case "Left":
+            case "Down":
+            case "PageDown":
+                Store.PrevItem();
+                return false;
+
+            case "Space":
+                Store.ToggleMode();
+                return false;
+
+            case "Escape":
+                Store = null;
+                EnterState(WinState.Hangar, currentFrame, reAnchor: false);
+                return true;
         }
         return false;
     }
