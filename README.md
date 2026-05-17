@@ -4,7 +4,10 @@ Reimplementation of Raptor: Call Of The Shadows in Godot 4 with C#. Phase 1 goal
 
 ## Status
 
-Stage 0: bootstrap (in progress).
+Phase 1 parity implementation is in progress. Current local gates are the unit suite,
+script parity, demo parity, and targeted menu/visual parity checks. The original seed
+sweep gate has been dropped because the captured seed script was not meaningfully
+RNG-sensitive.
 
 ## Build
 
@@ -20,9 +23,12 @@ godot --path .
 ## Test
 
 ```
-bash scripts/lint_sim.sh           # sim-layer discipline
 dotnet test tests/RaptorTests.csproj
+ci/full.sh                         # full local acceptance runner
 ```
+
+`ci/full.sh` disables audio for both Godot and the C reference. Menu pixel parity is
+included when `MENU_C_CAPTURE_ROOT=/path/to/reusable/c/captures` is provided.
 
 ## Game data
 

@@ -105,6 +105,12 @@ public sealed class MenuStateMachine
     /// </summary>
     public int CurrentItem { get; private set; } = 0;
 
+    public int PilotCreateStep => _pilotCreateStep;
+    public string PilotName { get; private set; } = "";
+    public string Callsign { get; private set; } = "";
+    public int HangarPosition => _hangarPos;
+    public bool InSectorSelect => _inSectorSelect;
+
     /// <summary>
     /// The frame number at which the CURRENT (non-Unknown) context was entered.
     /// Mirrors g_menu_fc0 in parity.c: only updated when entering a non-Unknown state.
@@ -142,6 +148,8 @@ public sealed class MenuStateMachine
     {
         CurrentItem = 0;
         _pilotCreateStep = 0;
+        PilotName = "";
+        Callsign = "";
         _hangarPos = 1;
         _inSectorSelect = false;
         EnterState(WinState.Menu, currentFrame, reAnchor: true);
@@ -223,7 +231,23 @@ public sealed class MenuStateMachine
                     return true;
                 }
             }
-            // Any non-Return key (text input) is absorbed silently.
+            if (action == "Backspace")
+            {
+                if (_pilotCreateStep == 1 && PilotName.Length > 0)
+                    PilotName = PilotName[..^1];
+                else if (_pilotCreateStep == 2 && Callsign.Length > 0)
+                    Callsign = Callsign[..^1];
+                return true;
+            }
+            if (action.Length == 1 && char.IsLetterOrDigit(action[0]))
+            {
+                if (_pilotCreateStep == 1 && PilotName.Length < 12)
+                    PilotName += char.ToUpperInvariant(action[0]);
+                else if (_pilotCreateStep == 2 && Callsign.Length < 12)
+                    Callsign += char.ToUpperInvariant(action[0]);
+                return true;
+            }
+            // Other non-Return keys are absorbed silently.
             return true;
         }
 

@@ -165,6 +165,27 @@ public class MenuStateMachineTests
     }
 
     [Fact]
+    public void Pilot_creation_tracks_name_and_callsign_text()
+    {
+        var m = new MenuStateMachine();
+        m.EnterMenu(0);
+
+        m.HandleInput("Return", 10);
+        m.HandleInput("t", 11);
+        m.HandleInput("E", 12);
+        m.HandleInput("s", 13);
+        m.HandleInput("T", 14);
+        Assert.Equal("TEST", m.PilotName);
+        Assert.Equal("", m.Callsign);
+
+        m.HandleInput("Return", 20);
+        m.HandleInput("T", 21);
+        m.HandleInput("1", 22);
+        Assert.Equal("TEST", m.PilotName);
+        Assert.Equal("T1", m.Callsign);
+    }
+
+    [Fact]
     public void Return_in_Help_exits_to_Unknown()
     {
         var m = new MenuStateMachine();

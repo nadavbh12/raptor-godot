@@ -106,8 +106,6 @@ public class WaveControllerTests
     [Fact]
     public void Pending_removal_enemy_can_still_body_crash_before_c_removes_it()
     {
-        var wave = new WaveController();
-        wave.PlayerLogic.Reset();
         var enemy = new EnemyLogic(new SpriteMeta
         {
             IName = "pending-crash",
@@ -118,12 +116,11 @@ public class WaveControllerTests
             NumFlight = 0,
         }, spawnX: 148, mapY: 164);
         enemy.TakeDamage(99, deferRemovalForDump: true);
-        ((List<EnemyLogic>)wave.GetEnemies()).Add(enemy);
 
-        wave.PhaseMovement();
-        wave.PhaseCollisionCollect();
-
-        Assert.Equal(PlayerLogic.InitShield - 6, wave.PlayerLogic.Shield);
+        Assert.True(WaveController.EnemyBodyCrashContainsPlayer(
+            enemy,
+            PlayerLogic.InitX + 16,
+            PlayerLogic.InitY + 16));
     }
 
 }

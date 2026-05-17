@@ -17,6 +17,7 @@ public partial class DebugRenderer : Node2D
     private WaveController? _wave;
     private MenuStateMachine? _menu;
     private string? _shotDir;
+    private bool _interactiveUi;
     private int _lastShotSec = -1;
     private int _scriptDumpSeq = 0;
     private string? _pendingScriptDumpLabel;
@@ -24,6 +25,11 @@ public partial class DebugRenderer : Node2D
     private int _lastScannerFrame = -1;
 
     private readonly Dictionary<string, Texture2D> _spriteCache = new();
+    private Color[]? _palette;
+    private readonly Dictionary<string, BitmapFont> _bitmapFonts = new();
+    private readonly Dictionary<string, SwdWindow?> _swdCache = new();
+    private SwdHost? _swdHostInstance;
+    private SwdHost _swdHost => _swdHostInstance ??= new SwdHost(this);
     private readonly Dictionary<string, string> _spritePaths = new();
     // Multi-frame enemy sprites keyed by iname. The PNG extractor writes each
     // consecutive GLB item with the same iname under sequential indices, e.g.
@@ -101,6 +107,9 @@ public partial class DebugRenderer : Node2D
 
         var menu = GetNodeOrNull<MenuController>("../MenuController");
         if (menu != null) _menu = menu.Menu;
+
+        _interactiveUi = string.IsNullOrEmpty(OS.GetEnvironment("RAPTOR_PLAYTHROUGH"))
+                         || OS.GetEnvironment("RAPTOR_RENDER_MENUS") == "1";
 
         _shotDir = OS.GetEnvironment("RAPTOR_SHOT_DIR");
         if (!string.IsNullOrEmpty(_shotDir))
@@ -437,6 +446,12 @@ public partial class DebugRenderer : Node2D
         DrawRect(new Rect2(0, 0, 320, 200), new Color(0, 0, 0, 1));
         DrawRect(new Rect2(16, 0, 288, 200), new Color(0.05f, 0.05f, 0.1f, 1));
 
+        if (_interactiveUi && _menu != null && !_menu.InGame)
+        {
+            DrawMenuOverlay(_menu);
+            return;
+        }
+
         if (_wave == null) return;
 
         _flameQuads.Clear();
@@ -587,6 +602,302 @@ public partial class DebugRenderer : Node2D
             var font = ThemeDB.FallbackFont;
             DrawString(font, new Vector2(4, 195), hud, HorizontalAlignment.Left, -1, 8, new Color(1, 1, 1));
         }
+    }
+
+    private void DrawMenuOverlay(MenuStateMachine menu)
+    {
+        var font = ThemeDB.FallbackFont;
+        DrawRect(new Rect2(0, 0, 320, 200), Colors.Black);
+        DrawUiSprite(MenuChrome.Background);
+
+        if (menu.State == WinState.Hangar)
+        {
+            DrawUiSprite(MenuChrome.Hangar);
+            if ((SimClock.Frame / 5) % 3 == 0)
+                DrawUiSprite(MenuChrome.HangarPilot);
+            DrawHangarOverlay(font, menu);
+            return;
+        }
+
+        if (menu.InSectorSelect || menu.State == WinState.Unknown)
+        {
+            DrawShipComputerOverlay(font);
+            return;
+        }
+
+        if (menu.State == WinState.Help)
+        {
+            DrawHelpOverlay(font);
+            return;
+        }
+
+        if (menu.State == WinState.Credits)
+        {
+            DrawCreditsOverlay(font);
+            return;
+        }
+
+        if (menu.PilotCreateStep > 0)
+        {
+            if (menu.PilotCreateStep == 3)
+                DrawDifficultyOverlay(font);
+            else
+                DrawRegisterOverlay(font, menu);
+            return;
+        }
+
+        DrawMainMenuOverlay(menu);
+    }
+
+    private void DrawMainMenuOverlay(MenuStateMachine menu)
+    {
+        DrawUiSprite(MenuChrome.RaptorLogo);
+        DrawUiSprite(MenuChrome.Copyright);
+        for (int i = 0; i < MenuChrome.MainVisibleItems.Count; i++)
+        {
+            var item = MenuChrome.MainVisibleItems[i];
+            // C uses GFX_ShadeShape(LIGHT, ...) on the selected SWD field; this
+            // approximates the palette-lighten by scaling R/G/B unevenly so the
+            // dim orange (146,52,12) maps roughly to the brighter (190,85,44).
+            var modulate = i == menu.CurrentItem
+                ? new Color(1.30f, 1.60f, 3.30f)
+                : Colors.White;
+            DrawUiSprite(item, modulate);
+        }
+    }
+
+    private void DrawRegisterOverlay(Font font, MenuStateMachine menu)
+    {
+        DrawUiSprite(MenuChrome.Register);
+        DrawUiSprite(MenuChrome.RegisterPortrait);
+        DrawRegisterFieldText(ThemeDB.FallbackFont, menu);
+        DrawDosFont("CHANGE ID PICTURE", 92, 181, "FONT1_FNT", 66);
+        // CURSOR_PIC (4-point compass star) at REG_VIEWID center — mirrors C's
+        // SWD_SetFieldPtr(window, REG_VIEWID) → PTR_SetPos to the badge center.
+        DrawUiSprite(MenuChrome.Cursor with { X = 37, Y = 118 });
+    }
+
+    private void DrawRegisterFieldText(Font font, MenuStateMachine menu)
+    {
+        var ink = Colors.Black;
+        if (!string.IsNullOrEmpty(menu.PilotName))
+            DrawMenuText(menu.PilotName, 188, 137, 7, ink);
+        if (!string.IsNullOrEmpty(menu.Callsign))
+            DrawMenuText(menu.Callsign, 188, 153, 7, ink);
+
+        int caretX = 188;
+        int caretY = menu.PilotCreateStep == 2 ? 144 : 128;
+        string text = menu.PilotCreateStep == 2 ? menu.Callsign : menu.PilotName;
+        if (!string.IsNullOrEmpty(text))
+            caretX += MenuTextWidth(text, 7) + 1;
+        DrawRect(new Rect2(caretX, caretY, 1, 9), ink);
+    }
+
+    private void DrawHangarOverlay(Font font, MenuStateMachine menu)
+    {
+        var (_, x, y) = MenuChrome.HangarTargets[menu.HangarPosition];
+        var cursor = LoadUiSprite(MenuChrome.Cursor);
+        if (cursor != null)
+            DrawTexture(cursor, new Vector2(x - 8, y - 10));
+
+        string selected = menu.HangarPosition switch
+        {
+            0 => "MISSION COMPUTER",
+            1 => "SUPPLY ROOM",
+            2 => "MAIN MENU",
+            _ => "QUICK SAVE",
+        };
+        DrawMenuText(selected, 92, 190, 12, MenuChrome.MenuOrange);
+    }
+
+    private void DrawShipComputerOverlay(Font font)
+    {
+        DrawUiSprite(MenuChrome.ShipComputer);
+
+        DrawSwdPanel(30, 20, 252, 132, MenuChrome.MenuDark, MenuChrome.MenuMid);
+        DrawUiSprite(MenuChrome.LightOn with { X = 181, Y = 160 });
+        DrawUiSprite(MenuChrome.LightOff with { X = 197, Y = 160 });
+        DrawUiSprite(MenuChrome.LightOn with { X = 213, Y = 160 });
+        DrawMenuText("BRAVO SECTOR", 96, 45, 13, MenuChrome.MenuOrange);
+        DrawMenuText("TANGO SECTOR", 96, 72, 13, MenuChrome.MenuOrange);
+        DrawMenuText("OUTER REGIONS", 96, 99, 13, MenuChrome.MenuOrange);
+        DrawMenuText("AUTO-PILOT", 113, 132, 13, MenuChrome.MenuOrange);
+    }
+
+    private void DrawDifficultyOverlay(Font font)
+    {
+        // In C, ASKDIFF is pushed on top of REGISTER — the registration page
+        // (badge, cursor, bottom prompt) stays visible underneath.
+        DrawUiSprite(MenuChrome.Register);
+        DrawUiSprite(MenuChrome.RegisterPortrait);
+        DrawUiSprite(MenuChrome.Cursor with { X = 37, Y = 118 });
+        DrawDosFont("CHANGE ID PICTURE", 92, 181, "FONT1_FNT", 66);
+
+        var swd = LoadSwd("ASKDIFF_SWD");
+        if (swd != null)
+        {
+            // C selects field id=8 (VETERAN) by default for new pilots — keep
+            // matching that until the menu state machine tracks live selection.
+            SwdRenderer.Draw(_swdHost, swd, selectedFieldId: 8);
+        }
+    }
+
+    private void DrawHelpOverlay(Font font)
+    {
+        DrawUiSprite(MenuChrome.ShipComputer);
+        DrawUiSprite(MenuChrome.HelpComputer);
+        DrawString(font, new Vector2(118, 84), "HELP", HorizontalAlignment.Left, -1, 11, new Color(0.2f, 0.2f, 0.22f));
+        DrawString(font, new Vector2(64, 118), "ARROWS MOVE", HorizontalAlignment.Left, -1, 9, new Color(0.55f, 0.9f, 0.85f));
+        DrawString(font, new Vector2(64, 134), "A FIRES", HorizontalAlignment.Left, -1, 9, new Color(0.55f, 0.9f, 0.85f));
+        DrawString(font, new Vector2(64, 150), "ALT SPECIAL", HorizontalAlignment.Left, -1, 9, new Color(0.55f, 0.9f, 0.85f));
+        DrawString(font, new Vector2(64, 176), "ENTER RETURNS", HorizontalAlignment.Left, -1, 8, new Color(0.85f, 0.9f, 0.7f));
+    }
+
+    private void DrawCreditsOverlay(Font font)
+    {
+        DrawUiSprite(MenuChrome.ShipComputer);
+        DrawString(font, new Vector2(64, 44), "RAPTOR", HorizontalAlignment.Left, -1, 18, new Color(0.95f, 0.82f, 0.24f));
+        DrawString(font, new Vector2(64, 76), "CALL OF THE SHADOWS", HorizontalAlignment.Left, -1, 10, new Color(0.55f, 0.9f, 0.85f));
+        DrawString(font, new Vector2(64, 108), "CYGNUS STUDIOS", HorizontalAlignment.Left, -1, 10, new Color(0.85f, 0.9f, 0.7f));
+        DrawString(font, new Vector2(64, 176), "ENTER RETURNS", HorizontalAlignment.Left, -1, 8, new Color(0.85f, 0.9f, 0.7f));
+    }
+
+    private void DrawUiSprite(MenuSpriteSpec spec) => DrawUiSprite(spec, Colors.White);
+
+    private void DrawUiSprite(MenuSpriteSpec spec, Color modulate)
+    {
+        var tex = LoadUiSprite(spec);
+        if (tex != null)
+            DrawTexture(tex, new Vector2(spec.X, spec.Y), modulate);
+    }
+
+    private Texture2D? LoadUiSprite(MenuSpriteSpec spec)
+    {
+        string path = Path.Combine(ProjectSettings.GlobalizePath("res://assets/sprites"), spec.FileName);
+        return LoadSpriteFromPath(path);
+    }
+
+    private void DrawRegisterIdTag(bool showCrosshair)
+    {
+        DrawSwdPanel(4, 110, 121, 58, new Color(0.10f, 0.10f, 0.10f), MenuChrome.MenuMid);
+        DrawUiSprite(MenuChrome.RegisterPortrait);
+        DrawMenuText("PILOT ID", 62, 120, 8, MenuChrome.MenuOrange);
+        DrawMenuText("RAPTOR", 62, 134, 8, new Color(0.72f, 0.70f, 0.62f));
+        if (showCrosshair)
+        {
+            DrawLine(new Vector2(38, 112), new Vector2(38, 164), MenuChrome.MenuOrange, 1);
+            DrawLine(new Vector2(18, 138), new Vector2(58, 138), MenuChrome.MenuOrange, 1);
+        }
+    }
+
+    private void DrawBottomPrompt(string text)
+    {
+        DrawSwdPanel(68, 181, 183, 17, new Color(0.08f, 0.08f, 0.08f), MenuChrome.MenuMid);
+        DrawMenuText(text, 75, 195, 12, MenuChrome.MenuOrange);
+    }
+
+    private void DrawSwdPanel(int x, int y, int w, int h, Color fill, Color edge)
+    {
+        DrawRect(new Rect2(x, y, w, h), fill);
+        DrawLine(new Vector2(x, y), new Vector2(x + w - 1, y), edge, 1);
+        DrawLine(new Vector2(x, y), new Vector2(x, y + h - 1), edge, 1);
+        DrawLine(new Vector2(x, y + h - 1), new Vector2(x + w - 1, y + h - 1), Colors.Black, 1);
+        DrawLine(new Vector2(x + w - 1, y), new Vector2(x + w - 1, y + h - 1), Colors.Black, 1);
+    }
+
+    private void DrawMenuText(string text, int x, int y, int size, Color color)
+    {
+        DrawString(ThemeDB.FallbackFont, new Vector2(x, y), text, HorizontalAlignment.Left, -1, size, color);
+    }
+
+    // DOS bitmap-font text. basecolor is the palette index of the brightest
+    // glyph color; darker shades come from palette[basecolor+1], [+2], ...
+    // (matching C's GFX_Print: it decrements basecolor once then adds per-pixel
+    // offsets stored in the glyph data).
+    private void DrawDosFont(string text, int x, int y, string fontName, int basecolor)
+    {
+        var font = LoadBitmapFont(fontName);
+        if (font == null)
+        {
+            // Atlas missing — fall back so screenshots still render something.
+            DrawMenuText(text, x, y, 8, MenuChrome.MenuOrange);
+            return;
+        }
+        font.Draw(this, text, x, y, basecolor);
+    }
+
+    private SwdWindow? LoadSwd(string name)
+    {
+        if (_swdCache.TryGetValue(name, out var cached)) return cached;
+        string path = $"res://assets/swd/{name}.json";
+        SwdWindow? loaded = null;
+        if (Godot.FileAccess.FileExists(path))
+            loaded = SwdWindow.Load(path);
+        _swdCache[name] = loaded;
+        return loaded;
+    }
+
+    // Adapter passed to SwdRenderer so it can draw onto this node without
+    // depending on Godot types directly.
+    private sealed class SwdHost : SwdRenderer.IHost
+    {
+        private readonly DebugRenderer _r;
+        public SwdHost(DebugRenderer r) { _r = r; }
+
+        public void DrawCanvasTexture(Texture2D tex, Vector2 pos, Color modulate)
+            => _r.DrawTexture(tex, pos, modulate);
+
+        public void DrawCanvasTextureRegion(Texture2D tex, Rect2 dst, Rect2 src, Color modulate)
+            => _r.DrawTextureRectRegion(tex, dst, src, modulate);
+
+        public void DrawCanvasRect(Rect2 rect, Color color)
+            => _r.DrawRect(rect, color);
+
+        public Texture2D? LoadSprite(string itemName)
+        {
+            if (string.IsNullOrEmpty(itemName)) return null;
+            // assets/sprites/ files are NNNN_<itemName>.png — we don't know
+            // the sequence index here, so glob by name. Cache the first hit.
+            if (_r._spriteCache.TryGetValue(itemName, out var cached)) return cached;
+            string dir = ProjectSettings.GlobalizePath("res://assets/sprites");
+            foreach (var p in System.IO.Directory.GetFiles(dir, $"*_{itemName}.png"))
+            {
+                var tex = _r.LoadSpriteFromPath(p);
+                if (tex != null)
+                {
+                    _r._spriteCache[itemName] = tex;
+                    return tex;
+                }
+            }
+            return null;
+        }
+
+        public void DrawText(string text, int x, int y, string fontName, int basecolor)
+            => _r.DrawDosFont(text, x, y, fontName, basecolor);
+
+        public int MeasureText(string text, string fontName)
+        {
+            var font = _r.LoadBitmapFont(fontName);
+            return font?.Measure(text) ?? 0;
+        }
+    }
+
+    private BitmapFont? LoadBitmapFont(string name)
+    {
+        if (_bitmapFonts.TryGetValue(name, out var cached)) return cached;
+        _palette ??= BitmapFont.LoadPalette("res://assets/fonts/palette.json");
+        string atlas = $"res://assets/fonts/{name}.png";
+        string meta = $"res://assets/fonts/{name}.json";
+        if (!Godot.FileAccess.FileExists(atlas) || !Godot.FileAccess.FileExists(meta))
+            return null;
+        var font = BitmapFont.Load(atlas, meta, _palette);
+        _bitmapFonts[name] = font;
+        return font;
+    }
+
+    private static int MenuTextWidth(string text, int size)
+    {
+        return (int)ThemeDB.FallbackFont.GetStringSize(text, HorizontalAlignment.Left, -1, size).X;
     }
 
     /// <summary>

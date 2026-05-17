@@ -76,13 +76,15 @@ public partial class WaveController : Node
     /// Deterministic per-wave RNG. Exposed so Stage 3+ tasks (Player, Enemy, Bullet)
     /// can share the single per-wave random stream.
     /// </summary>
-    public RandomNumberGenerator Rng { get; } = new();
+    private RandomNumberGenerator? _rng;
+    public RandomNumberGenerator Rng => _rng ??= new RandomNumberGenerator();
 
     // ── Wiring slots ─────────────────────────────────────────────────────────
     // Set by _Ready via GetNodeOrNull; the scheduler reads these.
     private MenuStateMachine?   _menu;
     private ParityEmitter?      _emitter;
     private Raptor.Test.PlaythroughDriver? _playthrough;
+    private InteractiveInputController? _interactiveInput;
     private string?             _assetsRoot;
 
     // ── Wave state ────────────────────────────────────────────────────────────
@@ -120,6 +122,10 @@ public partial class WaveController : Node
     private int _demoRecordIndex = 0;
     private bool _demoB2Latch = false;
     private bool _demoB3Latch = false;
+    private bool _inputB2Latch = false;
+    private bool _inputB3Latch = false;
+    private InputState? _testInteractiveInput;
+    private readonly Queue<WeaponType> _testSpecialSelects = new();
     private bool _debugDemoReplay = false;
     private int _paletteStuffCnt = 0;
     private bool _skipInitialPaletteStuff = false;
@@ -342,6 +348,7 @@ public partial class WaveController : Node
         // Found only when running under a parity playthrough; PhaseInput uses
         // PlayerInputX/Y to feed the player.
         _playthrough = GetNodeOrNull<Raptor.Test.PlaythroughDriver>("../PlaythroughDriver");
+        _interactiveInput = GetNodeOrNull<InteractiveInputController>("../InteractiveInputController");
 
         _emitter = GetNodeOrNull<ParityEmitter>("../ParityEmitter");
         if (_emitter != null)
@@ -633,13 +640,19 @@ public partial class WaveController : Node
         }
 
         // Under a parity playthrough, scripted `down NAME`/`up NAME` lines
-        // populate PlaythroughDriver's held-key set; read it as the player's
-        // key state and let PlayerLogic.Tick run C's IPT_GetKeyBoard ramp.
-        // No playthrough → idle (the default for a real interactive run; a
-        // future stage will swap this for the Godot InputMap wiring).
-        int dx = _playthrough?.PlayerInputX ?? 0;
-        int dy = _playthrough?.PlayerInputY ?? 0;
-        PlayerLogic.Tick(dx, dy);
+        // populate PlaythroughDriver's held-key set. Without a playthrough,
+        // consume the real Godot InputMap state from InteractiveInputController.
+        var interactive = _testInteractiveInput
+                          ?? (_interactiveInput?.Active == true ? _interactiveInput.Current : InputState.Idle);
+        var input = LiveInputLogic.Resolve(
+            usePlaythrough: _playthrough != null,
+            playthroughDx: _playthrough?.PlayerInputX ?? 0,
+            playthroughDy: _playthrough?.PlayerInputY ?? 0,
+            playthroughFire: _playthrough?.IsFireHeld ?? false,
+            playthroughSpecial: _playthrough?.IsFireSpHeld ?? false,
+            playthroughMega: _playthrough?.IsMegaHeld ?? false,
+            interactive);
+        PlayerLogic.Tick(input.Dx, input.Dy);
 
         // RAP.C SC_1..SC_MINUS — script-issued special-weapon switches.
         // Mirrors OBJS_MakeSpecial: silently ignored if the type isn't owned.
@@ -648,23 +661,58 @@ public partial class WaveController : Node
             while (_playthrough.TryDequeueSpecialSelect(out var w))
                 Shooter.SelectSpecial(w);
         }
+        else
+        {
+            while (_interactiveInput?.TryDequeueSpecialSelect(out var w) == true)
+                Shooter.SelectSpecial(w);
+            while (_testSpecialSelects.Count > 0)
+                Shooter.SelectSpecial(_testSpecialSelects.Dequeue());
+        }
 
         // Mirrors RAP.C:1000 BUT_1 → OBJS_Use(S_FORWARD_GUNS/...) cascade. Order
         // matches C: fire happens BEFORE SHOTS_Think runs (which decrements
         // cooldowns), so the cooldown set this tick can't be cleared in the
         // same tick. C resets BUT_1=FALSE after firing — our edge model uses
         // the held state, which is what the demo records (b1 is a held flag).
-        if (_waveActive && (_playthrough?.IsFireHeld ?? false))
-        {
-            int cx = PlayerLogic.X + 16;       // player_cx = playerx + PLAYERWIDTH/2
-            int cy = PlayerLogic.Y + 16;
-            var fired = Shooter.ApplyButton1(cx, cy, PlayerLogic.Pic, _weaponTargetEnemies, _shooterRng);
-            foreach (var b in fired) _playerBullets.Add(b);
-        }
+        ApplyLiveButtons(input.B1, input.B2, input.B3);
 
         // SHOTS.C:1035-1040 — cooldown decrement once per game iter. Done at
         // the end of input so the fire above sees the C-state cur_shoot.
         Shooter.TickCooldowns();
+    }
+
+    private void ApplyLiveButtons(bool fireHeld, bool fireSpHeld, bool megaHeld)
+    {
+        int cx = PlayerLogic.X + 16;
+        int cy = PlayerLogic.Y + 16;
+
+        if (_waveActive && fireHeld)
+        {
+            var fired = Shooter.ApplyButton1(cx, cy, PlayerLogic.Pic, _weaponTargetEnemies, _shooterRng);
+            foreach (var b in fired) _playerBullets.Add(b);
+        }
+
+        LiveInputLogic.ApplySpecialCycle(Shooter, fireSpHeld, ref _inputB2Latch);
+
+        if (megaHeld)
+        {
+            if (!_inputB3Latch)
+            {
+                _inputB3Latch = true;
+                var fired = new List<BulletLogic>(1);
+                if (_waveActive
+                    && Shooter.MegaBombCount > 0
+                    && Shooter.Shoot(WeaponType.MegaBomb, cx, cy, PlayerLogic.Pic, fired, _enemies, _shooterRng))
+                {
+                    Shooter.ConsumeMegaBomb();
+                    foreach (var b in fired) _playerBullets.Add(b);
+                }
+            }
+        }
+        else
+        {
+            _inputB3Latch = false;
+        }
     }
 
     private void ApplyDemoButtons(DemoReplay.Frame frame)
@@ -709,6 +757,16 @@ public partial class WaveController : Node
         {
             _demoB3Latch = false;
         }
+    }
+
+    internal void SetInteractiveInputForTest(InputState input)
+    {
+        _testInteractiveInput = input;
+    }
+
+    internal void QueueSpecialSelectForTest(WeaponType weapon)
+    {
+        _testSpecialSelects.Enqueue(weapon);
     }
 
     internal void PhaseSpawn()
@@ -1108,15 +1166,7 @@ public partial class WaveController : Node
         foreach (var e in _enemies)
         {
             if (!e.Alive && !e.PendingRemovalDump) continue;
-            // ENEMY.C:1043 — `if (!sprite->groundflag)` guards body collision.
-            // F_GROUND family (FlightType 3/4/5) sets groundflag=TRUE in C, so
-            // ground enemies (bonuses, turrets, tanks) never crash with the player.
-            if (e.Meta.FlightType >= 3 && e.Meta.FlightType <= 5) continue;
-            int ex  = e.X;                    // sprite->x (top-left)
-            int ex2 = e.X + 2 * e.HalfW - 1; // sprite->x2 (= sprite->x + width - 1)
-            int ey  = e.Y;                    // sprite->y (top-left)
-            int ey2 = e.Y + 2 * e.HalfH - 1; // sprite->y2 (= sprite->y + height - 1)
-            if (playerCx > ex && playerCx < ex2 && playerCy > ey && playerCy < ey2)
+            if (EnemyBodyCrashContainsPlayer(e, playerCx, playerCy))
                 _bodyCrashEnemies.Add(e);
         }
 
@@ -1138,6 +1188,19 @@ public partial class WaveController : Node
         }
 
         _bodyCrashEnemies.Clear();
+    }
+
+    internal static bool EnemyBodyCrashContainsPlayer(EnemyLogic e, int playerCx, int playerCy)
+    {
+        // ENEMY.C:1043 — `if (!sprite->groundflag)` guards body collision.
+        // F_GROUND family (FlightType 3/4/5) sets groundflag=TRUE in C, so
+        // ground enemies (bonuses, turrets, tanks) never crash with the player.
+        if (e.Meta.FlightType >= 3 && e.Meta.FlightType <= 5) return false;
+        int ex  = e.X;                    // sprite->x (top-left)
+        int ex2 = e.X + 2 * e.HalfW - 1; // sprite->x2 (= sprite->x + width - 1)
+        int ey  = e.Y;                    // sprite->y (top-left)
+        int ey2 = e.Y + 2 * e.HalfH - 1; // sprite->y2 (= sprite->y + height - 1)
+        return playerCx > ex && playerCx < ex2 && playerCy > ey && playerCy < ey2;
     }
 
     private void HandleShotDone(BulletLogic b)

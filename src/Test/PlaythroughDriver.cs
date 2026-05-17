@@ -141,6 +141,12 @@ public partial class PlaythroughDriver : Node
                 return;
             }
 
+            if (_menu?.PilotCreateStep > 0)
+            {
+                _pendingKey = key;
+                return;
+            }
+
             // Special-weapon select keys (SC_1..SC_MINUS) bypass the menu
             // dispatch and go straight to the in-game shooter via the
             // _specialSelects queue. They never reach _pendingKey, so they
