@@ -444,13 +444,18 @@ public partial class DebugRenderer : Node2D
     public override void _Draw()
     {
         DrawRect(new Rect2(0, 0, 320, 200), new Color(0, 0, 0, 1));
-        DrawRect(new Rect2(16, 0, 288, 200), new Color(0.05f, 0.05f, 0.1f, 1));
 
         if (_interactiveUi && _menu != null && !_menu.InGame)
         {
+            // Menus paint on a black background; the in-game playfield tint
+            // is irrelevant here and would bleed through transparent areas
+            // of menu sprites (SHIPCOMP_PIC's display window, etc.).
             DrawMenuOverlay(_menu);
             return;
         }
+
+        // In-game playfield gets the dark-blue base behind the tile map.
+        DrawRect(new Rect2(16, 0, 288, 200), new Color(0.05f, 0.05f, 0.1f, 1));
 
         if (_wave == null) return;
 
@@ -608,7 +613,16 @@ public partial class DebugRenderer : Node2D
     {
         var font = ThemeDB.FallbackFont;
         DrawRect(new Rect2(0, 0, 320, 200), Colors.Black);
-        DrawUiSprite(MenuChrome.Background);
+
+        // BACKGRND_PIC (stars + Earth) only belongs behind the main menu.
+        // Hangar and ship-computer screens own fullscreen sprites that may
+        // have transparent regions — in C those reveal the cleared-to-black
+        // framebuffer (GFX_FadeOut before SHIPCOMP_SWD), not the title art.
+        bool isMainMenu = menu.State == WinState.Menu
+                          && menu.PilotCreateStep == 0
+                          && !menu.InSectorSelect;
+        if (isMainMenu)
+            DrawUiSprite(MenuChrome.Background);
 
         if (menu.State == WinState.Hangar)
         {
@@ -742,16 +756,16 @@ public partial class DebugRenderer : Node2D
 
     private void DrawShipComputerOverlay(Font font)
     {
-        DrawUiSprite(MenuChrome.ShipComputer);
-
-        DrawSwdPanel(30, 20, 252, 132, MenuChrome.MenuDark, MenuChrome.MenuMid);
-        DrawUiSprite(MenuChrome.LightOn with { X = 181, Y = 160 });
-        DrawUiSprite(MenuChrome.LightOff with { X = 197, Y = 160 });
-        DrawUiSprite(MenuChrome.LightOn with { X = 213, Y = 160 });
-        DrawMenuText("BRAVO SECTOR", 96, 45, 13, MenuChrome.MenuOrange);
-        DrawMenuText("TANGO SECTOR", 96, 72, 13, MenuChrome.MenuOrange);
-        DrawMenuText("OUTER REGIONS", 96, 99, 13, MenuChrome.MenuOrange);
-        DrawMenuText("AUTO-PILOT", 113, 132, 13, MenuChrome.MenuOrange);
+        // Drive entirely off SHIPCOMP_SWD: window paints SHIPCOMP_PIC, the
+        // SWD fields handle the sector buttons (FONT1_FNT, FLD_BUTTON
+        // INVISABLE = text-only), the indicator lights (LIGHTOFF_PIC at the
+        // three FLD_ICON slots), and the action buttons (BUTTON1-4_PIC).
+        // C indicates the active sector by giving its button a different
+        // fontbasecolor — AUTO-PILOT carries basecolor=64 in the SWD, so it
+        // renders in the brighter palette ramp.
+        var swd = LoadSwd("SHIPCOMP_SWD");
+        if (swd == null) return;
+        SwdRenderer.Draw(_swdHost, swd, selectedFieldId: -1);
     }
 
     private void DrawDifficultyOverlay(Font font)

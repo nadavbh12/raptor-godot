@@ -76,6 +76,12 @@ internal sealed class SwdRenderer
                 case 3:  // FLD_INPUT (skip read-only render; caller overlays)
                     break;
 
+                case 5:  // FLD_CLOSE — same draw as FLD_ICON: GFX_PutImage.
+                    var close = host.LoadSprite(f.ItemName);
+                    if (close != null)
+                        host.DrawCanvasTexture(close, new Vector2(sx, sy), Colors.White);
+                    break;
+
                 case 7:  // FLD_BUMPIN — inset dark panel (sunken look)
                     DrawBumpIn(host, sx, sy, f.Lx, f.Ly, f.Color);
                     break;
