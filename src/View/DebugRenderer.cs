@@ -697,19 +697,47 @@ public partial class DebugRenderer : Node2D
 
     private void DrawHangarOverlay(Font font, MenuStateMachine menu)
     {
-        var (_, x, y) = MenuChrome.HangarTargets[menu.HangarPosition];
-        var cursor = LoadUiSprite(MenuChrome.Cursor);
-        if (cursor != null)
-            DrawTexture(cursor, new Vector2(x - 8, y - 10));
+        // C's WIN_Hangar maps HangarPosition -> FLD_VIEWAREA field name in
+        // HANGAR_SWD, and the cursor + caption follow the active field:
+        //   poslookup[4] = { HANG_MISSION, HANG_SUPPLIES, HANG_MAIN_MENU,
+        //                    HANG_QSAVE };
+        //   hangtext[4]  = { "FLY MISSION", "SUPPLY ROOM",
+        //                    "EXIT HANGAR", "SAVE PILOT" };
+        // The FLD_VIEWAREA fields are indices 2/3/4/5 in HANGAR_SWD.json,
+        // and the caption goes through HANG_TEXT (index 1).
+        var swd = LoadSwd("HANGAR_SWD");
+        if (swd == null) return;
 
-        string selected = menu.HangarPosition switch
+        int viewIdx = menu.HangarPosition switch
         {
-            0 => "MISSION COMPUTER",
-            1 => "SUPPLY ROOM",
-            2 => "MAIN MENU",
-            _ => "QUICK SAVE",
+            0 => 2,  // HANG_MISSION
+            1 => 3,  // HANG_SUPPLIES
+            2 => 4,  // HANG_MAIN_MENU
+            _ => 5,  // HANG_QSAVE
         };
-        DrawMenuText(selected, 92, 190, 12, MenuChrome.MenuOrange);
+        string caption = menu.HangarPosition switch
+        {
+            0 => "FLY MISSION",
+            1 => "SUPPLY ROOM",
+            2 => "EXIT HANGAR",
+            _ => "SAVE PILOT",
+        };
+
+        // Cursor lands at the active FLD_VIEWAREA's center: PTR_SetPos(
+        // fld.x + lx/2, fld.y + ly/2). CURSOR_PIC content centered at
+        // sprite-local (7, 8).
+        var area = swd.Fields[viewIdx];
+        int cx = swd.Window.X + area.X + area.Lx / 2;
+        int cy = swd.Window.Y + area.Y + area.Ly / 2;
+        DrawUiSprite(MenuChrome.Cursor with { X = cx - 7, Y = cy - 8 });
+
+        // HANG_TEXT field (index 1): FONT1_FNT basecolor=66 at field origin.
+        var caption_fld = swd.Fields[1];
+        DrawDosFont(caption,
+            swd.Window.X + caption_fld.X,
+            swd.Window.Y + caption_fld.Y,
+            caption_fld.FontName,
+            caption_fld.FontBaseColor);
     }
 
     private void DrawShipComputerOverlay(Font font)

@@ -16,7 +16,8 @@ internal static class MenuChrome
     public static readonly MenuSpriteSpec RaptorLogo = new("0015_RAPLOG_PIC.png", 21, 1);
     public static readonly MenuSpriteSpec Copyright = new("0018_COPYRGHT_PIC.png", 118, 196);
     public static readonly MenuSpriteSpec Hangar = new("0042_HANGER_PIC.png", 0, 0);
-    public static readonly MenuSpriteSpec HangarPilot = new("0043_HANGP_PIC.png", 140, 84);
+    // Position matches HANG_PIC field in HANGAR_SWD (extracted JSON).
+    public static readonly MenuSpriteSpec HangarPilot = new("0043_HANGP_PIC.png", 84, 117);
     public static readonly MenuSpriteSpec ShipComputer = new("0045_SHIPCOMP_PIC.png", 0, 0);
     public static readonly MenuSpriteSpec Register = new("0048_REGISTER_PIC.png", 0, 0);
     public static readonly MenuSpriteSpec HelpComputer = new("0079_HELPCOMP_PIC.png", 104, 58);
