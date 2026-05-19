@@ -40,6 +40,7 @@ export DOTNET_ROLL_FORWARD="${DOTNET_ROLL_FORWARD:-Major}"
 export SDL_AUDIODRIVER=dummy
 export RAPTOR_DETERMINISTIC_RNG=1
 
+run_step "Godot SDK/runtime version match" "$ROOT/tests/check_godot_sdk_version.sh"
 run_step "build game" dotnet build "$ROOT/raptor.csproj" --nologo --verbosity minimal
 run_step "build tests" dotnet build "$ROOT/tests/RaptorTests.csproj" --nologo --verbosity minimal
 run_step "unit tests" dotnet test "$ROOT/tests/RaptorTests.csproj" --no-build --logger "console;verbosity=minimal"

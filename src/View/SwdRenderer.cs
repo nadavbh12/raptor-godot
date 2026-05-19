@@ -16,7 +16,7 @@ internal sealed class SwdRenderer
         void DrawCanvasTextureRegion(Texture2D tex, Rect2 dst, Rect2 src, Color modulate);
         void DrawCanvasRect(Rect2 rect, Color color);
         Texture2D? LoadSprite(string itemName);   // resolves "MENU1_PIC" → Texture2D
-        void DrawText(string text, int x, int y, string fontName, int basecolor);
+        void DrawText(string text, int x, int y, string fontName, int basecolor, Color? modulate = null);
         int MeasureText(string text, string fontName);
         int FontHeight(string fontName);
     }
@@ -205,7 +205,11 @@ internal sealed class SwdRenderer
             int fh = host.FontHeight(f.FontName);
             int x = sx + (f.Lx - tw) / 2;
             int y = sy + (f.Ly - fh) / 2;
-            host.DrawText(f.Text, x, y, f.FontName, f.FontBaseColor);
+            // C's GFX_ShadeShape(LIGHT) on the active field also lifts the
+            // text pixels — important for INVISABLE (text-only) buttons like
+            // the SHIPCOMP sector list, where there's no bg sprite to brighten.
+            host.DrawText(f.Text, x, y, f.FontName, f.FontBaseColor,
+                selected ? LightShade : (Color?)null);
         }
     }
 

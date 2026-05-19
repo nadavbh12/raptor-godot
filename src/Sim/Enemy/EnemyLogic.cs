@@ -479,6 +479,10 @@ public sealed class EnemyLogic
                     maxSpeed: 10, damage: HitsMissile);
                 break;
 
+            case EshotType.ES_MINES:
+                b = BulletLogic.EnemyMine(bx, by, pos: 0, fuseTicks: 150);
+                break;
+
             case EshotType.ES_ATPLAYER:
             default:
                 {

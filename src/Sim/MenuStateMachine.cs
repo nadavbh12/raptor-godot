@@ -31,6 +31,7 @@ namespace Raptor.Sim;
 /// </summary>
 public sealed class MenuStateMachine
 {
+    public const int DeathMovieFrames = 574;
     // Normal menu has 7 items (indices 0-6): NEW, LOAD, OPTS, ORDER, CREDITS, QUIT, RETURN.
     public const int ItemCount = 7;
     public const int CreditsItemIndex = 4;
@@ -74,6 +75,7 @@ public sealed class MenuStateMachine
     //   Step 3: difficulty dialog — waiting for Return (accept → HANGAR)
     // Typed letters are no-ops in the state machine (text input is absorbed).
     private int _pilotCreateStep = 0;
+    private int _difficultyFieldId = 3; // ASKDIFF MED/VETERAN default.
 
     // ── Hangar sub-state ─────────────────────────────────────────────────────
     // Hangar has 4 positions: 0=MISSION, 1=SUPPLIES, 2=MAINMENU, 3=QSAVE.
@@ -108,6 +110,7 @@ public sealed class MenuStateMachine
     public int PilotCreateStep => _pilotCreateStep;
     public string PilotName { get; private set; } = "";
     public string Callsign { get; private set; } = "";
+    public int DifficultyFieldId => _difficultyFieldId;
     public int HangarPosition => _hangarPos;
     public bool InSectorSelect => _inSectorSelect;
 
@@ -140,6 +143,31 @@ public sealed class MenuStateMachine
     /// </summary>
     public event Action<int>? OnGameEnter;   // arg: gameNum (0=Mission1)
 
+    public void CompleteMission(int currentFrame)
+    {
+        InGame = false;
+        _inSectorSelect = false;
+        _pilotCreateStep = 0;
+        _hangarPos = 1;
+        EnterState(WinState.Hangar, currentFrame, reAnchor: true);
+    }
+
+    public void PlayerDied(int currentFrame)
+    {
+        InGame = false;
+        _inSectorSelect = false;
+        _pilotCreateStep = 0;
+        EnterState(WinState.Death, currentFrame, reAnchor: true);
+    }
+
+    public bool CompleteDeathMovieIfDone(int currentFrame, int deathMovieFrames)
+    {
+        if (State != WinState.Death) return false;
+        if (currentFrame - StateEnteredFrame < deathMovieFrames) return false;
+        EnterMenu(currentFrame);
+        return true;
+    }
+
     /// <summary>
     /// Notify the machine that the menu is now visible and ready for input.
     /// Mirrors raptor_parity_set_win_state(1) called right after ShowAllWindows.
@@ -148,6 +176,7 @@ public sealed class MenuStateMachine
     {
         CurrentItem = 0;
         _pilotCreateStep = 0;
+        _difficultyFieldId = 3;
         PilotName = "";
         Callsign = "";
         _hangarPos = 1;
@@ -190,6 +219,12 @@ public sealed class MenuStateMachine
                 return HandleStoreInput(action, currentFrame);
 
             case WinState.Unknown:
+                if (_inSectorSelect && action == "Escape")
+                {
+                    _inSectorSelect = false;
+                    EnterState(WinState.Hangar, currentFrame, reAnchor: false);
+                    return true;
+                }
                 if (_inSectorSelect && action == "Return")
                 {
                     // Sector select → game enter (raptor_parity_game_enter).
@@ -201,6 +236,62 @@ public sealed class MenuStateMachine
         return false;
     }
 
+    /// <summary>
+    /// Handle one pointer click in the 320x200 Raptor viewport. Returns true
+    /// when the click was inside a known interactive region.
+    /// </summary>
+    public bool HandlePointerClick(int x, int y, int currentFrame)
+    {
+        if (State != WinState.Menu && State != WinState.Hangar && State != WinState.Store && State != WinState.Unknown)
+            return false;
+
+        if (_pilotCreateStep == 1 || _pilotCreateStep == 2)
+        {
+            if (InRect(x, y, 183, 128, 110, 12))
+            {
+                _pilotCreateStep = 1;
+                return true;
+            }
+            if (InRect(x, y, 183, 144, 110, 12))
+            {
+                _pilotCreateStep = 2;
+                return true;
+            }
+            return false;
+        }
+
+        if (_pilotCreateStep == 3)
+        {
+            int field = DifficultyFieldAt(x, y);
+            if (field == 0) return false;
+            _difficultyFieldId = field;
+            return HandleInput("Return", currentFrame);
+        }
+
+        if (State == WinState.Menu)
+        {
+            int item = MainMenuItemAt(x, y);
+            if (item < 0) return false;
+            CurrentItem = item;
+            return HandleInput("Return", currentFrame);
+        }
+
+        if (State == WinState.Hangar)
+        {
+            int pos = HangarPositionAt(x, y);
+            if (pos < 0) return false;
+            _hangarPos = pos;
+            return HandleInput("Return", currentFrame);
+        }
+
+        if (State == WinState.Unknown && _inSectorSelect)
+        {
+            return HandleInput("Return", currentFrame);
+        }
+
+        return false;
+    }
+
     // ── Private helpers ──────────────────────────────────────────────────────
 
     private bool HandleMenuInput(string action, int currentFrame)
@@ -208,6 +299,35 @@ public sealed class MenuStateMachine
         // Pilot-creation sub-flow: absorb inputs until we've consumed enough Returns.
         if (_pilotCreateStep > 0)
         {
+            if (action == "Escape")
+            {
+                if (_pilotCreateStep == 1)
+                {
+                    _pilotCreateStep = 0;
+                    PilotName = "";
+                    Callsign = "";
+                }
+                else
+                {
+                    _pilotCreateStep--;
+                    if (_pilotCreateStep < 3)
+                        _difficultyFieldId = 3;
+                }
+                return true;
+            }
+            if (_pilotCreateStep == 3)
+            {
+                if (action == "Down" || action == "Right")
+                {
+                    _difficultyFieldId = _difficultyFieldId == 5 ? 1 : _difficultyFieldId + 1;
+                    return true;
+                }
+                if (action == "Up" || action == "Left")
+                {
+                    _difficultyFieldId = _difficultyFieldId == 1 ? 5 : _difficultyFieldId - 1;
+                    return true;
+                }
+            }
             if (action == "Return")
             {
                 _pilotCreateStep++;
@@ -223,9 +343,16 @@ public sealed class MenuStateMachine
                 }
                 if (_pilotCreateStep == 4)
                 {
+                    if (_difficultyFieldId == 5)
+                    {
+                        _pilotCreateStep = 0;
+                        _difficultyFieldId = 3;
+                        return true;
+                    }
                     // Difficulty accepted → enter HANGAR (with fade delay).
                     // C: hangto defaults to HANGTOSTORE → pos=1 (SUPPLIES) on first entry.
                     _pilotCreateStep = 0;
+                    _difficultyFieldId = 3;
                     _hangarPos = 1;  // HANGTOSTORE → pos=1=SUPPLIES
                     // Notify that a new pilot was created (triggers stat initialization).
                     OnPilotCreated?.Invoke();
@@ -292,7 +419,49 @@ public sealed class MenuStateMachine
             // LOAD, OPTS, QUIT, RETURN: stub.
             return false;
         }
+        if (action == "Escape")
+        {
+            _hangarPos = 2;
+            EnterMenu(currentFrame);
+            return true;
+        }
         return false;
+    }
+
+    private static bool InRect(int x, int y, int rx, int ry, int w, int h)
+        => x >= rx && x < rx + w && y >= ry && y < ry + h;
+
+    private static int MainMenuItemAt(int x, int y)
+    {
+        if (x < 90 || x >= 235) return -1;
+        for (int i = 0; i < 6; i++)
+        {
+            int top = 87 + i * 14;
+            if (y >= top && y < top + 14) return i;
+        }
+        return -1;
+    }
+
+    private static int DifficultyFieldAt(int x, int y)
+    {
+        // ASKDIFF_SWD window is at (85, 22). The five buttons have field ids
+        // 1..5 and local button rects x=40, y=29/53/77/101/132, lx=98, ly=12.
+        if (x < 125 || x >= 223) return 0;
+        if (y >= 51 && y < 63) return 1;   // TRAINING MODE
+        if (y >= 75 && y < 87) return 2;   // ROOKIE
+        if (y >= 99 && y < 111) return 3;  // VETERAN
+        if (y >= 123 && y < 135) return 4; // ELITE
+        if (y >= 154 && y < 166) return 5; // ABORT MISSION
+        return 0;
+    }
+
+    private static int HangarPositionAt(int x, int y)
+    {
+        if (InRect(x, y, 120, 140, 60, 45)) return 0; // MISSION
+        if (InRect(x, y, 215, 60, 55, 50)) return 1;  // SUPPLIES
+        if (InRect(x, y, 5, 112, 65, 50)) return 2;   // MAIN MENU
+        if (InRect(x, y, 225, 150, 75, 45)) return 3; // QUICK SAVE
+        return -1;
     }
 
     private bool HandleHangarInput(string action, int currentFrame)
@@ -308,6 +477,12 @@ public sealed class MenuStateMachine
             // In C: Up/Left/Tab → pos++.
             _hangarPos = (_hangarPos + 1) % 4;
             return false;
+        }
+        if (action == "Escape")
+        {
+            _hangarPos = 2;
+            EnterMenu(currentFrame);
+            return true;
         }
         if (action == "Return")
         {

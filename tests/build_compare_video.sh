@@ -73,9 +73,14 @@ if [[ "${REUSE_GODOT:-0}" -ne 1 ]]; then
     rm -f "$G_DIR"/*.png "$G_DIR"/parity.txt "$G_DIR"/log.txt
     GODOT_BIN="${GODOT_BIN:-$(command -v godot)}"
     GODOT_BIN="$(realpath "$GODOT_BIN")"
+    # RAPTOR_RENDER_MENUS=1 makes DebugRenderer paint the menu/dialog/hangar/
+    # ship-computer overlays during the pre-mission script phases. Without it
+    # the screenshots in those frames are just black + the HUD player ship,
+    # which makes the comparison video look like Godot skipped every menu.
     RAPTOR_PLAYTHROUGH="$SCRIPT_PATH" \
     RAPTOR_PARITY_OUT="$G_DIR/parity.txt" \
     RAPTOR_TEST_FAST=1 \
+    RAPTOR_RENDER_MENUS=1 \
     RAPTOR_SHOT_DIR="$G_DIR" \
     RAPTOR_SHOT_EVERY_FC=5 \
     "$GODOT_BIN" --path "$REPO" \

@@ -123,4 +123,82 @@ public class WaveControllerTests
             PlayerLogic.InitY + 16));
     }
 
+    [Theory]
+    [InlineData(true, false, true, true, false, false, true)]
+    [InlineData(true, false, true, true, false, true, false)]
+    [InlineData(true, false, true, true, true, false, false)]
+    [InlineData(true, false, true, false, false, false, false)]
+    [InlineData(true, true, true, true, false, false, false)]
+    [InlineData(false, false, true, true, false, false, false)]
+    [InlineData(true, false, false, true, false, false, false)]
+    public void Mission_completion_waits_for_wave_enemies_and_explosions(
+        bool waveActive,
+        bool demoActive,
+        bool endWave,
+        bool playerAlive,
+        bool enemiesRemaining,
+        bool explosionsRemaining,
+        bool expected)
+    {
+        Assert.Equal(expected, WaveController.ShouldCompleteMission(
+            waveActive, demoActive, endWave, playerAlive, enemiesRemaining, explosionsRemaining));
+    }
+
+    [Fact]
+    public void Player_death_spawns_wing_explosions_each_countdown_tick()
+    {
+        var rng = new System.Random(1234);
+
+        var explosions = WaveController.BuildPlayerDeathExplosions(
+            PlayerLogic.InitX,
+            PlayerLogic.InitY,
+            WaveController.EndDuration,
+            rng);
+
+        Assert.Equal(2, explosions.Count);
+        Assert.Contains(explosions, e => e.ExpType == WaveController.ExpAirSmall1);
+        Assert.Contains(explosions, e => e.ExpType == WaveController.ExpAirSmall2);
+        Assert.All(explosions, e =>
+        {
+            Assert.InRange(e.X, PlayerLogic.InitX, PlayerLogic.InitX + 31);
+            Assert.InRange(e.Y, PlayerLogic.InitY, PlayerLogic.InitY + 31);
+        });
+    }
+
+    [Fact]
+    public void Player_death_explode_tick_spawns_final_center_and_debris_burst()
+    {
+        var rng = new System.Random(1234);
+
+        var explosions = WaveController.BuildPlayerDeathExplosions(
+            PlayerLogic.InitX,
+            PlayerLogic.InitY,
+            WaveController.EndExplode,
+            rng);
+
+        Assert.Equal(515, explosions.Count);
+        Assert.Contains(explosions, e =>
+            e.ExpType == WaveController.ExpAirLarge
+            && e.X == PlayerLogic.InitX + 16
+            && e.Y == PlayerLogic.InitY + 16);
+        Assert.Equal(257, Count(explosions, WaveController.ExpAirLarge));
+        int burstMed2 = 0;
+        for (int i = 3; i < explosions.Count; i++)
+        {
+            var e = explosions[i];
+            if (e.ExpType == WaveController.ExpAirMed2) burstMed2++;
+            Assert.InRange(e.X, PlayerLogic.InitX - 16, PlayerLogic.InitX + 47);
+            Assert.InRange(e.Y, PlayerLogic.InitY - 16, PlayerLogic.InitY + 47);
+        }
+        Assert.Equal(256, burstMed2);
+    }
+
+    private static int Count(IReadOnlyList<WaveController.DeathExplosion> explosions, int expType)
+    {
+        int count = 0;
+        foreach (var e in explosions)
+            if (e.ExpType == expType) count++;
+        return count;
+    }
+
 }

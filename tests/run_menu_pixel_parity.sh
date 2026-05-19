@@ -27,6 +27,14 @@ REPO="$(cd "$(dirname "$0")/.." && pwd)"
 DOSRAPTOR="${DOSRAPTOR:-$(cd "$REPO/.." && pwd)/dosraptor}"
 GODOT_BIN="${GODOT_BIN:-$(command -v godot)}"
 GODOT_BIN="$(realpath "$GODOT_BIN")"
+
+# Godot Mono's hostfxr needs a .NET 8 runtime. macOS brew often has only
+# the latest .NET linked (e.g. 10.x), which makes Godot crash at startup
+# with ".NET: Assemblies not found". Point DOTNET_ROOT at the keg-only
+# dotnet@8 install when present, otherwise leave it for the caller to set.
+if [[ -z "${DOTNET_ROOT:-}" ]] && [[ -d /opt/homebrew/opt/dotnet@8/libexec ]]; then
+    export DOTNET_ROOT=/opt/homebrew/opt/dotnet@8/libexec
+fi
 SCRIPTS="${SCRIPTS:-credits help_f1 new_mission mission_start}"
 TOLERANCE="${TOLERANCE:-8}"
 MAX_MISMATCH_PCT="${MAX_MISMATCH_PCT:-40}"
@@ -81,14 +89,17 @@ for script in $SCRIPTS; do
     fi
 
     echo "[menu_pixel] Godot capture: $script"
+    # --position pushes the window off-screen; --display-driver headless
+    # would prevent the focus steal entirely but disables GetViewport
+    # rendering, breaking the screenshots, so we keep a real window.
+    # NOTE: a comment between these env vars and the godot command will
+    # be joined by the trailing backslash, swallowing every env assignment
+    # via `#` — keep comments above the block, not in it.
     RAPTOR_PLAYTHROUGH="$script_path" \
     RAPTOR_TEST_FAST=1 \
     RAPTOR_RENDER_MENUS=1 \
     RAPTOR_SHOT_DIR="$g_dir" \
     RAPTOR_SHOT_BURST=0 \
-    # --position pushes the window off-screen; --display-driver headless
-    # would prevent the focus steal entirely but disables GetViewport
-    # rendering, breaking the screenshots, so we keep a real window.
     "$GODOT_BIN" --path "$REPO" \
         --audio-driver Dummy \
         --position 99999,99999 --resolution 320x200 \

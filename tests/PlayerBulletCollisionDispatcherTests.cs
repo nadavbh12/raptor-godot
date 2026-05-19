@@ -55,6 +55,8 @@ public class PlayerBulletCollisionDispatcherTests
         Assert.Equal(9, enemy.Hits);
         Assert.Equal(5, tile.Hits);
         Assert.Equal(1, result.RandomSparkColorCount);
+        Assert.Single(result.RandomSparkPositions);
+        Assert.Equal((110, 60), result.RandomSparkPositions[0]);
     }
 
     [Fact]
@@ -147,6 +149,32 @@ public class PlayerBulletCollisionDispatcherTests
         Assert.Equal(250, result.TileBounty);
     }
 
+    [Fact]
+    public void Ground_tile_hit_records_random_spark_position()
+    {
+        var bullet = new BulletLogic(BulletKind.Player, x: 110, y: 60, velX: 0, velY: 0, damage: 2)
+        {
+            HitType = HitType.Ground,
+        };
+        var tile = new TileState
+        {
+            ScreenX = 96,
+            ScreenY = 48,
+            IsDestructible = true,
+            Hits = 10,
+        };
+
+        var result = PlayerBulletCollisionDispatcher.Collect(
+            new List<BulletLogic> { bullet },
+            new List<EnemyLogic>(),
+            new List<TileState> { tile },
+            mapCols: 9);
+
+        Assert.True(result.TileHit);
+        Assert.Single(result.RandomSparkPositions);
+        Assert.Equal((110, 60), result.RandomSparkPositions[0]);
+    }
+
 
     [Theory]
     [InlineData(HitType.All, 1)]
@@ -170,6 +198,27 @@ public class PlayerBulletCollisionDispatcherTests
 
         Assert.Single(result.HitEnemies);
         Assert.Equal(expectedCount, result.RandomSparkColorCount);
+    }
+
+    [Fact]
+    public void Ground_enemy_hit_records_orange_spark_without_random_color()
+    {
+        var bullet = new BulletLogic(BulletKind.Player, x: 110, y: 60, velX: 0, velY: 0, damage: 1)
+        {
+            HitType = HitType.Ground,
+        };
+        var enemy = EnemyAt(100, 50, flightType: 3);
+
+        var result = PlayerBulletCollisionDispatcher.Collect(
+            new List<BulletLogic> { bullet },
+            new List<EnemyLogic> { enemy },
+            new List<TileState>(),
+            mapCols: 9);
+
+        Assert.Single(result.HitEnemies);
+        Assert.Empty(result.RandomSparkPositions);
+        Assert.Single(result.OrangeSparkPositions);
+        Assert.Equal((110, 60), result.OrangeSparkPositions[0]);
     }
 
     [Fact]

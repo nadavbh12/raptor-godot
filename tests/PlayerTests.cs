@@ -37,6 +37,24 @@ public class PlayerTests
         Assert.Equal(PlayerLogic.MaxX, p.X);
     }
 
+    [Fact]
+    public void Position_clamped_so_sprite_stays_inside_playfield_width()
+    {
+        var p = new PlayerLogic();
+        for (int i = 0; i < 1000; i++) p.Tick(1, 0);
+
+        Assert.Equal(304, p.X + PlayerLogic.SpriteWidth);
+    }
+
+    [Fact]
+    public void Position_clamped_so_sprite_stays_above_bottom_screen_edge()
+    {
+        var p = new PlayerLogic();
+        for (int i = 0; i < 1000; i++) p.Tick(0, 1);
+
+        Assert.Equal(200, p.Y + PlayerLogic.SpriteHeight);
+    }
+
     // Shield / Alive tests (PlayerLogic already had Shield and TakeDamage from earlier stage)
 
     [Fact]

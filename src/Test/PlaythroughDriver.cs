@@ -23,6 +23,8 @@ public partial class PlaythroughDriver : Node
     private ParityEmitter? _emitter;
     private Sim.WaveController? _wave;
 
+    public bool Active => _pt != null;
+
     // Key dispatched by the script on the previous tick, applied to
     // MenuStateMachine on the current tick. The 1-frame delay mirrors the
     // wall-clock lag C has between SDL keypress injection (in the timer

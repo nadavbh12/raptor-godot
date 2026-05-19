@@ -27,4 +27,9 @@ public partial class MenuController : Node
         // called right after WIN_MainMenu shows its window.
         Menu.EnterMenu(SimClock.Frame);
     }
+
+    public override void _Process(double delta)
+    {
+        Menu.CompleteDeathMovieIfDone(SimClock.Frame, MenuStateMachine.DeathMovieFrames);
+    }
 }

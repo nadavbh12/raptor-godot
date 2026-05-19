@@ -25,6 +25,7 @@ public partial class DebugRenderer : Node2D
     private int _lastScannerFrame = -1;
 
     private readonly Dictionary<string, Texture2D> _spriteCache = new();
+    private string? _agxRoot;
     private Color[]? _palette;
     private readonly Dictionary<string, BitmapFont> _bitmapFonts = new();
     private readonly Dictionary<string, SwdWindow?> _swdCache = new();
@@ -118,6 +119,7 @@ public partial class DebugRenderer : Node2D
         }
 
         BuildSpriteIndex();
+        _agxRoot = ProjectSettings.GlobalizePath("res://assets/agx");
         _tilesRoot = ProjectSettings.GlobalizePath("res://assets/tiles");
         // Bullet sprites: first frame of each animated _BLK sequence.
         // ESHOT.C ESHOT_Init: enemy "ES_ATPLAYER/ATDOWN/ANGLELEFT/ANGLERIGHT"
@@ -493,7 +495,7 @@ public partial class DebugRenderer : Node2D
             if (tex == null) continue;
             DrawSkyShadow(tex, e.X, e.Y, e.HalfW * 2, e.HalfH * 2);
         }
-        if (playerTex != null)
+        if (_wave.DrawPlayer && playerTex != null)
             DrawSkyShadow(playerTex, px, py, PlayerW, PlayerH);
 
         // C's eframe ^= 1 per ENEMY_DisplaySky call (one per sim tick).
@@ -528,7 +530,7 @@ public partial class DebugRenderer : Node2D
         // comments in WaveController). C's GFX_PutSprite renders at top-left, so
         // we draw directly at (X, Y) without subtracting half-size. The player
         // is drawn AFTER enemies in C (RAP.C:1077), so it occludes them.
-        if (playerTex != null)
+        if (_wave.DrawPlayer && playerTex != null)
         {
             // Player engine flames — FLAME_Down at (player_cx ± o_engine[pic] - {3,2},
             // player_cy + 15) in C (RAP.C:1075-1076).
@@ -539,7 +541,7 @@ public partial class DebugRenderer : Node2D
             DrawFlameDown(pcx + oeng - 2, pcy + 15, 4, eframe);
             DrawTexture(playerTex, new Vector2(px, py));
         }
-        else
+        else if (_wave.DrawPlayer)
         {
             DrawRect(new Rect2(px, py, 32, 32), new Color(0, 1, 0, 0.7f));
         }
@@ -565,10 +567,10 @@ public partial class DebugRenderer : Node2D
             {
                 int dx = (int)tex.GetWidth()  / 2 - SimBulletXOff;
                 int dy = (int)tex.GetHeight() / 2 - SimBulletYOff;
-                DrawTexture(tex, new Vector2(b.X - dx, b.Y - dy));
+                DrawWorldTexture(tex, b.X - dx, b.Y - dy);
             }
             else
-                DrawRect(new Rect2(b.X, b.Y, 4, 4), new Color(1, 1, 0));
+                DrawWorldRect(b.X, b.Y, 4, 4, new Color(1, 1, 0));
             // Smoke trail for missiles (ESHOT.C:536 — every other tick when
             // smokeflag is set). Approximate by stacking 4 SMOKTRAL frames
             // above the missile with fading alpha.
@@ -581,9 +583,9 @@ public partial class DebugRenderer : Node2D
                 ? LoadPlayerBulletTexture(weapon, b.FrameCounter)
                 : _playerBulletTex;
             if (tex != null)
-                DrawTexture(tex, new Vector2(b.X, b.Y));
+                DrawWorldTexture(tex, b.X, b.Y);
             else
-                DrawRect(new Rect2(b.X, b.Y, 4, 4), new Color(0, 1, 1));
+                DrawWorldRect(b.X, b.Y, 4, 4, new Color(0, 1, 1));
         }
 
         DrawBonuses();
@@ -633,6 +635,12 @@ public partial class DebugRenderer : Node2D
             return;
         }
 
+        if (menu.State == WinState.Death)
+        {
+            DrawDeathMovieOverlay(menu);
+            return;
+        }
+
         if (menu.InSectorSelect || menu.State == WinState.Unknown)
         {
             DrawShipComputerOverlay(font);
@@ -660,13 +668,37 @@ public partial class DebugRenderer : Node2D
         if (menu.PilotCreateStep > 0)
         {
             if (menu.PilotCreateStep == 3)
-                DrawDifficultyOverlay(font);
+                DrawDifficultyOverlay(font, menu);
             else
                 DrawRegisterOverlay(font, menu);
             return;
         }
 
         DrawMainMenuOverlay(menu);
+    }
+
+    private void DrawDeathMovieOverlay(MenuStateMachine menu)
+    {
+        if (string.IsNullOrEmpty(_agxRoot)) return;
+
+        int elapsed = SimClock.Frame - menu.StateEnteredFrame;
+        string? path = null;
+        float alpha = 1f;
+        if (AgxMovieSequence.TrySelectDeathFrame(_agxRoot, elapsed, out var frame))
+        {
+            path = frame.Path;
+        }
+        else if (elapsed < AgxMovieSequence.DeathTotalFrames)
+        {
+            path = Path.Combine(_agxRoot, $"SDEATH_AGX_{AgxMovieSequence.DeathGroundFrames - 1:D2}.png");
+            int fadeElapsed = elapsed - AgxMovieSequence.DeathContentFrames;
+            alpha = 1f - System.Math.Clamp(fadeElapsed / (float)AgxMovieSequence.DeathFadeOutFrames, 0f, 1f);
+        }
+
+        if (path == null) return;
+        var tex = LoadSpriteFromPath(path);
+        if (tex != null)
+            DrawTexture(tex, Vector2.Zero, new Color(1f, 1f, 1f, alpha));
     }
 
     private void DrawMainMenuOverlay(MenuStateMachine menu)
@@ -895,7 +927,7 @@ public partial class DebugRenderer : Node2D
         }
     }
 
-    private void DrawDifficultyOverlay(Font font)
+    private void DrawDifficultyOverlay(Font font, MenuStateMachine menu)
     {
         // In C, ASKDIFF is pushed on top of REGISTER — the registration page
         // (badge, bottom prompt) stays visible underneath. The mouse cursor
@@ -916,14 +948,16 @@ public partial class DebugRenderer : Node2D
             // pilot starts there. SWD_PutField applies GFX_ShadeShape(LIGHT)
             // on the active field; our SwdRenderer mirrors that via the
             // per-channel modulate.
-            const int VeteranFieldId = 3;
-            SwdRenderer.Draw(_swdHost, swd, selectedFieldId: VeteranFieldId);
+            SwdRenderer.Draw(_swdHost, swd, selectedFieldId: menu.DifficultyFieldId);
 
-            // PTR_DrawCursor for the active field — center of VETERAN button
-            // (window.x + field.x + lx/2 = 85+40+49 = 174,
-            //  window.y + field.y + ly/2 = 22+77+ 6 = 105). Sprite center
-            // is at sprite-local (7, 8), so draw at (167, 97).
-            DrawUiSprite(MenuChrome.Cursor with { X = 167, Y = 97 });
+            foreach (var f in swd.Fields)
+            {
+                if (f.Id != menu.DifficultyFieldId) continue;
+                int cx = swd.Window.X + f.X + f.Lx / 2;
+                int cy = swd.Window.Y + f.Y + f.Ly / 2;
+                DrawUiSprite(MenuChrome.Cursor with { X = cx - 7, Y = cy - 8 });
+                break;
+            }
         }
     }
 
@@ -999,7 +1033,7 @@ public partial class DebugRenderer : Node2D
     // glyph color; darker shades come from palette[basecolor+1], [+2], ...
     // (matching C's GFX_Print: it decrements basecolor once then adds per-pixel
     // offsets stored in the glyph data).
-    private void DrawDosFont(string text, int x, int y, string fontName, int basecolor)
+    private void DrawDosFont(string text, int x, int y, string fontName, int basecolor, Color? modulate = null)
     {
         var font = LoadBitmapFont(fontName);
         if (font == null)
@@ -1008,7 +1042,7 @@ public partial class DebugRenderer : Node2D
             DrawMenuText(text, x, y, 8, MenuChrome.MenuOrange);
             return;
         }
-        font.Draw(this, text, x, y, basecolor);
+        font.Draw(this, text, x, y, basecolor, modulate);
     }
 
     private SwdWindow? LoadSwd(string name)
@@ -1057,8 +1091,8 @@ public partial class DebugRenderer : Node2D
             return null;
         }
 
-        public void DrawText(string text, int x, int y, string fontName, int basecolor)
-            => _r.DrawDosFont(text, x, y, fontName, basecolor);
+        public void DrawText(string text, int x, int y, string fontName, int basecolor, Color? modulate = null)
+            => _r.DrawDosFont(text, x, y, fontName, basecolor, modulate);
 
         public int MeasureText(string text, string fontName)
         {
@@ -1101,6 +1135,8 @@ public partial class DebugRenderer : Node2D
     // Sentinel ExpType used only for missile smoke trails — matches the
     // SmokeExpType constant in WaveController. Maps to SMOKTRAL_BLK (4 frames).
     private const int SmokeExpType = 100;
+    private const int SparkBlueExpType = 101;
+    private const int SparkOrangeExpType = 102;
 
     private void DrawExplosions()
     {
@@ -1126,6 +1162,18 @@ public partial class DebugRenderer : Node2D
                 int sx = ex.X - (int)stex.GetWidth() / 2;
                 int sy = ex.Y - age * 8 - (int)stex.GetHeight() / 2;
                 DrawTexture(stex, new Vector2(sx, sy), new Color(1, 1, 1, 0.20f));
+                continue;
+            }
+            if (ex.ExpType == SparkBlueExpType || ex.ExpType == SparkOrangeExpType)
+            {
+                int age = fc - ex.StartFc;
+                if (age < 0 || age >= 9) continue;
+                string sparkFamily = ex.ExpType == SparkBlueExpType ? "BSPARK_BLK" : "OSPARK_BLK";
+                var sparkTex = LoadBlkFrame(sparkFamily, age);
+                if (sparkTex == null) continue;
+                DrawTexture(sparkTex, new Vector2(
+                    ex.X - (int)sparkTex.GetWidth() / 2,
+                    ex.Y - (int)sparkTex.GetHeight() / 2));
                 continue;
             }
             int idx = (ex.ExpType >= 0 && ex.ExpType < ExpAnim.Length)
@@ -1435,17 +1483,22 @@ public partial class DebugRenderer : Node2D
     }
 
     private void DrawWorldTexture(Texture2D tex, int x, int y)
+        => DrawWorldTexture(tex, x, y, Colors.White);
+
+    private void DrawWorldTexture(Texture2D tex, int x, int y, Color modulate)
     {
-        const int MapLeft = 16;
-        const int MapRight = 320 - 16;
         int w = (int)tex.GetWidth();
         int h = (int)tex.GetHeight();
-        int left = System.Math.Max(x, MapLeft);
-        int right = System.Math.Min(x + w, MapRight);
-        if (right <= left) return;
+        if (!WorldClipper.TryClipHorizontal(x, w, out var clip)) return;
 
-        var dst = new Rect2(left, y, right - left, h);
-        var src = new Rect2(left - x, 0, right - left, h);
-        DrawTextureRectRegion(tex, dst, src);
+        var dst = new Rect2(clip.DestX, y, clip.Width, h);
+        var src = new Rect2(clip.SourceX, 0, clip.Width, h);
+        DrawTextureRectRegion(tex, dst, src, modulate);
+    }
+
+    private void DrawWorldRect(int x, int y, int w, int h, Color color)
+    {
+        if (!WorldClipper.TryClipHorizontal(x, w, out var clip)) return;
+        DrawRect(new Rect2(clip.DestX, y, clip.Width, h), color);
     }
 }

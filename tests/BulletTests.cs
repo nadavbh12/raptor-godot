@@ -151,6 +151,26 @@ public class BulletLogicTests
         Assert.Equal(0, b.CCounterForDump);
     }
 
+    [Fact]
+    public void Enemy_mine_drifts_down_with_wobble_instead_of_aiming_at_player()
+    {
+        var b = BulletLogic.EnemyMine(100, 50, pos: 0, fuseTicks: 3);
+        Assert.Equal(EnemyShotType.Mines, b.ShotType);
+
+        b.Tick();
+        Assert.Equal(99, b.X);
+        Assert.Equal(47, b.Y);
+        Assert.True(b.Alive);
+
+        b.Tick();
+        Assert.Equal(100, b.X);
+        Assert.Equal(48, b.Y);
+        Assert.True(b.Alive);
+
+        b.Tick();
+        Assert.False(b.Alive);
+    }
+
     // Spec §11 State bounds: alive bullets are in [0, 320] x [0, 200].
     [Property(MaxTest = 50)]
     public Property Alive_bullet_position_in_bounds()

@@ -22,9 +22,15 @@ obj/
 Thumbs.db
 
 # Test artifacts
-tests/parity_runs/        # transient comparator outputs
-tests/screenshots/        # transient L7 screenshots
+# Generated local parity/video artifacts.
+dumps/
+# Transient comparator outputs.
+tests/parity_runs/
+# Transient L7 screenshots.
+tests/screenshots/
 tests/.fsharp/
+tests/__pycache__/
+*.pyc
 
 # Held-out test materials never enter Git in a sealed scenario; for now we
 # DO commit the held-out scripts and goldens (per spec §13a accepted risk),

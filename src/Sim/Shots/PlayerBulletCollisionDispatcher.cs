@@ -19,7 +19,11 @@ internal static class PlayerBulletCollisionDispatcher
     {
         public List<EnemyHit> HitEnemies { get; } = new();
         public List<int> DestroyedTileMapSpots { get; } = new();
+        public List<(int X, int Y)> RandomSparkPositions { get; } = new();
+        public List<(int X, int Y)> OrangeSparkPositions { get; } = new();
+        public List<(int X, int Y)> BlueSparkPositions { get; } = new();
         public int RandomSparkColorCount { get; set; }
+        public bool TileHit { get; set; }
         public int TileBounty { get; set; }
     }
 
@@ -56,7 +60,18 @@ internal static class PlayerBulletCollisionDispatcher
                 _              => false,
             };
             if (hitEnemy && UsesRandomSparkColor(b.HitType))
+            {
                 result.RandomSparkColorCount++;
+                result.RandomSparkPositions.Add((b.X, b.Y));
+            }
+            else if (hitEnemy && b.HitType == HitType.Ground)
+            {
+                result.OrangeSparkPositions.Add((b.X, b.Y));
+            }
+            else if (hitEnemy && b.HitType == HitType.Suck)
+            {
+                result.BlueSparkPositions.Add((b.X, b.Y));
+            }
 
             TileDamageDispatcher.DamageResult tileHit = default;
             bool checkTile = false;
@@ -78,6 +93,12 @@ internal static class PlayerBulletCollisionDispatcher
             }
 
             if (!checkTile || !tileHit.Hit) continue;
+            result.TileHit = true;
+            if (b.HitType != HitType.GTile)
+            {
+                result.RandomSparkColorCount++;
+                result.RandomSparkPositions.Add((b.X, b.Y));
+            }
             string reason = b.HitType switch
             {
                 HitType.All => "tile_all",

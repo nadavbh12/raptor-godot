@@ -9,10 +9,12 @@ public sealed class PlayerLogic
     // PLAYERINITX = 160 - (PLAYERWIDTH/2) = 160 - 16 = 144 (from SOURCE/PUBLIC.H).
     public const int InitX = 144;
     public const int InitY = 160;
+    public const int SpriteWidth = 32;
+    public const int SpriteHeight = 32;
     public const int MinX = 16;
-    public const int MaxX = 304;     // 320 - 16
+    public const int MaxX = 304 - SpriteWidth;
     public const int MinY = 0;
-    public const int MaxY = 199;
+    public const int MaxY = 200 - SpriteHeight;
     public const int VelocityPerTick = 4;
 
     // C INPUT.C:17-18 — acceleration ramp caps. When a direction key is held,

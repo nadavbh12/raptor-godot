@@ -98,9 +98,10 @@ internal sealed class BitmapFont
     // Mirrors GFX_Print + GFX_DrawChar: for each char with charofs != EMPTY,
     // blit the glyph from the per-basecolor cached atlas at the current cursor
     // and advance x by width + fontspacing.
-    public void Draw(CanvasItem target, string text, int x, int y, int basecolor)
+    public void Draw(CanvasItem target, string text, int x, int y, int basecolor, Color? modulate = null)
     {
         var tex = GetOrBuildTintedAtlas(basecolor);
+        var tint = modulate ?? Colors.White;
         foreach (char c in text)
         {
             int code = (byte)c;
@@ -108,7 +109,7 @@ internal sealed class BitmapFont
             if (g.W == 0) continue;
             var src = new Rect2(g.X, 0, g.W, Height);
             var dst = new Rect2(x, y, g.W, Height);
-            target.DrawTextureRectRegion(tex, dst, src);
+            target.DrawTextureRectRegion(tex, dst, src, tint);
             x += g.W + FontSpacing;
         }
     }

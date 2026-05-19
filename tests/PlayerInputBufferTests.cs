@@ -66,6 +66,32 @@ public class InputStateTests
     }
 
     [Fact]
+    public void Interactive_text_keys_map_to_registration_input()
+    {
+        Assert.Equal("a", InteractiveInputController.KeyToTextAction(Godot.Key.A, 'a'));
+        Assert.Equal("Z", InteractiveInputController.KeyToTextAction(Godot.Key.Z, 'Z'));
+        Assert.Equal("7", InteractiveInputController.KeyToTextAction(Godot.Key.Key7, '7'));
+        Assert.Equal("Backspace", InteractiveInputController.KeyToTextAction(Godot.Key.Backspace, 0));
+        Assert.Null(InteractiveInputController.KeyToTextAction(Godot.Key.Tab, '\t'));
+    }
+
+    [Fact]
+    public void Interactive_mouse_mapping_keeps_already_scaled_game_coordinates()
+    {
+        var p = InteractiveInputController.ToGameViewport(new Godot.Vector2(190, 149), new Godot.Vector2(1280, 800));
+
+        Assert.Equal(new Godot.Vector2I(190, 149), p);
+    }
+
+    [Fact]
+    public void Interactive_mouse_mapping_scales_window_pixel_coordinates()
+    {
+        var p = InteractiveInputController.ToGameViewport(new Godot.Vector2(760, 596), new Godot.Vector2(1280, 800));
+
+        Assert.Equal(new Godot.Vector2I(190, 149), p);
+    }
+
+    [Fact]
     public void Live_input_resolve_prefers_playthrough_when_present()
     {
         var interactive = InputState.From(-1, -1, false, false, false, false);

@@ -1,4 +1,5 @@
 using Raptor.Sim;
+using Raptor.View;
 using Xunit;
 
 namespace Raptor.Tests;
@@ -141,6 +142,76 @@ public class MenuStateMachineTests
         Assert.Equal("MISSION_3", WinState.Mission_3.ToParityString());
     }
 
+    [Fact]
+    public void Mission_complete_returns_to_hangar_and_exits_ingame()
+    {
+        var m = new MenuStateMachine();
+        m.EnterMenu(0);
+        m.HandleInput("Return", 10);
+        m.HandleInput("Return", 20);
+        m.HandleInput("Return", 30);
+        m.HandleInput("Return", 40);
+        m.HandleInput("Down", 200);
+        m.HandleInput("Return", 210);
+        m.HandleInput("Return", 220);
+        Assert.True(m.InGame);
+
+        m.CompleteMission(500);
+
+        Assert.False(m.InGame);
+        Assert.Equal(WinState.Hangar, m.State);
+        Assert.Equal(1, m.HangarPosition);
+    }
+
+    [Fact]
+    public void Player_death_exits_ingame_to_death_state()
+    {
+        var m = new MenuStateMachine();
+        m.EnterMenu(0);
+        m.HandleInput("Return", 10);
+        m.HandleInput("Return", 20);
+        m.HandleInput("Return", 30);
+        m.HandleInput("Return", 40);
+        m.HandleInput("Down", 200);
+        m.HandleInput("Return", 210);
+        m.HandleInput("Return", 220);
+        Assert.True(m.InGame);
+
+        m.PlayerDied(500);
+
+        Assert.False(m.InGame);
+        Assert.Equal(WinState.Death, m.State);
+    }
+
+    [Fact]
+    public void Death_movie_completion_returns_to_main_menu()
+    {
+        Assert.Equal(AgxMovieSequence.DeathTotalFrames, MenuStateMachine.DeathMovieFrames);
+
+        var m = new MenuStateMachine();
+        m.EnterMenu(0);
+        m.HandleInput("Return", 10);
+        m.HandleInput("Return", 20);
+        m.HandleInput("Return", 30);
+        m.HandleInput("Return", 40);
+        m.HandleInput("Down", 200);
+        m.HandleInput("Return", 210);
+        m.HandleInput("Return", 220);
+        m.PlayerDied(500);
+
+        bool beforeEnd = m.CompleteDeathMovieIfDone(
+            500 + AgxMovieSequence.DeathTotalFrames - 1,
+            MenuStateMachine.DeathMovieFrames);
+        bool atEnd = m.CompleteDeathMovieIfDone(
+            500 + AgxMovieSequence.DeathTotalFrames,
+            MenuStateMachine.DeathMovieFrames);
+
+        Assert.False(beforeEnd);
+        Assert.True(atEnd);
+        Assert.Equal(WinState.Menu, m.State);
+        Assert.False(m.InGame);
+    }
+
     // -------------------------------------------------------------------------
     // Stage 5a: F1 → HELP transition (help_f1 script)
     // -------------------------------------------------------------------------
@@ -183,6 +254,131 @@ public class MenuStateMachineTests
         m.HandleInput("1", 22);
         Assert.Equal("TEST", m.PilotName);
         Assert.Equal("T1", m.Callsign);
+    }
+
+    [Fact]
+    public void Pointer_click_on_main_menu_new_enters_pilot_creation()
+    {
+        var m = new MenuStateMachine();
+        m.EnterMenu(0);
+
+        bool handled = m.HandlePointerClick(120, 94, 10);
+
+        Assert.True(handled);
+        Assert.Equal(1, m.PilotCreateStep);
+    }
+
+    [Fact]
+    public void Pointer_click_can_focus_registration_fields()
+    {
+        var m = new MenuStateMachine();
+        m.EnterMenu(0);
+        m.HandleInput("Return", 10);
+
+        Assert.True(m.HandlePointerClick(190, 149, 11));
+        Assert.Equal(2, m.PilotCreateStep);
+
+        Assert.True(m.HandlePointerClick(190, 133, 12));
+        Assert.Equal(1, m.PilotCreateStep);
+    }
+
+    [Fact]
+    public void Difficulty_arrows_move_selected_option()
+    {
+        var m = new MenuStateMachine();
+        m.EnterMenu(0);
+        m.HandleInput("Return", 10);
+        m.HandleInput("Return", 20);
+        m.HandleInput("Return", 30);
+        Assert.Equal(3, m.DifficultyFieldId);
+
+        m.HandleInput("Down", 31);
+        Assert.Equal(4, m.DifficultyFieldId);
+
+        m.HandleInput("Up", 32);
+        Assert.Equal(3, m.DifficultyFieldId);
+    }
+
+    [Fact]
+    public void Pointer_click_on_difficulty_accepts_selected_option()
+    {
+        var m = new MenuStateMachine();
+        m.EnterMenu(0);
+        m.HandleInput("Return", 10);
+        m.HandleInput("Return", 20);
+        m.HandleInput("Return", 30);
+
+        bool handled = m.HandlePointerClick(170, 130, 40);
+
+        Assert.True(handled);
+        Assert.Equal(WinState.Hangar, m.State);
+        Assert.Equal(0, m.PilotCreateStep);
+    }
+
+    [Fact]
+    public void Escape_in_pilot_creation_steps_back_one_dialog()
+    {
+        var m = new MenuStateMachine();
+        m.EnterMenu(0);
+        m.HandleInput("Return", 10);
+        m.HandleInput("N", 11);
+        m.HandleInput("Return", 20);
+        m.HandleInput("C", 21);
+        m.HandleInput("Return", 30);
+        Assert.Equal(3, m.PilotCreateStep);
+
+        m.HandleInput("Escape", 31);
+        Assert.Equal(2, m.PilotCreateStep);
+        Assert.Equal("N", m.PilotName);
+        Assert.Equal("C", m.Callsign);
+
+        m.HandleInput("Escape", 32);
+        Assert.Equal(1, m.PilotCreateStep);
+
+        m.HandleInput("Escape", 33);
+        Assert.Equal(0, m.PilotCreateStep);
+        Assert.Equal("", m.PilotName);
+        Assert.Equal("", m.Callsign);
+        Assert.Equal(WinState.Menu, m.State);
+    }
+
+    [Fact]
+    public void Escape_in_sector_select_returns_to_hangar()
+    {
+        var m = new MenuStateMachine();
+        m.EnterMenu(0);
+        m.HandleInput("Return", 10);
+        m.HandleInput("Return", 20);
+        m.HandleInput("Return", 30);
+        m.HandleInput("Return", 40);
+        m.HandleInput("Down", 150);
+        m.HandleInput("Return", 160);
+        Assert.Equal(WinState.Unknown, m.State);
+        Assert.True(m.InSectorSelect);
+
+        bool transitioned = m.HandleInput("Escape", 170);
+
+        Assert.True(transitioned);
+        Assert.Equal(WinState.Hangar, m.State);
+        Assert.False(m.InSectorSelect);
+    }
+
+    [Fact]
+    public void Escape_in_hangar_returns_to_main_menu()
+    {
+        var m = new MenuStateMachine();
+        m.EnterMenu(0);
+        m.HandleInput("Return", 10);
+        m.HandleInput("Return", 20);
+        m.HandleInput("Return", 30);
+        m.HandleInput("Return", 40);
+        Assert.Equal(WinState.Hangar, m.State);
+
+        bool transitioned = m.HandleInput("Escape", 150);
+
+        Assert.True(transitioned);
+        Assert.Equal(WinState.Menu, m.State);
+        Assert.Equal(0, m.CurrentItem);
     }
 
     [Fact]

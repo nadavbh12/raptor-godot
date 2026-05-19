@@ -98,15 +98,17 @@ public partial class WaveController : Node
     private const int FadeInHoldFrames = 131;
     private const int DemoFadeInHoldFrames = 153;
 
-    // C: between Return-on-shipcomp (raptor_parity_set_win_state(0) inside
-    // menu_exit) and raptor_parity_game_enter being called, the main thread
-    // runs WIN_LoadComp + RAP_LoadMap. Position-dump alignment under
-    // mission_long places `down Up` arriving at iter 157 in C, which works
-    // out to a ~102 fc lag between Return #6's apply tick and game_enter
-    // here. Without this lag iter 0 fires in the same tick as the Return
-    // application, and the player input pipeline picks up the held throttle
-    // ~30 iters later than C does.
-    private const int LoadCompFrames = 102;
+    // Frames between sector-select Return-apply and raptor_parity_game_enter
+    // firing. C's mission_long parity golden shows iter 0 at fc=9 (relative
+    // to game_enter), and the live emit shows iter 0 at fc=9 = "load comp"
+    // time on the C side. Using 9 here aligns Godot's iter-vs-script-time
+    // mapping to C's, so dumps fired at script-relative times capture the
+    // same mission frame on both sides (MSE sweep confirmed dumps 05/06 of
+    // mission_start were Δ=+42 visual frames off with LoadCompFrames=102 and
+    // align with LoadCompFrames=9). The parity comparator treats `fc` as
+    // advisory (tests/comparator/parity_diff.py:52) so iter-aligned content
+    // checks still pass — only the absolute fc values shift down by 93.
+    private const int LoadCompFrames = 59;
     private const int DemoLoadCompFrames = 78;
     private int  _waveNum    = 1;
 
@@ -233,6 +235,7 @@ public partial class WaveController : Node
     public IReadOnlyList<BulletLogic> GetPlayerBullets() => _playerBullets;
     public IReadOnlyList<Explosion>   GetExplosions()    => _explosions;
     public IReadOnlyList<BonusLogic>  GetBonuses()       => _bonuses;
+    public bool DrawPlayer { get; private set; } = true;
 
     // ── Collision scratch ─────────────────────────────────────────────────────
     private readonly List<(EnemyLogic enemy, int dmg)> _hitEnemies = new();
@@ -316,6 +319,8 @@ public partial class WaveController : Node
     private SpriteMetaLibrary?    _slib;
     private int                   _spawnIdx = 0;   // index into _mapSprites
     private bool                  _endWaveFlag = false;
+    private bool                  _missionCompleteNotified = false;
+    private int                   _playerDeathCountdown = -1;
 
     // ── Scheduler ─────────────────────────────────────────────────────────────
     private readonly GamePhaseScheduler _scheduler;
@@ -490,6 +495,9 @@ public partial class WaveController : Node
         _oldShieldForLowLoss = PlayerLogic.Shield;
         _playerHit = false;
         _endWaveFlag = false;
+        _missionCompleteNotified = false;
+        _playerDeathCountdown = -1;
+        DrawPlayer = true;
         _subTick = 0;
         _gameLoopIter = 0;
 
@@ -599,7 +607,13 @@ public partial class WaveController : Node
             ApplyPendingGameEnter();
         if (_pendingDemoStartFrame >= 0 && SimClock.Frame >= _pendingDemoStartFrame)
             ApplyPendingDemoStart();
-
+        if (_playerDeathCountdown == -2)
+        {
+            _playerDeathCountdown = -1;
+            _waveActive = false;
+            _menu?.PlayerDied(SimClock.Frame);
+            return;
+        }
         if (!_waveActive) return;
 
         // Iter 0 fires synchronously in OnGameEnter (matches C: ENEMY_Think
@@ -645,7 +659,7 @@ public partial class WaveController : Node
         var interactive = _testInteractiveInput
                           ?? (_interactiveInput?.Active == true ? _interactiveInput.Current : InputState.Idle);
         var input = LiveInputLogic.Resolve(
-            usePlaythrough: _playthrough != null,
+            usePlaythrough: _playthrough?.Active == true,
             playthroughDx: _playthrough?.PlayerInputX ?? 0,
             playthroughDy: _playthrough?.PlayerInputY ?? 0,
             playthroughFire: _playthrough?.IsFireHeld ?? false,
@@ -656,7 +670,7 @@ public partial class WaveController : Node
 
         // RAP.C SC_1..SC_MINUS — script-issued special-weapon switches.
         // Mirrors OBJS_MakeSpecial: silently ignored if the type isn't owned.
-        if (_playthrough != null)
+        if (_playthrough?.Active == true)
         {
             while (_playthrough.TryDequeueSpecialSelect(out var w))
                 Shooter.SelectSpecial(w);
@@ -1045,6 +1059,8 @@ public partial class WaveController : Node
     // to SMOKTRAL_BLK (ANIMS.C:203 A_SMALL_SMOKE_UP). Out of the EXP_ enum
     // range so it never collides with a real EXP_ value.
     private const int SmokeExpType = 100;
+    private const int SparkBlueExpType = 101;
+    private const int SparkOrangeExpType = 102;
 
     internal void PhaseCollisionCollect()
     {
@@ -1085,8 +1101,15 @@ public partial class WaveController : Node
         PlayerBulletCollisionDispatcher.TraceIter = _gameLoopIter;
         TileDamageDispatcher.TraceIter = _gameLoopIter;
         var collision = PlayerBulletCollisionDispatcher.Collect(_playerBullets, _enemies, _tileSlice, MAP_COLS);
-        for (int i = 0; i < collision.RandomSparkColorCount; i++)
-            PlayerShooter.NextRandom(_shooterRng, 2, "spark.hit_color");
+        foreach (var (x, y) in collision.RandomSparkPositions)
+        {
+            int spark = PlayerShooter.NextRandom(_shooterRng, 2, "spark.hit_color");
+            _explosions.Add(new Explosion(spark != 0 ? SparkBlueExpType : SparkOrangeExpType, x, y, SimClock.Frame));
+        }
+        foreach (var (x, y) in collision.OrangeSparkPositions)
+            _explosions.Add(new Explosion(SparkOrangeExpType, x, y, SimClock.Frame));
+        foreach (var (x, y) in collision.BlueSparkPositions)
+            _explosions.Add(new Explosion(SparkBlueExpType, x, y, SimClock.Frame));
         if (collision.TileBounty > 0) Score += (uint)collision.TileBounty;
         SyncTileSliceToBacking();
         foreach (int mapspot in collision.DestroyedTileMapSpots)
@@ -1260,20 +1283,55 @@ public partial class WaveController : Node
         }
         _pickedUpBonuses.Clear();
 
-        // Player just died this tick — spawn one large death explosion at the
-        // player's center (mirrors RAP.C:583 A_LARGE_AIR_EXPLO at player_cx/cy).
         if (_playerWasAliveAtCollisionStart && !PlayerLogic.Alive)
         {
-            _explosions.Add(new Explosion(ExpAirLarge, PlayerLogic.X + 16, PlayerLogic.Y + 16, SimClock.Frame));
+            _playerDeathCountdown = EndDuration;
         }
     }
 
+    internal const int EndDuration = 20 * 3;
+    internal const int EndExplode = 24;
+
     // C exptype constants used for cosmetic-only explosion events (SOURCE/MAP.H).
-    private const int ExpAirLarge  = 2;   // EXP_AIRLARGE → LGFLAK_BLK
+    internal const int ExpAirSmall1 = 0;  // EXP_AIRSMALL1 → EXPLO2_BLK
+    internal const int ExpAirLarge  = 2;  // EXP_AIRLARGE → LGFLAK_BLK
     private const int ExpGrdLarge  = 5;   // EXP_GRDLARGE → GEXPLO_BLK
     private const int ExpEnergy    = 8;   // EXP_ENERGY → NRGBANG_BLK + S_ITEMBUY6 bonus
-    private const int ExpAirSmall2 = 10;  // EXP_AIRSMALL2 → SMFLAK_BLK
+    internal const int ExpAirSmall2 = 10; // EXP_AIRSMALL2 → SMFLAK_BLK
+    internal const int ExpAirMed2   = 10; // A_MED_AIR_EXPLO2 uses SMFLAK_BLK in ANIMS.C.
     private const int ItemBuy6ObjType = 23;
+
+    internal readonly record struct DeathExplosion(int ExpType, int X, int Y);
+
+    internal static List<DeathExplosion> BuildPlayerDeathExplosions(
+        int playerX,
+        int playerY,
+        int countdown,
+        Random rng)
+    {
+        var explosions = new List<DeathExplosion>
+        {
+            new(ExpAirSmall1, playerX + PlayerShooter.NextRandom(rng, 32, "death.med.x"),
+                playerY + PlayerShooter.NextRandom(rng, 32, "death.med.y")),
+            new(ExpAirSmall2, playerX + PlayerShooter.NextRandom(rng, 32, "death.small.x"),
+                playerY + PlayerShooter.NextRandom(rng, 32, "death.small.y")),
+        };
+
+        if (countdown == EndExplode)
+        {
+            explosions.Add(new DeathExplosion(ExpAirLarge, playerX + 16, playerY + 16));
+            for (int i = 0; i < (PlayerLogic.SpriteWidth * PlayerLogic.SpriteHeight) / 2; i++)
+            {
+                int x = playerX - PlayerLogic.SpriteWidth / 2
+                        + PlayerShooter.NextRandom(rng, PlayerLogic.SpriteWidth * 2, "death.burst.x");
+                int y = playerY - PlayerLogic.SpriteHeight / 2
+                        + PlayerShooter.NextRandom(rng, PlayerLogic.SpriteHeight * 2, "death.burst.y");
+                explosions.Add(new DeathExplosion((i & 1) != 0 ? ExpAirLarge : ExpAirMed2, x, y));
+            }
+        }
+
+        return explosions;
+    }
 
     // Spawn explosion(s) at the enemy's death position. Mirrors ENEMY.C:1066-1115
     // — primary explosion at (x+hlx, y+hly), and for EXP_AIRLARGE the C code
@@ -1333,6 +1391,8 @@ public partial class WaveController : Node
     private void AddEnemyBullet(BulletLogic bullet)
     {
         ConsumeEnemyShotSoundRandomForParity(_shooterRng, bullet.ShotType);
+        if (bullet.ShotType == EnemyShotType.Mines)
+            bullet.SetEnemyMinePos(PlayerShooter.NextRandom(_shooterRng, 16, "enemy.mine.pos"));
         _enemyBullets.Add(bullet);
     }
 
@@ -1354,6 +1414,19 @@ public partial class WaveController : Node
         };
         PlayerShooter.NextRandom(rng, 40, label);
     }
+
+    internal static bool ShouldCompleteMission(bool waveActive,
+                                               bool demoActive,
+                                               bool endWave,
+                                               bool playerAlive,
+                                               bool enemiesRemaining,
+                                               bool explosionsRemaining) =>
+        waveActive
+        && !demoActive
+        && endWave
+        && playerAlive
+        && !enemiesRemaining
+        && !explosionsRemaining;
 
     private void SpawnTileExplosion(int mapspot)
     {
@@ -1445,6 +1518,25 @@ public partial class WaveController : Node
         int fc = SimClock.Frame;
         _explosions.RemoveAll(x =>
             fc - x.StartFc >= (x.ExpType == SmokeExpType ? MaxSmokeFrames : MaxAnimFrames));
+        CompleteMissionIfWaveEnded();
+    }
+
+    private void CompleteMissionIfWaveEnded()
+    {
+        if (_missionCompleteNotified) return;
+        bool enemiesRemaining = _enemies.Exists(e => e.Alive || e.PendingRemovalDump);
+        if (!ShouldCompleteMission(
+            _waveActive,
+            _demoReplay != null,
+            _endWaveFlag,
+            PlayerLogic.Alive,
+            enemiesRemaining,
+            _explosions.Count > 0))
+            return;
+
+        _missionCompleteNotified = true;
+        _waveActive = false;
+        _menu?.CompleteMission(SimClock.Frame);
     }
 
     internal void PhaseHud()
@@ -1454,6 +1546,8 @@ public partial class WaveController : Node
             _skipInitialPaletteStuff = false;
             return;
         }
+
+        ProcessPlayerDeathExplosions();
 
         // RAP_PaletteStuff() consumes random(3) only on alternating calls
         // (`if (cnt & 1)`). It is visual, but C shares rand() with weapons.
@@ -1483,6 +1577,32 @@ public partial class WaveController : Node
         SystemDamageWarningVisible = _hudWarningState.SystemDamageVisible;
         TraceShield();
         _oldShieldForLowLoss = PlayerLogic.Shield;
+    }
+
+    private void ProcessPlayerDeathExplosions()
+    {
+        if (_playerDeathCountdown < 0) return;
+
+        _shooterRng ??= new LegacyRandom((int)(Rng.Seed & 0x7FFFFFFFu));
+        foreach (var explosion in BuildPlayerDeathExplosions(
+            PlayerLogic.X,
+            PlayerLogic.Y,
+            _playerDeathCountdown,
+            _shooterRng))
+        {
+            _explosions.Add(new Explosion(explosion.ExpType, explosion.X, explosion.Y, SimClock.Frame));
+        }
+
+        if (_playerDeathCountdown == EndExplode)
+            DrawPlayer = false;
+
+        if (_playerDeathCountdown == 0)
+        {
+            _playerDeathCountdown = -2;
+            return;
+        }
+
+        _playerDeathCountdown--;
     }
 
     private void TraceShield()

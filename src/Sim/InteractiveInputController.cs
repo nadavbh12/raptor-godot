@@ -37,8 +37,30 @@ public partial class InteractiveInputController : Node
             QueueSpecialSelects();
             return;
         }
+    }
 
-        DispatchMenuInput();
+    public override void _UnhandledInput(InputEvent @event)
+    {
+        if (!Active) return;
+        if (_menuController?.Menu.InGame == true) return;
+
+        if (@event is InputEventKey keyEvent)
+        {
+            if (!keyEvent.Pressed || keyEvent.Echo) return;
+            string? action = KeyEventToMenuAction(keyEvent);
+            if (action == null) return;
+            _menuController?.Menu.HandleInput(action, SimClock.Frame);
+            GetViewport().SetInputAsHandled();
+            return;
+        }
+
+        if (@event is InputEventMouseButton mouseEvent)
+        {
+            if (!mouseEvent.Pressed || mouseEvent.ButtonIndex != MouseButton.Left) return;
+            var pos = ToGameViewport(mouseEvent.Position, GetViewport().GetVisibleRect().Size);
+            if (_menuController?.Menu.HandlePointerClick(pos.X, pos.Y, SimClock.Frame) == true)
+                GetViewport().SetInputAsHandled();
+        }
     }
 
     public bool TryDequeueSpecialSelect(out WeaponType weapon)
@@ -83,6 +105,15 @@ public partial class InteractiveInputController : Node
         "menu_help" => "F1",
         _ => null,
     };
+
+    internal static string? KeyToTextAction(Key keycode, long unicode)
+    {
+        if (keycode == Key.Backspace) return "Backspace";
+        if (unicode >= 'a' && unicode <= 'z') return ((char)unicode).ToString();
+        if (unicode >= 'A' && unicode <= 'Z') return ((char)unicode).ToString();
+        if (unicode >= '0' && unicode <= '9') return ((char)unicode).ToString();
+        return null;
+    }
 
     private static WeaponType? ActionToSpecial(string action) => action switch
     {
@@ -156,6 +187,35 @@ public partial class InteractiveInputController : Node
         Input.IsActionPressed("drop_bomb"),
         Input.IsActionPressed("pause"));
 
+    private static string? KeyEventToMenuAction(InputEventKey keyEvent)
+    {
+        return keyEvent.Keycode switch
+        {
+            Key.Up => "Up",
+            Key.Down => "Down",
+            Key.Left => "Left",
+            Key.Right => "Right",
+            Key.Enter => "Return",
+            Key.KpEnter => "Return",
+            Key.Escape => "Escape",
+            Key.F1 => "F1",
+            Key.Space => "Space",
+            _ => KeyToTextAction(keyEvent.Keycode, keyEvent.Unicode),
+        };
+    }
+
+    internal static Vector2I ToGameViewport(Vector2 pos, Vector2 viewportSize)
+    {
+        if (pos.X >= 0 && pos.X <= 320 && pos.Y >= 0 && pos.Y <= 200)
+            return new Vector2I(Mathf.FloorToInt(pos.X), Mathf.FloorToInt(pos.Y));
+
+        float sx = viewportSize.X > 0 ? 320f / viewportSize.X : 1f;
+        float sy = viewportSize.Y > 0 ? 200f / viewportSize.Y : 1f;
+        int x = Mathf.Clamp(Mathf.FloorToInt(pos.X * sx), 0, 319);
+        int y = Mathf.Clamp(Mathf.FloorToInt(pos.Y * sy), 0, 199);
+        return new Vector2I(x, y);
+    }
+
     private void QueueSpecialSelects()
     {
         foreach (string action in SpecialActions)
@@ -166,30 +226,6 @@ public partial class InteractiveInputController : Node
                 _specialSelects.Enqueue(weapon.Value);
         }
     }
-
-    private void DispatchMenuInput()
-    {
-        if (_menuController == null) return;
-
-        foreach (string action in MenuActions)
-        {
-            if (!Input.IsActionJustPressed(action)) continue;
-            string? key = ActionToMenuKey(action);
-            if (key != null)
-                _menuController.Menu.HandleInput(key, SimClock.Frame);
-        }
-    }
-
-    private static readonly string[] MenuActions =
-    {
-        "menu_down",
-        "menu_up",
-        "menu_left",
-        "menu_right",
-        "menu_accept",
-        "menu_back",
-        "menu_help",
-    };
 
     private static readonly string[] SpecialActions =
     {

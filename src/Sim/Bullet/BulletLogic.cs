@@ -196,6 +196,10 @@ public sealed class BulletLogic
     // (lib->fplrx / lib->fplry) signal that the beam should follow the player
     // each iter; WaveController applies the displacement.
     private readonly bool _beam;
+    private readonly bool _enemyMine;
+    private int _mineMoveX, _mineMoveY, _minePos, _mineFuse;
+    private static readonly int[] MineXOffset = { -1, 0, 1, 2, 3, 3, 3, 2, 1, 0, -1, -2, -3, -3, -3, -2 };
+    private static readonly int[] MineYOffset = { -3, -3, -3, -2, -1, 0, 1, 2, 3, 3, 3, 2, 1, 0, -1, -2 };
     private int _beamLife;            // remaining ticks before despawn
     private readonly bool _beamDamages; // false for LineBeam (TURRET, already damaged at spawn); true for VerticalBeam
     // C SHOTS.C:1090-1098 fplrx/fplry path. _baseX/_baseY = beam position at
@@ -233,9 +237,9 @@ public sealed class BulletLogic
     /// </summary>
     public int CCounterForDump => _beam ? (FrameCounter % 4) : 0;
     /// <summary>Pre-advanced move target (mirrors C move.x). Used by BulletDumper.</summary>
-    public int Mx => _playerStraight ? _psMoveX : _bresenham ? _bx : (int)_fx;
+    public int Mx => _playerStraight ? _psMoveX : _bresenham ? _bx : _enemyMine ? _mineMoveX : (int)_fx;
     /// <summary>Pre-advanced move target (mirrors C move.y). Used by BulletDumper.</summary>
-    public int My => _playerStraight ? _psMoveY : _bresenham ? _by : (int)_fy;
+    public int My => _playerStraight ? _psMoveY : _bresenham ? _by : _enemyMine ? _mineMoveY : (int)_fy;
     /// <summary>Number of animation frames in this bullet's sprite (mirrors ESHOT_LIB.num_frames).</summary>
     public int NumFrames => ShotType switch
     {
@@ -303,6 +307,15 @@ public sealed class BulletLogic
                            preAdvance: true, playerAimed: false, hlx: 0, hly: 0,
                            bresenhamMarker: true);
 
+    public static BulletLogic EnemyMine(int x, int y, int pos = 0, int fuseTicks = 150)
+        => new BulletLogic(x, y, pos, fuseTicks, enemyMineMarker: true);
+
+    public void SetEnemyMinePos(int pos)
+    {
+        if (!_enemyMine) return;
+        _minePos = ((pos % 16) + 16) % 16;
+    }
+
     public static BulletLogic PlayerAimedAt(int x, int y, int x2, int y2,
                                             int initSpeed, int maxSpeed,
                                             int hlx, int hly, int damage)
@@ -354,6 +367,24 @@ public sealed class BulletLogic
         _accelerating = true;
         Damage = damage;
         _playerStraight = true;
+        _bresenham = false;
+    }
+
+    private BulletLogic(int x, int y, int pos, int fuseTicks, bool enemyMineMarker)
+    {
+        Kind = BulletKind.Enemy;
+        X = x;
+        Y = y;
+        _mineMoveX = x;
+        _mineMoveY = y;
+        _minePos = ((pos % 16) + 16) % 16;
+        _mineFuse = fuseTicks;
+        _curSpeed = fuseTicks;
+        _maxSpeed = fuseTicks;
+        _accelerating = false;
+        Damage = 16;
+        ShotType = EnemyShotType.Mines;
+        _enemyMine = true;
         _bresenham = false;
     }
 
@@ -462,6 +493,23 @@ public sealed class BulletLogic
     public void Tick()
     {
         if (!Alive) return;
+        if (_enemyMine)
+        {
+            FrameCounter++;
+            _mineFuse--;
+            _curSpeed = _mineFuse;
+            if (_mineFuse <= 0)
+            {
+                Alive = false;
+                return;
+            }
+            X = _mineMoveX + MineXOffset[_minePos];
+            Y = _mineMoveY + MineYOffset[_minePos];
+            _mineMoveY++;
+            _minePos = (_minePos + 1) & 15;
+            if (X < 0 || X >= 320 || Y < 0 || Y >= 200) Alive = false;
+            return;
+        }
         if (_beam)
         {
             // SHOTS_Think for !move_flag bullets (SHOTS.C:1109-1127): curframe++

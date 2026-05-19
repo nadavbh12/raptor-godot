@@ -24,7 +24,7 @@ internal static class SwdTextStream
     {
         Texture2D? LoadSprite(string itemName);
         void DrawCanvasTexture(Texture2D tex, Vector2 pos, Color modulate);
-        void DrawText(string text, int x, int y, string fontName, int basecolor);
+        void DrawText(string text, int x, int y, string fontName, int basecolor, Color? modulate = null);
         int FontHeight(string fontName);
     }
 
