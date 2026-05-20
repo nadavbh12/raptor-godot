@@ -356,7 +356,6 @@ public partial class DebugRenderer : Node2D
     private async void WriteShotBurst(int seq, int off, string label)
     {
         await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
-        await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
         var img = GetViewport().GetTexture().GetImage();
         if (img == null) return;
         // Include abs FC in the filename so labeled dumps interleave correctly
