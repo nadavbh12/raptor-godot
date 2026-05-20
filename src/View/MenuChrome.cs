@@ -22,6 +22,7 @@ internal static class MenuChrome
     public static readonly MenuSpriteSpec Register = new("0048_REGISTER_PIC.png", 0, 0);
     public static readonly MenuSpriteSpec HelpComputer = new("0079_HELPCOMP_PIC.png", 104, 58);
     public static readonly MenuSpriteSpec Pointer = new("0072_POINT_PIC.png", 63, 0);
+    public static readonly MenuSpriteSpec Slider = new("0071_SLIDE_PIC.png", 0, 0);
     public static readonly MenuSpriteSpec Cursor = new("0014_CURSOR_PIC.png", 0, 0);
     public static readonly MenuSpriteSpec LightOn = new("0074_LIGHTON_PIC.png", 0, 0);
     public static readonly MenuSpriteSpec LightOff = new("0075_LIGHTOFF_PIC.png", 0, 0);

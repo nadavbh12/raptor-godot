@@ -431,6 +431,79 @@ public class MenuStateMachineTests
     }
 
     [Fact]
+    public void Two_Downs_from_zero_land_on_options_item()
+    {
+        var m = new MenuStateMachine();
+        m.EnterMenu(0);
+
+        m.HandleInput("Down", 0);
+        m.HandleInput("Down", 0);
+
+        Assert.Equal(MenuStateMachine.OptionsItemIndex, m.CurrentItem);
+    }
+
+    [Fact]
+    public void Return_on_options_item_opens_options_without_reanchoring_menu()
+    {
+        var m = new MenuStateMachine();
+        m.EnterMenu(42);
+        for (int i = 0; i < MenuStateMachine.OptionsItemIndex; i++)
+            m.HandleInput("Down", 50 + i);
+
+        bool handled = m.HandleInput("Return", 80);
+
+        Assert.True(handled);
+        Assert.True(m.InOptions);
+        Assert.Equal(WinState.Menu, m.State);
+        Assert.Equal(42, m.StateEnteredFrame);
+        Assert.Equal(0, m.OptionsField);
+    }
+
+    [Fact]
+    public void Escape_in_options_returns_to_main_menu_selection()
+    {
+        var m = new MenuStateMachine();
+        m.EnterMenu(0);
+        for (int i = 0; i < MenuStateMachine.OptionsItemIndex; i++)
+            m.HandleInput("Down", i);
+        m.HandleInput("Return", 10);
+        Assert.True(m.InOptions);
+
+        bool handled = m.HandleInput("Escape", 20);
+
+        Assert.True(handled);
+        Assert.False(m.InOptions);
+        Assert.Equal(WinState.Menu, m.State);
+        Assert.Equal(MenuStateMachine.OptionsItemIndex, m.CurrentItem);
+    }
+
+    [Fact]
+    public void Options_keyboard_controls_detail_and_volume_fields()
+    {
+        var m = new MenuStateMachine();
+        m.EnterMenu(0);
+        for (int i = 0; i < MenuStateMachine.OptionsItemIndex; i++)
+            m.HandleInput("Down", i);
+        m.HandleInput("Return", 10);
+        Assert.True(m.OptionDetailHigh);
+
+        m.HandleInput("Return", 11);
+        Assert.False(m.OptionDetailHigh);
+
+        m.HandleInput("Down", 12);
+        Assert.Equal(1, m.OptionsField);
+        int music = m.OptionMusicVolume;
+        m.HandleInput("Right", 13);
+        Assert.Equal(music + 8, m.OptionMusicVolume);
+
+        m.HandleInput("Down", 14);
+        Assert.Equal(2, m.OptionsField);
+        int fx = m.OptionFxVolume;
+        m.HandleInput("Left", 15);
+        Assert.Equal(fx - 8, m.OptionFxVolume);
+    }
+
+    [Fact]
     public void Return_on_order_item_enters_Help_state_not_Order()
     {
         var m = new MenuStateMachine();

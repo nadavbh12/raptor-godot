@@ -740,6 +740,8 @@ public partial class DebugRenderer : Node2D
         }
 
         DrawMainMenuOverlay(menu);
+        if (menu.InOptions)
+            DrawOptionsOverlay(menu);
     }
 
     private void DrawDeathMovieOverlay(MenuStateMachine menu)
@@ -780,6 +782,48 @@ public partial class DebugRenderer : Node2D
                 ? new Color(1.30f, 1.60f, 3.30f)
                 : Colors.White;
             DrawUiSprite(item, modulate);
+        }
+    }
+
+    private void DrawOptionsOverlay(MenuStateMachine menu)
+    {
+        var swd = LoadSwd("OPTS_SWD");
+        if (swd == null) return;
+
+        SwdRenderer.Draw(_swdHost, swd);
+
+        if (!menu.OptionDetailHigh)
+        {
+            var detail = swd.Fields[6];
+            DrawDosFont("LOW DETAIL",
+                swd.Window.X + detail.X + 27,
+                swd.Window.Y + detail.Y + 2,
+                detail.FontName,
+                detail.FontBaseColor);
+        }
+
+        var music = swd.Fields[11];
+        var fx = swd.Fields[12];
+        DrawUiSprite(MenuChrome.Slider with
+        {
+            X = swd.Window.X + music.X + menu.OptionMusicVolume - 2,
+            Y = swd.Window.Y + music.Y
+        });
+        DrawUiSprite(MenuChrome.Slider with
+        {
+            X = swd.Window.X + fx.X + menu.OptionFxVolume - 2,
+            Y = swd.Window.Y + fx.Y
+        });
+
+        if (menu.OptionsField >= 0 && menu.OptionsField <= 2)
+        {
+            int fieldIndex = menu.OptionsField switch { 0 => 3, 1 => 4, _ => 5 };
+            var target = swd.Fields[fieldIndex];
+            DrawUiSprite(MenuChrome.Pointer with
+            {
+                X = swd.Window.X + target.X,
+                Y = swd.Window.Y + target.Y
+            });
         }
     }
 

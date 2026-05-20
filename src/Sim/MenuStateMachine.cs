@@ -36,6 +36,7 @@ public sealed class MenuStateMachine
     public const int ItemCount = 7;
     public const int CreditsItemIndex = 4;
     public const int OrderItemIndex   = 3;
+    public const int OptionsItemIndex = 2;
     public const int LoadItemIndex    = 1;
     public const int NewItemIndex     = 0;
 
@@ -87,6 +88,11 @@ public sealed class MenuStateMachine
     // ── Sector-select sub-state ──────────────────────────────────────────────
     // After HANGAR exit → UNKNOWN (sector select dialog). One Return → game enter.
     private bool _inSectorSelect = false;
+    private bool _inOptions = false;
+    private int _optionsField = 0; // 0=detail, 1=music volume, 2=sound FX volume.
+    private bool _optionDetailHigh = true;
+    private int _optionMusicVolume = 64;
+    private int _optionFxVolume = 64;
 
     public WinState State { get; private set; } = WinState.Unknown;
 
@@ -113,6 +119,11 @@ public sealed class MenuStateMachine
     public int DifficultyFieldId => _difficultyFieldId;
     public int HangarPosition => _hangarPos;
     public bool InSectorSelect => _inSectorSelect;
+    public bool InOptions => _inOptions;
+    public int OptionsField => _optionsField;
+    public bool OptionDetailHigh => _optionDetailHigh;
+    public int OptionMusicVolume => _optionMusicVolume;
+    public int OptionFxVolume => _optionFxVolume;
 
     /// <summary>
     /// The frame number at which the CURRENT (non-Unknown) context was entered.
@@ -147,6 +158,7 @@ public sealed class MenuStateMachine
     {
         InGame = false;
         _inSectorSelect = false;
+        _inOptions = false;
         _pilotCreateStep = 0;
         _hangarPos = 1;
         EnterState(WinState.Hangar, currentFrame, reAnchor: true);
@@ -156,6 +168,7 @@ public sealed class MenuStateMachine
     {
         InGame = false;
         _inSectorSelect = false;
+        _inOptions = false;
         _pilotCreateStep = 0;
         EnterState(WinState.Death, currentFrame, reAnchor: true);
     }
@@ -181,6 +194,8 @@ public sealed class MenuStateMachine
         Callsign = "";
         _hangarPos = 1;
         _inSectorSelect = false;
+        _inOptions = false;
+        _optionsField = 0;
         EnterState(WinState.Menu, currentFrame, reAnchor: true);
     }
 
@@ -270,6 +285,9 @@ public sealed class MenuStateMachine
 
         if (State == WinState.Menu)
         {
+            if (_inOptions)
+                return HandleOptionsPointerClick(x, y);
+
             int item = MainMenuItemAt(x, y);
             if (item < 0) return false;
             CurrentItem = item;
@@ -296,6 +314,9 @@ public sealed class MenuStateMachine
 
     private bool HandleMenuInput(string action, int currentFrame)
     {
+        if (_inOptions)
+            return HandleOptionsInput(action);
+
         // Pilot-creation sub-flow: absorb inputs until we've consumed enough Returns.
         if (_pilotCreateStep > 0)
         {
@@ -409,6 +430,12 @@ public sealed class MenuStateMachine
                 EnterState(WinState.Help, currentFrame + HelpFadeFrames, reAnchor: true);
                 return true;
             }
+            if (CurrentItem == OptionsItemIndex)
+            {
+                _inOptions = true;
+                _optionsField = 0;
+                return true;
+            }
             if (CurrentItem == NewItemIndex)
             {
                 // Enter pilot-creation sub-flow: step 1 = name dialog.
@@ -426,6 +453,79 @@ public sealed class MenuStateMachine
             return true;
         }
         return false;
+    }
+
+    private bool HandleOptionsInput(string action)
+    {
+        if (action == "Escape")
+        {
+            _inOptions = false;
+            _optionsField = 0;
+            return true;
+        }
+        if (action == "Down")
+        {
+            if (_optionsField < 2) _optionsField++;
+            return true;
+        }
+        if (action == "Up")
+        {
+            if (_optionsField > 0) _optionsField--;
+            return true;
+        }
+        if (action == "Left")
+        {
+            AdjustOptionVolume(-8);
+            return true;
+        }
+        if (action == "Right")
+        {
+            AdjustOptionVolume(8);
+            return true;
+        }
+        if (action == "Return" && _optionsField == 0)
+        {
+            _optionDetailHigh = !_optionDetailHigh;
+            return true;
+        }
+        return true;
+    }
+
+    private bool HandleOptionsPointerClick(int x, int y)
+    {
+        if (InRect(x, y, 184, 159, 57, 12))
+        {
+            _inOptions = false;
+            _optionsField = 0;
+            return true;
+        }
+        if (InRect(x, y, 107, 58, 118, 12))
+        {
+            _optionsField = 0;
+            _optionDetailHigh = !_optionDetailHigh;
+            return true;
+        }
+        if (InRect(x, y, 107, 91, 127, 13))
+        {
+            _optionsField = 1;
+            _optionMusicVolume = Math.Clamp(x - 107, 0, 127);
+            return true;
+        }
+        if (InRect(x, y, 107, 131, 127, 13))
+        {
+            _optionsField = 2;
+            _optionFxVolume = Math.Clamp(x - 107, 0, 127);
+            return true;
+        }
+        return false;
+    }
+
+    private void AdjustOptionVolume(int delta)
+    {
+        if (_optionsField == 1)
+            _optionMusicVolume = Math.Clamp(_optionMusicVolume + delta, 0, 127);
+        else if (_optionsField == 2)
+            _optionFxVolume = Math.Clamp(_optionFxVolume + delta, 0, 127);
     }
 
     private static bool InRect(int x, int y, int rx, int ry, int w, int h)
