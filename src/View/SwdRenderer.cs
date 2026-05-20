@@ -223,8 +223,11 @@ internal sealed class SwdRenderer
         // GFX_ShadeArea(DARK, x+1, y, lx-1, ly-1) when color != 0, else
         // GFX_ColorBox(x+1, y+1, lx-2, ly-2, 0). Both produce a near-black
         // inset; ~45% alpha black sits naturally over the TEXTURE_PIC tile.
-        host.DrawCanvasRect(new Rect2(x + 1, y, lx - 1, ly - 1),
-            new Color(0, 0, 0, 0.45f));
+        if (color == 0)
+            host.DrawCanvasRect(new Rect2(x + 1, y + 1, lx - 2, ly - 2), Colors.Black);
+        else
+            host.DrawCanvasRect(new Rect2(x + 1, y, lx - 1, ly - 1),
+                new Color(0, 0, 0, 0.45f));
         // GFX_LightBox(LOWER_LEFT, ...): bottom + left edges look lit,
         // top + right edges look shadowed (sunken effect). Uses the same
         // ±36-equivalent alphas as the button bevel for consistency.

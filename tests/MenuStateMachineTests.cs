@@ -224,6 +224,7 @@ public class MenuStateMachineTests
         bool transitioned = m.HandleInput("F1", 50);
         Assert.True(transitioned);
         Assert.Equal(WinState.Help, m.State);
+        Assert.Equal("HELP1_TXT", m.HelpTextName);
     }
 
     [Fact]
@@ -504,7 +505,7 @@ public class MenuStateMachineTests
     }
 
     [Fact]
-    public void Return_on_order_item_enters_Help_state_not_Order()
+    public void Return_on_order_item_enters_Help_state_with_order_text()
     {
         var m = new MenuStateMachine();
         m.EnterMenu(0);
@@ -514,6 +515,7 @@ public class MenuStateMachineTests
         Assert.True(transitioned);
         // C version calls HELP_Win(RAP1_TXT) for ORDER — win-state is HELP, not ORDER.
         Assert.Equal(WinState.Help, m.State);
+        Assert.Equal("RAP1_TXT", m.HelpTextName);
     }
 
     [Fact]

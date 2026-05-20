@@ -720,7 +720,7 @@ public partial class DebugRenderer : Node2D
 
         if (menu.State == WinState.Help)
         {
-            DrawHelpOverlay(font);
+            DrawHelpOverlay(menu);
             return;
         }
 
@@ -1070,15 +1070,30 @@ public partial class DebugRenderer : Node2D
         }
     }
 
-    private void DrawHelpOverlay(Font font)
+    private void DrawHelpOverlay(MenuStateMachine menu)
     {
-        DrawUiSprite(MenuChrome.ShipComputer);
-        DrawUiSprite(MenuChrome.HelpComputer);
-        DrawString(font, new Vector2(118, 84), "HELP", HorizontalAlignment.Left, -1, 11, new Color(0.2f, 0.2f, 0.22f));
-        DrawString(font, new Vector2(64, 118), "ARROWS MOVE", HorizontalAlignment.Left, -1, 9, new Color(0.55f, 0.9f, 0.85f));
-        DrawString(font, new Vector2(64, 134), "A FIRES", HorizontalAlignment.Left, -1, 9, new Color(0.55f, 0.9f, 0.85f));
-        DrawString(font, new Vector2(64, 150), "ALT SPECIAL", HorizontalAlignment.Left, -1, 9, new Color(0.55f, 0.9f, 0.85f));
-        DrawString(font, new Vector2(64, 176), "ENTER RETURNS", HorizontalAlignment.Left, -1, 8, new Color(0.85f, 0.9f, 0.7f));
+        var swd = LoadSwd("HELP_SWD");
+        if (swd == null) return;
+
+        var skip = menu.HelpTextName == "RAP1_TXT"
+            ? new HashSet<int> { 8, 9 }
+            : new HashSet<int> { 8 };
+        SwdRenderer.Draw(_swdHost, swd, skipFieldIndices: skip);
+
+        if (menu.HelpTextName == "RAP1_TXT")
+            DrawDosFont("PAGE : 31", swd.Window.X + 247, swd.Window.Y + 10, "FONT2_FNT", 64);
+
+        string? text = SwdTextStream.LoadText(menu.HelpTextName);
+        if (string.IsNullOrEmpty(text)) return;
+
+        var field = swd.Fields[8];
+        SwdTextStream.Render(_swdHost, text,
+            swd.Window.X + field.X,
+            swd.Window.Y + field.Y,
+            field.Lx,
+            field.Ly,
+            field.FontName,
+            field.FontBaseColor);
     }
 
     private void DrawCreditsOverlay(Font font)

@@ -93,6 +93,7 @@ public sealed class MenuStateMachine
     private bool _optionDetailHigh = true;
     private int _optionMusicVolume = 64;
     private int _optionFxVolume = 64;
+    private string _helpTextName = "HELP1_TXT";
 
     public WinState State { get; private set; } = WinState.Unknown;
 
@@ -124,6 +125,7 @@ public sealed class MenuStateMachine
     public bool OptionDetailHigh => _optionDetailHigh;
     public int OptionMusicVolume => _optionMusicVolume;
     public int OptionFxVolume => _optionFxVolume;
+    public string HelpTextName => _helpTextName;
 
     /// <summary>
     /// The frame number at which the CURRENT (non-Unknown) context was entered.
@@ -196,6 +198,7 @@ public sealed class MenuStateMachine
         _inSectorSelect = false;
         _inOptions = false;
         _optionsField = 0;
+        _helpTextName = "HELP1_TXT";
         EnterState(WinState.Menu, currentFrame, reAnchor: true);
     }
 
@@ -415,6 +418,7 @@ public sealed class MenuStateMachine
         }
         if (action == "F1")
         {
+            _helpTextName = "HELP1_TXT";
             EnterState(WinState.Help, currentFrame + HelpFadeFrames, reAnchor: true);
             return true;
         }
@@ -427,6 +431,7 @@ public sealed class MenuStateMachine
             }
             if (CurrentItem == OrderItemIndex)
             {
+                _helpTextName = "RAP1_TXT";
                 EnterState(WinState.Help, currentFrame + HelpFadeFrames, reAnchor: true);
                 return true;
             }
