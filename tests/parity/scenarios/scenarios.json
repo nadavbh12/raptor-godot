@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "scenarios": [
+    {
+      "id": "full_demo",
+      "description": "Broad deterministic demo sweep used to surface cross-system visual mismatches.",
+      "source_refs": [
+        "tests/scripts/full_demo.txt",
+        "SOURCE/INPUT.C",
+        "SOURCE/RAP.C"
+      ],
+      "playthrough": "tests/scripts/full_demo.txt",
+      "c_playthrough": "tests/parity/scenarios/full_demo_c.txt",
+      "godot_playthrough": "tests/scripts/full_demo.txt",
+      "anchors": [
+        "01_menu",
+        "03_in_game",
+        "04_05s",
+        "05_15s",
+        "06_25s",
+        "07_35s",
+        "08_45s",
+        "09_55s",
+        "10_65s",
+        "11_75s"
+      ],
+      "required_dumps": [
+        "parity",
+        "frames",
+        "labels"
+      ],
+      "visual_regions": [
+        "full-frame",
+        "playfield",
+        "hud",
+        "gutters"
+      ],
+      "detectors": [
+        "pixel-clusters",
+        "zoom-crops"
+      ],
+      "acceptance": [
+        "visual audit report generates non-empty findings.json",
+        "index.html links C frame, Godot frame, diff, and crop artifacts"
+      ]
+    }
+  ]
+}

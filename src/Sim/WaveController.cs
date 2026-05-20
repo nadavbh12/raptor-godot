@@ -223,10 +223,10 @@ public partial class WaveController : Node
     private readonly List<EnemyLogic>   _weaponTargetEnemies = new();
 
     // Active explosion animations spawned when an enemy dies. Each entry
-    // records the C exptype (SOURCE/MAP.H), the center position, and the sim
-    // frame at which it was started; the view renders the right BLK frame as
-    // SimClock.Frame - StartFc.
-    public readonly record struct Explosion(int ExpType, int X, int Y, int StartFc);
+    // records the C exptype (SOURCE/MAP.H), the center position, and the
+    // game-loop iteration at which it should first display. C ANIMS_Think
+    // advances curframe once per game-loop iteration, not once per framecount.
+    public readonly record struct Explosion(int ExpType, int X, int Y, int StartIter);
     private readonly List<Explosion> _explosions = new();
 
     // Read-only accessors for debug rendering only — not parity-affecting.
@@ -236,6 +236,10 @@ public partial class WaveController : Node
     public IReadOnlyList<Explosion>   GetExplosions()    => _explosions;
     public IReadOnlyList<BonusLogic>  GetBonuses()       => _bonuses;
     public bool DrawPlayer { get; private set; } = true;
+    public bool GameplayVisualActive => _waveActive || _pendingDemoStartFrame >= 0;
+
+    internal static int AnimationStartIterForSpawn(int currentGameLoopIter) => currentGameLoopIter + 1;
+    internal static int AnimationAge(int currentGameLoopIter, int startIter) => currentGameLoopIter - startIter;
 
     // ── Collision scratch ─────────────────────────────────────────────────────
     private readonly List<(EnemyLogic enemy, int dmg)> _hitEnemies = new();
@@ -1051,7 +1055,7 @@ public partial class WaveController : Node
             // is a sentinel Explosion record with the dedicated SmokeExpType
             // so the view can age its SMOKTRAL_BLK frames over time.
             if (b.Alive && b.ShotType == EnemyShotType.Missile && (b.FrameCounter & 1) != 0)
-                _explosions.Add(new Explosion(SmokeExpType, b.X + 4, b.Y, SimClock.Frame));
+                AddExplosion(SmokeExpType, b.X + 4, b.Y);
         }
     }
 
@@ -1061,6 +1065,12 @@ public partial class WaveController : Node
     private const int SmokeExpType = 100;
     private const int SparkBlueExpType = 101;
     private const int SparkOrangeExpType = 102;
+
+    private void AddExplosion(int expType, int x, int y, int startDelayIters = 0)
+    {
+        int startIter = AnimationStartIterForSpawn(_gameLoopIter) + startDelayIters;
+        _explosions.Add(new Explosion(expType, x, y, startIter));
+    }
 
     internal void PhaseCollisionCollect()
     {
@@ -1089,7 +1099,7 @@ public partial class WaveController : Node
                 // Mirror ESHOT.C:521: ANIMS_StartAnim(A_SMALL_AIR_EXPLO, shot->x, shot->y).
                 // A small orange flash appears at the impact point — visible in C
                 // wherever a bullet clips the player ship.
-                _explosions.Add(new Explosion(ExpAirSmall2, b.X, b.Y, SimClock.Frame));
+                AddExplosion(ExpAirSmall2, b.X, b.Y);
             }
         }
 
@@ -1104,12 +1114,12 @@ public partial class WaveController : Node
         foreach (var (x, y) in collision.RandomSparkPositions)
         {
             int spark = PlayerShooter.NextRandom(_shooterRng, 2, "spark.hit_color");
-            _explosions.Add(new Explosion(spark != 0 ? SparkBlueExpType : SparkOrangeExpType, x, y, SimClock.Frame));
+            AddExplosion(spark != 0 ? SparkBlueExpType : SparkOrangeExpType, x, y);
         }
         foreach (var (x, y) in collision.OrangeSparkPositions)
-            _explosions.Add(new Explosion(SparkOrangeExpType, x, y, SimClock.Frame));
+            AddExplosion(SparkOrangeExpType, x, y);
         foreach (var (x, y) in collision.BlueSparkPositions)
-            _explosions.Add(new Explosion(SparkBlueExpType, x, y, SimClock.Frame));
+            AddExplosion(SparkBlueExpType, x, y);
         if (collision.TileBounty > 0) Score += (uint)collision.TileBounty;
         SyncTileSliceToBacking();
         foreach (int mapspot in collision.DestroyedTileMapSpots)
@@ -1200,7 +1210,7 @@ public partial class WaveController : Node
             e.TakeDamage(playerWidth2);
             int bodyDmg = e.Meta.BodyCrashDamage;
             PlayerLogic.TakeDamage(bodyDmg);
-            _explosions.Add(new Explosion(ExpAirSmall2, PlayerLogic.X + 16, PlayerLogic.Y + 16, SimClock.Frame));
+            AddExplosion(ExpAirSmall2, PlayerLogic.X + 16, PlayerLogic.Y + 16);
             if (wasAlive && !e.Alive)
             {
                 Score += (uint)e.Meta.Money;
@@ -1433,7 +1443,7 @@ public partial class WaveController : Node
         foreach (var tile in _tileSlice)
         {
             if (tile.MapSpot != mapspot) continue;
-            _explosions.Add(new Explosion(ExpGrdLarge, tile.ScreenX + 16, tile.ScreenY + 16, SimClock.Frame));
+            AddExplosion(ExpGrdLarge, tile.ScreenX + 16, tile.ScreenY + 16);
             return;
         }
     }
@@ -1471,8 +1481,8 @@ public partial class WaveController : Node
     {
         int cx = e.X + e.Meta.HalfX;
         int cy = e.Y + e.Meta.HalfY;
-        int fc = SimClock.Frame;
-        _explosions.Add(new Explosion(e.Meta.ExpType, cx, cy, fc));
+        int startIter = AnimationStartIterForSpawn(_gameLoopIter);
+        AddExplosion(e.Meta.ExpType, cx, cy);
         if (BonusForExplosionType(e.Meta.ExpType) is { } bonusType)
             SpawnBonus(bonusType, e.X, e.Y);
         if (e.Meta.ExpType == ExpAirLargeCode)
@@ -1483,7 +1493,7 @@ public partial class WaveController : Node
             // Deterministic pseudo-random offsets so successive explosions land
             // at distinct positions inside the sprite. Mixing hash uses prime
             // multipliers — no RNG state mutated.
-            uint hash = (uint)(e.X * 73856093 ^ e.Y * 19349663 ^ fc * 83492791);
+            uint hash = (uint)(e.X * 73856093 ^ e.Y * 19349663 ^ startIter * 83492791);
             for (int i = 0; i < count; i++)
             {
                 hash = hash * 1103515245u + 12345u;
@@ -1492,9 +1502,9 @@ public partial class WaveController : Node
                 int oy = (int)((hash >> 8) % (uint)System.Math.Max(1, h));
                 int t = (i & 1) == 1 ? 1 /* EXP_AIRMED → A_MED_AIR_EXPLO */
                                      : 10 /* EXP_AIRSMALL2 → A_MED_AIR_EXPLO2 */;
-                // Stagger start frame slightly so the cascade doesn't appear
+                // Stagger start iteration slightly so the cascade doesn't appear
                 // all at once (matches C's per-loop ANIMS_StartAnim spacing).
-                _explosions.Add(new Explosion(t, e.X + ox, e.Y + oy, fc + (i % 4)));
+                AddExplosion(t, e.X + ox, e.Y + oy, i % 4);
             }
         }
     }
@@ -1515,9 +1525,9 @@ public partial class WaveController : Node
         // lived (SMOKTRAL_BLK has 4 frames) so we cull them aggressively.
         const int MaxAnimFrames = 50;
         const int MaxSmokeFrames = 4;
-        int fc = SimClock.Frame;
+        int currentIter = GameLoopIter;
         _explosions.RemoveAll(x =>
-            fc - x.StartFc >= (x.ExpType == SmokeExpType ? MaxSmokeFrames : MaxAnimFrames));
+            AnimationAge(currentIter, x.StartIter) >= (x.ExpType == SmokeExpType ? MaxSmokeFrames : MaxAnimFrames));
         CompleteMissionIfWaveEnded();
     }
 
@@ -1590,7 +1600,7 @@ public partial class WaveController : Node
             _playerDeathCountdown,
             _shooterRng))
         {
-            _explosions.Add(new Explosion(explosion.ExpType, explosion.X, explosion.Y, SimClock.Frame));
+            AddExplosion(explosion.ExpType, explosion.X, explosion.Y);
         }
 
         if (_playerDeathCountdown == EndExplode)

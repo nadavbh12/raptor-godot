@@ -52,7 +52,7 @@ public partial class PositionDumper : Node
     {
         // In-game iter-end emit (mirrors C's parity_tick at end of each
         // legacy_pump loop iteration).
-        if (_out == null || _wave == null || _menu == null || !_menu.InGame) return;
+        if (_out == null || _wave == null || _menu == null || !_wave.GameplayVisualActive) return;
         TryEmit(_menu.GameEnteredFrame, "MISSION_1");
     }
 
@@ -60,7 +60,7 @@ public partial class PositionDumper : Node
     {
         // Menu/dialog windows have no game loop iters; fall back to per-frame
         // polling so we still get fc=0/70/... emits in those contexts.
-        if (_out == null || _menu == null || _menu.InGame) return;
+        if (_out == null || _menu == null || _wave?.GameplayVisualActive == true) return;
         TryEmit(_menu.StateEnteredFrame, _menu.State.ToParityString());
     }
 
@@ -81,6 +81,7 @@ public partial class PositionDumper : Node
         sb.Append($"fc={fc} abs={Sim.SimClock.Frame} win={win} iter={_wave.GameLoopIter}\n");
         sb.Append($"player x={_wave.PlayerLogic.X} y={_wave.PlayerLogic.Y} ")
           .Append($"shield={_wave.PlayerLogic.Shield} score={_wave.Score}\n");
+        sb.Append($"tilepos={_wave.TilePos} tileyoff={_wave.TileYOff}\n");
 
         foreach (var e in _wave.GetEnemies())
         {

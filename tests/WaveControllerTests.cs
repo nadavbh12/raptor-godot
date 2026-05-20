@@ -145,6 +145,17 @@ public class WaveControllerTests
     }
 
     [Fact]
+    public void Explosion_animation_age_uses_game_loop_iterations_not_framecount()
+    {
+        int startIter = WaveController.AnimationStartIterForSpawn(currentGameLoopIter: 42);
+
+        Assert.Equal(43, startIter);
+        Assert.Equal(-1, WaveController.AnimationAge(currentGameLoopIter: 42, startIter));
+        Assert.Equal(0, WaveController.AnimationAge(currentGameLoopIter: 43, startIter));
+        Assert.Equal(3, WaveController.AnimationAge(currentGameLoopIter: 46, startIter));
+    }
+
+    [Fact]
     public void Player_death_spawns_wing_explosions_each_countdown_tick()
     {
         var rng = new System.Random(1234);

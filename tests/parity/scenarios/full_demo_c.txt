@@ -1,0 +1,33 @@
+# C-side full-demo visual parity driver.
+#
+# The shared Godot script presses Escape after the demo briefing because the
+# Godot menu flow needs it to reveal gameplay. In the C port, that same Escape
+# aborts the long demo path back to menu/credits, invalidating the reference
+# capture. Keep this script C-only and intentionally omit that Escape.
+
+wait 60
+dump 01_menu
+key D
+wait 80
+dump 02_briefing
+wait 60
+dump 03_in_game
+
+wait 350
+dump 04_05s
+wait 700
+dump 05_15s
+wait 700
+dump 06_25s
+wait 700
+dump 07_35s
+wait 700
+dump 08_45s
+wait 700
+dump 09_55s
+wait 700
+dump 10_65s
+wait 700
+dump 11_75s
+
+quit

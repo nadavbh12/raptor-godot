@@ -168,4 +168,13 @@ public class InputStateTests
         Assert.DoesNotContain("\"TEST\"", renderer);
         Assert.DoesNotContain("\"T1\"", renderer);
     }
+
+    [Fact]
+    public void Menu_renderer_hides_menu_during_demo_gameplay_even_when_menu_state_is_not_ingame()
+    {
+        Assert.False(DebugRenderer.ShouldDrawMenuOverlayForState(
+            interactiveUi: true,
+            menuInGame: false,
+            gameplayVisualActive: true));
+    }
 }

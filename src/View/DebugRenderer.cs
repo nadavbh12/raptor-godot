@@ -17,10 +17,18 @@ public partial class DebugRenderer : Node2D
     private WaveController? _wave;
     private MenuStateMachine? _menu;
     private string? _shotDir;
+    private string? _shotMapPath;
     private bool _interactiveUi;
     private int _lastShotSec = -1;
     private int _scriptDumpSeq = 0;
     private string? _pendingScriptDumpLabel;
+    private int _lastDrawnFc = -1;
+    private int _lastDrawnIter = -1;
+    private uint _lastDrawnScore = 0;
+    private int _lastDrawnShield = 0;
+    private int _lastDrawnEnemies = 0;
+    private int _lastDrawnPbullets = 0;
+    private int _lastDrawnEbullets = 0;
     private readonly HudScannerIndicator.State _scannerState = new();
     private int _lastScannerFrame = -1;
 
@@ -116,6 +124,9 @@ public partial class DebugRenderer : Node2D
         if (!string.IsNullOrEmpty(_shotDir))
         {
             DirAccess.MakeDirRecursiveAbsolute(_shotDir);
+            _shotMapPath = Path.Combine(_shotDir, "shot_map.tsv");
+            File.WriteAllText(_shotMapPath,
+                "file\tsaved_fc\tdrawn_fc\tdrawn_iter\tscore\tshield\tenemies\tpbullets\tebullets\n");
         }
 
         BuildSpriteIndex();
@@ -342,8 +353,10 @@ public partial class DebugRenderer : Node2D
         }
     }
 
-    private void WriteShotBurst(int seq, int off, string label)
+    private async void WriteShotBurst(int seq, int off, string label)
     {
+        await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+        await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
         var img = GetViewport().GetTexture().GetImage();
         if (img == null) return;
         // Include abs FC in the filename so labeled dumps interleave correctly
@@ -353,6 +366,7 @@ public partial class DebugRenderer : Node2D
             ? $"{_shotDir}/fc{fc:D5}_label_{label}.png"
             : $"{_shotDir}/fc{fc:D5}_label_{label}_p{off:D2}.png";
         img.SavePng(path);
+        AppendShotMap(path, fc);
     }
 
     private void MaybeShoot()
@@ -378,12 +392,25 @@ public partial class DebugRenderer : Node2D
         CallDeferred(nameof(WriteShot), sec, SimClock.Frame);
     }
 
-    private void WriteShot(int sec, int fc)
+    private async void WriteShot(int sec, int fc)
     {
+        await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+        await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
         var img = GetViewport().GetTexture().GetImage();
         if (img == null) return;
+        fc = SimClock.Frame;
+        sec = fc / 70;
         string path = $"{_shotDir}/fc{fc:D5}_sec{sec:D3}.png";
         img.SavePng(path);
+        AppendShotMap(path, fc);
+    }
+
+    private void AppendShotMap(string path, int savedFc)
+    {
+        if (string.IsNullOrEmpty(_shotMapPath)) return;
+        string fileName = Path.GetFileName(path);
+        File.AppendAllText(_shotMapPath,
+            $"{fileName}\t{savedFc}\t{_lastDrawnFc}\t{_lastDrawnIter}\t{_lastDrawnScore}\t{_lastDrawnShield}\t{_lastDrawnEnemies}\t{_lastDrawnPbullets}\t{_lastDrawnEbullets}\n");
     }
 
     /// <summary>
@@ -447,19 +474,27 @@ public partial class DebugRenderer : Node2D
     {
         DrawRect(new Rect2(0, 0, 320, 200), new Color(0, 0, 0, 1));
 
-        if (_interactiveUi && _menu != null && !_menu.InGame)
+        if (_menu != null && ShouldDrawMenuOverlayForState(
+            _interactiveUi,
+            _menu.InGame,
+            _wave?.GameplayVisualActive == true))
         {
             // Menus paint on a black background; the in-game playfield tint
             // is irrelevant here and would bleed through transparent areas
             // of menu sprites (SHIPCOMP_PIC's display window, etc.).
             DrawMenuOverlay(_menu);
+            RecordDrawnState();
             return;
         }
 
         // In-game playfield gets the dark-blue base behind the tile map.
         DrawRect(new Rect2(16, 0, 288, 200), new Color(0.05f, 0.05f, 0.1f, 1));
 
-        if (_wave == null) return;
+        if (_wave == null)
+        {
+            RecordDrawnState();
+            return;
+        }
 
         _flameQuads.Clear();
         DrawTileMap();
@@ -609,6 +644,37 @@ public partial class DebugRenderer : Node2D
             var font = ThemeDB.FallbackFont;
             DrawString(font, new Vector2(4, 195), hud, HorizontalAlignment.Left, -1, 8, new Color(1, 1, 1));
         }
+        RecordDrawnState();
+    }
+
+    private void RecordDrawnState()
+    {
+        _lastDrawnFc = SimClock.Frame;
+        if (_wave == null)
+        {
+            _lastDrawnIter = -1;
+            _lastDrawnScore = 0;
+            _lastDrawnShield = 0;
+            _lastDrawnEnemies = 0;
+            _lastDrawnPbullets = 0;
+            _lastDrawnEbullets = 0;
+            return;
+        }
+
+        _lastDrawnIter = _wave.GameLoopIter <= 0 ? -1 : _wave.GameLoopIter - 1;
+        _lastDrawnScore = _wave.Score;
+        _lastDrawnShield = _wave.PlayerLogic.Shield;
+        _lastDrawnEnemies = _wave.GetEnemies().Count;
+        _lastDrawnPbullets = _wave.GetPlayerBullets().Count;
+        _lastDrawnEbullets = _wave.GetEnemyBullets().Count;
+    }
+
+    public static bool ShouldDrawMenuOverlayForState(
+        bool interactiveUi,
+        bool menuInGame,
+        bool gameplayVisualActive)
+    {
+        return interactiveUi && !menuInGame && !gameplayVisualActive;
     }
 
     private void DrawMenuOverlay(MenuStateMachine menu)
@@ -1127,7 +1193,7 @@ public partial class DebugRenderer : Node2D
 
     /// <summary>
     /// Render all active sim-side explosions. Mirrors C ANIMS_DisplaySky:
-    /// each explosion's current frame is (SimClock.Frame - StartFc); the BLK
+    /// each explosion's current frame is (WaveController.GameLoopIter - StartIter); the BLK
     /// family + frame count is resolved from ExpAnim[ExpType]. C drew at the
     /// pre-offset (x - xoff, y - yoff) from ANIMS_StartAnim; since our table
     /// doesn't track those offsets we center the texture on the death point.
@@ -1141,12 +1207,12 @@ public partial class DebugRenderer : Node2D
     private void DrawExplosions()
     {
         if (_wave == null || _blkRoot == null) return;
-        int fc = SimClock.Frame;
+        int gameIter = _wave.GameLoopIter;
         foreach (var ex in _wave.GetExplosions())
         {
             if (ex.ExpType == SmokeExpType)
             {
-                int age = fc - ex.StartFc;
+                int age = WaveController.AnimationAge(gameIter, ex.StartIter);
                 if (age < 0 || age >= 4) continue;
                 var stex = _smokeFrames[age];
                 if (stex == null) continue;
@@ -1166,7 +1232,7 @@ public partial class DebugRenderer : Node2D
             }
             if (ex.ExpType == SparkBlueExpType || ex.ExpType == SparkOrangeExpType)
             {
-                int age = fc - ex.StartFc;
+                int age = WaveController.AnimationAge(gameIter, ex.StartIter);
                 if (age < 0 || age >= 9) continue;
                 string sparkFamily = ex.ExpType == SparkBlueExpType ? "BSPARK_BLK" : "OSPARK_BLK";
                 var sparkTex = LoadBlkFrame(sparkFamily, age);
@@ -1179,7 +1245,7 @@ public partial class DebugRenderer : Node2D
             int idx = (ex.ExpType >= 0 && ex.ExpType < ExpAnim.Length)
                 ? ex.ExpType : 0;
             var (family, total) = ExpAnim[idx];
-            int frame = fc - ex.StartFc;
+            int frame = WaveController.AnimationAge(gameIter, ex.StartIter);
             if (frame < 0 || frame >= total) continue;
             var tex = LoadBlkFrame(family, frame);
             if (tex == null) continue;

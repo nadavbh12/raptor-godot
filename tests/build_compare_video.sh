@@ -20,6 +20,7 @@
 #   LABEL_ALIGN           set to 1 to align by matching script dump labels
 #   REUSE_C, REUSE_GODOT  set to 1 to skip re-extracting that side
 #   GODOT_BIN             Godot executable (default: command -v godot)
+#   GODOT_QUIT_AFTER      Godot engine-iteration cap (default: 20000)
 
 set -euo pipefail
 
@@ -27,12 +28,15 @@ REPO="$(cd "$(dirname "$0")/.." && pwd)"
 DOSRAPTOR="${DOSRAPTOR:-$(cd "$REPO/.." && pwd)/dosraptor}"
 SCRIPT_NAME="${SCRIPT_NAME:-mission_start}"
 SCRIPT_PATH="$DOSRAPTOR/tests/scripts/${SCRIPT_NAME}.txt"
+C_SCRIPT_PATH="${C_SCRIPT_PATH:-$SCRIPT_PATH}"
+G_SCRIPT_PATH="${G_SCRIPT_PATH:-$SCRIPT_PATH}"
 
 OFFSET="${OFFSET:-144}"
 ANCHOR="${ANCHOR:-2038}"
 SKIP_UNTIL_C="${SKIP_UNTIL_C:-200}"
 FPS="${FPS:-24}"
 LABEL_ALIGN="${LABEL_ALIGN:-0}"
+GODOT_QUIT_AFTER="${GODOT_QUIT_AFTER:-20000}"
 
 C_DIR=/tmp/c_1s
 G_DIR=/tmp/godot_1s
@@ -41,17 +45,23 @@ mkdir -p "$C_DIR" "$G_DIR"
 
 # 1. Extract C frames (every present = every iter ≈ 3 sim fc).
 if [[ "${REUSE_C:-0}" -ne 1 ]]; then
-    if [[ ! -f "$SCRIPT_PATH" ]]; then
-        echo "[compare] ERROR: script not found: $SCRIPT_PATH" >&2
+    if [[ ! -f "$C_SCRIPT_PATH" ]]; then
+        echo "[compare] ERROR: C script not found: $C_SCRIPT_PATH" >&2
         exit 2
     fi
     echo "[compare] extracting C frames ($SCRIPT_NAME)..."
     CBIN="$DOSRAPTOR/build/raptor.app/Contents/MacOS/raptor"
-    rm -f "$C_DIR"/*.bmp "$C_DIR"/*.png "$C_DIR"/parity.txt "$C_DIR"/log.txt
+    rm -f "$C_DIR"/*.bmp "$C_DIR"/*.png \
+        "$C_DIR"/parity.txt "$C_DIR"/log.txt \
+        "$C_DIR"/positions.txt "$C_DIR"/bullets.txt "$C_DIR"/bonus.txt \
+        "$C_DIR"/frame_map.tsv
     SDL_AUDIODRIVER=dummy \
     RAPTOR_SKIPINTRO=1 \
-    RAPTOR_PLAYTHROUGH="$SCRIPT_PATH" \
+    RAPTOR_PLAYTHROUGH="$C_SCRIPT_PATH" \
     RAPTOR_PARITY_OUT="$C_DIR/parity.txt" \
+    RAPTOR_POS_DUMP="$C_DIR/positions.txt" \
+    RAPTOR_BULLET_DUMP="$C_DIR/bullets.txt" \
+    RAPTOR_BONUS_DUMP="$C_DIR/bonus.txt" \
     RAPTOR_DUMP_DIR="$C_DIR" \
     RAPTOR_DUMP_EVERY=1 \
     timeout 120 "$CBIN" >"$C_DIR/log.txt" 2>&1 || true
@@ -70,15 +80,24 @@ fi
 # 2. Extract Godot frames (dense: every 5 sim frames).
 if [[ "${REUSE_GODOT:-0}" -ne 1 ]]; then
     echo "[compare] extracting Godot frames..."
-    rm -f "$G_DIR"/*.png "$G_DIR"/parity.txt "$G_DIR"/log.txt
+    if [[ ! -f "$G_SCRIPT_PATH" ]]; then
+        echo "[compare] ERROR: Godot script not found: $G_SCRIPT_PATH" >&2
+        exit 2
+    fi
+    rm -f "$G_DIR"/*.png \
+        "$G_DIR"/parity.txt "$G_DIR"/log.txt \
+        "$G_DIR"/positions.txt "$G_DIR"/bullets.txt "$G_DIR"/bonus.txt
     GODOT_BIN="${GODOT_BIN:-$(command -v godot)}"
     GODOT_BIN="$(realpath "$GODOT_BIN")"
     # RAPTOR_RENDER_MENUS=1 makes DebugRenderer paint the menu/dialog/hangar/
     # ship-computer overlays during the pre-mission script phases. Without it
     # the screenshots in those frames are just black + the HUD player ship,
     # which makes the comparison video look like Godot skipped every menu.
-    RAPTOR_PLAYTHROUGH="$SCRIPT_PATH" \
+    RAPTOR_PLAYTHROUGH="$G_SCRIPT_PATH" \
     RAPTOR_PARITY_OUT="$G_DIR/parity.txt" \
+    RAPTOR_POS_DUMP="$G_DIR/positions.txt" \
+    RAPTOR_BULLET_DUMP="$G_DIR/bullets.txt" \
+    RAPTOR_BONUS_DUMP="$G_DIR/bonus.txt" \
     RAPTOR_TEST_FAST=1 \
     RAPTOR_RENDER_MENUS=1 \
     RAPTOR_SHOT_DIR="$G_DIR" \
@@ -86,7 +105,7 @@ if [[ "${REUSE_GODOT:-0}" -ne 1 ]]; then
     "$GODOT_BIN" --path "$REPO" \
         --audio-driver Dummy \
         --position 99999,99999 --resolution 320x200 \
-        --quit-after 20000 >"$G_DIR/log.txt" 2>&1
+        --quit-after "$GODOT_QUIT_AFTER" >"$G_DIR/log.txt" 2>&1
     echo "[compare]   frames: $(ls "$G_DIR"/*.png | wc -l | xargs)"
 fi
 
