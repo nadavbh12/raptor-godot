@@ -688,7 +688,9 @@ public partial class DebugRenderer : Node2D
         bool isMainMenu = menu.State == WinState.Menu
                           && menu.PilotCreateStep == 0
                           && !menu.InSectorSelect;
-        if (isMainMenu)
+        bool isMenuVisual = isMainMenu
+                            || (menu.State == WinState.Unknown && !menu.InSectorSelect);
+        if (isMenuVisual)
             DrawUiSprite(MenuChrome.Background);
 
         if (menu.State == WinState.Hangar)
@@ -706,7 +708,7 @@ public partial class DebugRenderer : Node2D
             return;
         }
 
-        if (menu.InSectorSelect || menu.State == WinState.Unknown)
+        if (menu.InSectorSelect)
         {
             DrawShipComputerOverlay(font);
             return;
@@ -1098,11 +1100,23 @@ public partial class DebugRenderer : Node2D
 
     private void DrawCreditsOverlay(Font font)
     {
-        DrawUiSprite(MenuChrome.ShipComputer);
-        DrawString(font, new Vector2(64, 44), "RAPTOR", HorizontalAlignment.Left, -1, 18, new Color(0.95f, 0.82f, 0.24f));
-        DrawString(font, new Vector2(64, 76), "CALL OF THE SHADOWS", HorizontalAlignment.Left, -1, 10, new Color(0.55f, 0.9f, 0.85f));
-        DrawString(font, new Vector2(64, 108), "CYGNUS STUDIOS", HorizontalAlignment.Left, -1, 10, new Color(0.85f, 0.9f, 0.7f));
-        DrawString(font, new Vector2(64, 176), "ENTER RETURNS", HorizontalAlignment.Left, -1, 8, new Color(0.85f, 0.9f, 0.7f));
+        var swd = LoadSwd("CREDIT_SWD");
+        if (swd == null) return;
+
+        var skip = new HashSet<int> { 0 };
+        SwdRenderer.Draw(_swdHost, swd, skipFieldIndices: skip);
+
+        string? text = SwdTextStream.LoadText("CREDITS_TXT");
+        if (string.IsNullOrEmpty(text)) return;
+
+        var field = swd.Fields[0];
+        SwdTextStream.Render(_swdHost, text,
+            swd.Window.X + field.X,
+            swd.Window.Y + field.Y,
+            field.Lx,
+            field.Ly,
+            field.FontName,
+            field.FontBaseColor);
     }
 
     private void DrawUiSprite(MenuSpriteSpec spec) => DrawUiSprite(spec, Colors.White);
