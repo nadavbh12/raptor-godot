@@ -699,6 +699,8 @@ public partial class DebugRenderer : Node2D
             if ((SimClock.Frame / 5) % 3 == 0)
                 DrawUiSprite(MenuChrome.HangarPilot);
             DrawHangarOverlay(font, menu);
+            if (menu.InAskBool)
+                DrawAskBoolOverlay(menu);
             return;
         }
 
@@ -829,6 +831,22 @@ public partial class DebugRenderer : Node2D
                 Y = swd.Window.Y + target.Y
             });
         }
+    }
+
+    private void DrawAskBoolOverlay(MenuStateMachine menu)
+    {
+        var swd = LoadSwd("ASK_SWD");
+        if (swd == null) return;
+
+        int selectedFieldId = menu.AskBoolYesSelected ? 2 : 3; // YES id=2, NO id=3.
+        SwdRenderer.Draw(_swdHost, swd, selectedFieldId: selectedFieldId);
+
+        var dragbar = swd.Fields[5];
+        DrawDosFont(menu.AskBoolQuestion,
+            swd.Window.X + dragbar.X,
+            swd.Window.Y + dragbar.Y,
+            dragbar.FontName,
+            dragbar.FontBaseColor);
     }
 
     private void DrawLoadMissionOverlay(MenuStateMachine menu)
