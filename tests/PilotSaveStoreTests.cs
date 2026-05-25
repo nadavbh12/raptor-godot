@@ -38,6 +38,48 @@ public class PilotSaveStoreTests
     }
 
     [Fact]
+    public void Save_writes_pilot_summary_readable_by_LoadAll()
+    {
+        using var dir = new TempDir();
+
+        int slot = PilotSaveStore.Save(dir.Path, name: "TEST", callsign: "T1", idPic: 2, score: 0);
+
+        Assert.Equal(0, slot);
+        var pilots = PilotSaveStore.LoadAll(dir.Path);
+        Assert.Single(pilots);
+        Assert.Equal("TEST", pilots[0].Name);
+        Assert.Equal("T1", pilots[0].Callsign);
+        Assert.Equal(2, pilots[0].IdPic);
+        Assert.Equal(0u, pilots[0].Score);
+    }
+
+    [Fact]
+    public void Save_assigns_next_available_slot()
+    {
+        using var dir = new TempDir();
+        WriteFakePilot(dir.Path, slot: 0, name: "ALICE", callsign: "ACE", idPic: 0, score: 1000);
+        WriteFakePilot(dir.Path, slot: 1, name: "BOB", callsign: "BEAR", idPic: 1, score: 2000);
+
+        int slot = PilotSaveStore.Save(dir.Path, name: "CAROL", callsign: "CAT", idPic: 3, score: 99);
+
+        Assert.Equal(2, slot);
+        Assert.True(File.Exists(Path.Combine(dir.Path, "CHAR0002.FIL")));
+    }
+
+    [Fact]
+    public void Save_round_trips_through_decrypt()
+    {
+        using var dir = new TempDir();
+        PilotSaveStore.Save(dir.Path, name: "ROUNDTRIP", callsign: "RT", idPic: 1, score: 12345);
+        var pilots = PilotSaveStore.LoadAll(dir.Path);
+        Assert.Single(pilots);
+        Assert.Equal("ROUNDTRIP", pilots[0].Name);
+        Assert.Equal("RT", pilots[0].Callsign);
+        Assert.Equal(1, pilots[0].IdPic);
+        Assert.Equal(12345u, pilots[0].Score);
+    }
+
+    [Fact]
     public void LoadAll_skips_corrupt_files()
     {
         using var dir = new TempDir();

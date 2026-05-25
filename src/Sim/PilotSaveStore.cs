@@ -21,6 +21,49 @@ public static class PilotSaveStore
     private const int PlayerHeaderSize = 88;
     private const string SaveKey = "CASTLE";
 
+    public static int Save(string directory, string name, string callsign, int idPic, uint score)
+    {
+        Directory.CreateDirectory(directory);
+        int slot = NextAvailableSlot(directory);
+        string path = Path.Combine(directory, $"CHAR{slot:D4}.FIL");
+
+        byte[] header = new byte[PlayerHeaderSize];
+        byte[] nameBytes = Encoding.ASCII.GetBytes(name);
+        Array.Copy(nameBytes, 0, header, 0, Math.Min(nameBytes.Length, 19));
+        byte[] callBytes = Encoding.ASCII.GetBytes(callsign);
+        Array.Copy(callBytes, 0, header, 20, Math.Min(callBytes.Length, 11));
+        BitConverter.GetBytes(idPic).CopyTo(header, 32);
+        BitConverter.GetBytes(score).CopyTo(header, 36);
+
+        Encrypt(header);
+        File.WriteAllBytes(path, header);
+        return slot;
+    }
+
+    private static int NextAvailableSlot(string directory)
+    {
+        for (int slot = 0; slot < MaxSave; slot++)
+        {
+            if (!File.Exists(Path.Combine(directory, $"CHAR{slot:D4}.FIL")))
+                return slot;
+        }
+        throw new InvalidOperationException("All pilot slots in use.");
+    }
+
+    private static void Encrypt(byte[] buffer)
+    {
+        int keyIndex = 0x0019 % SaveKey.Length;
+        int previous = SaveKey[keyIndex];
+        for (int i = 0; i < buffer.Length; i++)
+        {
+            int encrypted = (buffer[i] + SaveKey[keyIndex] + previous) & 0xFF;
+            buffer[i] = (byte)encrypted;
+            previous = encrypted;
+            keyIndex++;
+            if (keyIndex >= SaveKey.Length) keyIndex = 0;
+        }
+    }
+
     public static PilotSaveSummary? LoadFirstAvailable(string? directory = null)
     {
         var all = LoadAll(directory);
