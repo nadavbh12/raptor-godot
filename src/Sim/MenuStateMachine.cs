@@ -90,6 +90,10 @@ public sealed class MenuStateMachine
     private bool _inSectorSelect = false;
     private bool _inOptions = false;
     private bool _inLoadMission = false;
+    private bool _inAskBool = false;
+    private string _askBoolQuestion = "";
+    private bool _askBoolYes = true;
+    private Action? _askBoolOnYes;
     private int _optionsField = 0; // 0=detail, 1=music volume, 2=sound FX volume.
     private bool _optionDetailHigh = true;
     private int _optionMusicVolume = 64;
@@ -123,6 +127,9 @@ public sealed class MenuStateMachine
     public bool InSectorSelect => _inSectorSelect;
     public bool InOptions => _inOptions;
     public bool InLoadMission => _inLoadMission;
+    public bool InAskBool => _inAskBool;
+    public string AskBoolQuestion => _askBoolQuestion;
+    public bool AskBoolYesSelected => _askBoolYes;
     public int OptionsField => _optionsField;
     public bool OptionDetailHigh => _optionDetailHigh;
     public int OptionMusicVolume => _optionMusicVolume;
@@ -209,6 +216,10 @@ public sealed class MenuStateMachine
         _inLoadMission = false;
         _loadMissionPilots = new();
         LoadMissionSelectedIndex = 0;
+        _inAskBool = false;
+        _askBoolQuestion = "";
+        _askBoolYes = true;
+        _askBoolOnYes = null;
         _optionsField = 0;
         _helpTextName = "HELP1_TXT";
         EnterState(WinState.Menu, currentFrame, reAnchor: true);
@@ -483,6 +494,44 @@ public sealed class MenuStateMachine
         return false;
     }
 
+    private bool HandleAskBoolInput(string action)
+    {
+        switch (action)
+        {
+            case "Left":
+            case "Right":
+            case "Tab":
+            case "Up":
+            case "Down":
+                _askBoolYes = !_askBoolYes;
+                return true;
+            case "Escape":
+                _inAskBool = false;
+                _askBoolOnYes = null;
+                return true;
+            case "Return":
+            case "Space":
+                bool yes = _askBoolYes;
+                var cb = _askBoolOnYes;
+                _inAskBool = false;
+                _askBoolOnYes = null;
+                if (yes) cb?.Invoke();
+                return true;
+        }
+        return true;
+    }
+
+    private void OpenAskBoolSave()
+    {
+        _askBoolQuestion = $"Save {PilotName} - {Callsign} ?";
+        _askBoolYes = true;
+        string saveDir = PilotSaveDirectory ?? System.IO.Directory.GetCurrentDirectory();
+        string name = PilotName;
+        string callsign = Callsign;
+        _askBoolOnYes = () => PilotSaveStore.Save(saveDir, name, callsign, idPic: 0, score: 0);
+        _inAskBool = true;
+    }
+
     private bool HandleLoadMissionInput(string action)
     {
         if (action == "Escape")
@@ -626,6 +675,12 @@ public sealed class MenuStateMachine
 
     private bool HandleHangarInput(string action, int currentFrame)
     {
+        if (_inAskBool) return HandleAskBoolInput(action);
+        if (action == "F2" || action == "S")
+        {
+            OpenAskBoolSave();
+            return true;
+        }
         if (action == "Down" || action == "Right")
         {
             // In C: Down/Right → pos-- (SC_DOWN case in WINDOWS.C); wraps from 0 to 3.

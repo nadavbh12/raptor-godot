@@ -692,6 +692,103 @@ public class MenuStateMachineTests
         }
     }
 
+    [Fact]
+    public void F2_in_hangar_opens_AskBool_save_prompt()
+    {
+        var m = HangarReadyMachineWithSaveDir(out var dir);
+        using (dir)
+        {
+            m.HandleInput("F2", 100);
+
+            Assert.True(m.InAskBool);
+            Assert.Equal("Save TEST - T1 ?", m.AskBoolQuestion);
+            Assert.True(m.AskBoolYesSelected);
+            Assert.Equal(WinState.Hangar, m.State);
+        }
+    }
+
+    [Fact]
+    public void Return_with_YES_in_AskBool_save_writes_pilot_and_closes()
+    {
+        var m = HangarReadyMachineWithSaveDir(out var dir);
+        using (dir)
+        {
+            m.HandleInput("F2", 100);
+            m.HandleInput("Return", 110);
+
+            Assert.False(m.InAskBool);
+            Assert.Equal(WinState.Hangar, m.State);
+            var pilots = PilotSaveStore.LoadAll(dir.Path);
+            Assert.Single(pilots);
+            Assert.Equal("TEST", pilots[0].Name);
+            Assert.Equal("T1", pilots[0].Callsign);
+        }
+    }
+
+    [Fact]
+    public void Left_Right_Tab_toggle_AskBool_selection()
+    {
+        var m = HangarReadyMachineWithSaveDir(out var dir);
+        using (dir)
+        {
+            m.HandleInput("F2", 100);
+            Assert.True(m.AskBoolYesSelected);
+
+            m.HandleInput("Right", 110);
+            Assert.False(m.AskBoolYesSelected);
+
+            m.HandleInput("Left", 120);
+            Assert.True(m.AskBoolYesSelected);
+
+            m.HandleInput("Tab", 130);
+            Assert.False(m.AskBoolYesSelected);
+        }
+    }
+
+    [Fact]
+    public void Return_with_NO_in_AskBool_save_closes_without_writing()
+    {
+        var m = HangarReadyMachineWithSaveDir(out var dir);
+        using (dir)
+        {
+            m.HandleInput("F2", 100);
+            m.HandleInput("Right", 110); // → NO
+            m.HandleInput("Return", 120);
+
+            Assert.False(m.InAskBool);
+            Assert.Empty(PilotSaveStore.LoadAll(dir.Path));
+        }
+    }
+
+    [Fact]
+    public void Escape_in_AskBool_closes_without_writing()
+    {
+        var m = HangarReadyMachineWithSaveDir(out var dir);
+        using (dir)
+        {
+            m.HandleInput("F2", 100);
+            m.HandleInput("Escape", 110);
+
+            Assert.False(m.InAskBool);
+            Assert.Empty(PilotSaveStore.LoadAll(dir.Path));
+        }
+    }
+
+    private static MenuStateMachine HangarReadyMachineWithSaveDir(out PilotSaveStoreTests.TempDir dir)
+    {
+        dir = new PilotSaveStoreTests.TempDir();
+        var m = new MenuStateMachine { PilotSaveDirectory = dir.Path };
+        m.EnterMenu(0);
+        // Create pilot TEST / T1 / default difficulty → lands in hangar.
+        m.HandleInput("Return", 1); // Return on NEW MISSION (item 0)
+        foreach (var ch in "TEST") m.HandleInput(ch.ToString(), 2);
+        m.HandleInput("Return", 3);
+        foreach (var ch in "T1") m.HandleInput(ch.ToString(), 4);
+        m.HandleInput("Return", 5);
+        m.HandleInput("Return", 6); // accept default difficulty
+        return m;
+    }
+
     private static MenuStateMachine EnterLoadMissionWithThreePilots(out PilotSaveStoreTests.TempDir dir)
     {
         dir = new PilotSaveStoreTests.TempDir();
