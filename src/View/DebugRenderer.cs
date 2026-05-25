@@ -742,6 +742,8 @@ public partial class DebugRenderer : Node2D
         }
 
         DrawMainMenuOverlay(menu);
+        if (menu.InLoadMission)
+            DrawLoadMissionOverlay(menu);
         if (menu.InOptions)
             DrawOptionsOverlay(menu);
     }
@@ -827,6 +829,51 @@ public partial class DebugRenderer : Node2D
                 Y = swd.Window.Y + target.Y
             });
         }
+    }
+
+    private void DrawLoadMissionOverlay(MenuStateMachine menu)
+    {
+        var swd = LoadSwd("LOAD_SWD");
+        if (swd == null) return;
+
+        var skip = new HashSet<int> { 1, 9, 10, 12 };
+        SwdRenderer.Draw(_swdHost, swd, selectedFieldId: 2, skipFieldIndices: skip);
+
+        var pilot = menu.LoadMissionPilot;
+        if (pilot == null) return;
+
+        var idField = swd.Fields[1];
+        string portrait = pilot.IdPic switch
+        {
+            1 => "BMALE_PIC",
+            2 => "WFEMALE_PIC",
+            3 => "BFEMALE_PIC",
+            _ => "WMALE_PIC",
+        };
+        var portraitTex = _swdHost.LoadSprite(portrait);
+        if (portraitTex != null)
+            DrawTexture(portraitTex, new Vector2(swd.Window.X + idField.X, swd.Window.Y + idField.Y));
+
+        var name = swd.Fields[9];
+        DrawDosFont(pilot.Name,
+            swd.Window.X + name.X,
+            swd.Window.Y + name.Y,
+            name.FontName,
+            name.FontBaseColor);
+
+        var call = swd.Fields[10];
+        DrawDosFont(pilot.Callsign,
+            swd.Window.X + call.X,
+            swd.Window.Y + call.Y,
+            call.FontName,
+            call.FontBaseColor);
+
+        var credits = swd.Fields[12];
+        DrawDosFont(pilot.CreditsText,
+            swd.Window.X + credits.X,
+            swd.Window.Y + credits.Y,
+            credits.FontName,
+            credits.FontBaseColor);
     }
 
     private void DrawRegisterOverlay(Font font, MenuStateMachine menu)

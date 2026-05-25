@@ -1,5 +1,7 @@
 using Raptor.Sim;
 using Raptor.View;
+using System;
+using System.IO;
 using Xunit;
 
 namespace Raptor.Tests;
@@ -545,23 +547,163 @@ public class MenuStateMachineTests
     [Fact]
     public void Return_on_load_item_stays_in_Menu()
     {
-        var m = new MenuStateMachine();
+        using var dir = new PilotSaveStoreTests.TempDir();
+        PilotSaveStoreTests.WriteFakePilot(dir.Path, slot: 0, name: "ALICE", callsign: "ACE", idPic: 0, score: 1000);
+        var m = new MenuStateMachine { PilotSaveDirectory = dir.Path };
         m.EnterMenu(0);
         m.HandleInput("Down", 0);
         bool transitioned = m.HandleInput("Return", 93);
-        Assert.False(transitioned);
+        Assert.True(transitioned);
         Assert.Equal(WinState.Menu, m.State);
+        Assert.True(m.InLoadMission);
     }
 
     [Fact]
     public void Return_on_load_item_keeps_Menu_anchor_unchanged()
     {
-        var m = new MenuStateMachine();
+        using var dir = new PilotSaveStoreTests.TempDir();
+        PilotSaveStoreTests.WriteFakePilot(dir.Path, slot: 0, name: "ALICE", callsign: "ACE", idPic: 0, score: 1000);
+        var m = new MenuStateMachine { PilotSaveDirectory = dir.Path };
         m.EnterMenu(42);
         m.HandleInput("Down", 0);
         m.HandleInput("Return", 93);
         // Anchor must remain at the EnterMenu anchor value.
         Assert.Equal(42, m.StateEnteredFrame);
+    }
+
+    [Fact]
+    public void Return_on_load_item_with_no_pilots_does_not_enter_dialog()
+    {
+        using var dir = new PilotSaveStoreTests.TempDir();
+        var m = new MenuStateMachine { PilotSaveDirectory = dir.Path };
+        m.EnterMenu(42);
+        m.HandleInput("Down", 0);
+
+        bool transitioned = m.HandleInput("Return", 93);
+
+        Assert.False(transitioned);
+        Assert.False(m.InLoadMission);
+        Assert.Null(m.LoadMissionPilot);
+        Assert.Empty(m.LoadMissionPilots);
+    }
+
+    [Fact]
+    public void Escape_in_load_mission_closes_dialog_and_keeps_Menu_anchor()
+    {
+        using var dir = new PilotSaveStoreTests.TempDir();
+        PilotSaveStoreTests.WriteFakePilot(dir.Path, slot: 0, name: "ALICE", callsign: "ACE", idPic: 0, score: 1000);
+        var m = new MenuStateMachine { PilotSaveDirectory = dir.Path };
+        m.EnterMenu(42);
+        m.HandleInput("Down", 0);
+        m.HandleInput("Return", 93);
+
+        bool transitioned = m.HandleInput("Escape", 100);
+
+        Assert.True(transitioned);
+        Assert.False(m.InLoadMission);
+        Assert.Equal(WinState.Menu, m.State);
+        Assert.Equal(42, m.StateEnteredFrame);
+    }
+
+    [Fact]
+    public void Return_on_load_item_loads_first_available_pilot_summary()
+    {
+        using var dir = new PilotSaveStoreTests.TempDir();
+        PilotSaveStoreTests.WriteFakePilot(dir.Path, slot: 0, name: "ALICE", callsign: "ACE", idPic: 1, score: 29425);
+        var m = new MenuStateMachine { PilotSaveDirectory = dir.Path };
+        m.EnterMenu(0);
+        m.HandleInput("Down", 0);
+
+        m.HandleInput("Return", 93);
+
+        Assert.True(m.InLoadMission);
+        Assert.NotNull(m.LoadMissionPilot);
+        Assert.Equal("ALICE", m.LoadMissionPilot.Name);
+        Assert.Equal("ACE", m.LoadMissionPilot.Callsign);
+        Assert.Equal("0029425", m.LoadMissionPilot.CreditsText);
+        Assert.Equal(1, m.LoadMissionPilot.IdPic);
+    }
+
+    [Fact]
+    public void Down_in_load_mission_advances_to_next_pilot()
+    {
+        var m = EnterLoadMissionWithThreePilots(out var dir);
+        using (dir)
+        {
+            Assert.Equal("ALICE", m.LoadMissionPilot!.Name);
+
+            m.HandleInput("Down", 100);
+            Assert.Equal("BOB", m.LoadMissionPilot!.Name);
+
+            m.HandleInput("Down", 110);
+            Assert.Equal("CAROL", m.LoadMissionPilot!.Name);
+        }
+    }
+
+    [Fact]
+    public void Down_from_last_pilot_wraps_to_first()
+    {
+        var m = EnterLoadMissionWithThreePilots(out var dir);
+        using (dir)
+        {
+            m.HandleInput("Down", 100);
+            m.HandleInput("Down", 110);
+            m.HandleInput("Down", 120);
+            Assert.Equal("ALICE", m.LoadMissionPilot!.Name);
+        }
+    }
+
+    [Fact]
+    public void Up_from_first_pilot_wraps_to_last()
+    {
+        var m = EnterLoadMissionWithThreePilots(out var dir);
+        using (dir)
+        {
+            m.HandleInput("Up", 100);
+            Assert.Equal("CAROL", m.LoadMissionPilot!.Name);
+        }
+    }
+
+    [Fact]
+    public void PageDown_and_Left_navigate_like_Down_in_load_mission()
+    {
+        var m = EnterLoadMissionWithThreePilots(out var dir);
+        using (dir)
+        {
+            m.HandleInput("PageDown", 100);
+            Assert.Equal("BOB", m.LoadMissionPilot!.Name);
+
+            m.HandleInput("Left", 110);
+            Assert.Equal("CAROL", m.LoadMissionPilot!.Name);
+        }
+    }
+
+    [Fact]
+    public void PageUp_and_Right_navigate_like_Up_in_load_mission()
+    {
+        var m = EnterLoadMissionWithThreePilots(out var dir);
+        using (dir)
+        {
+            m.HandleInput("PageUp", 100);
+            Assert.Equal("CAROL", m.LoadMissionPilot!.Name);
+
+            m.HandleInput("Right", 110);
+            Assert.Equal("BOB", m.LoadMissionPilot!.Name);
+        }
+    }
+
+    private static MenuStateMachine EnterLoadMissionWithThreePilots(out PilotSaveStoreTests.TempDir dir)
+    {
+        dir = new PilotSaveStoreTests.TempDir();
+        PilotSaveStoreTests.WriteFakePilot(dir.Path, slot: 0, name: "ALICE", callsign: "ACE", idPic: 0, score: 1000);
+        PilotSaveStoreTests.WriteFakePilot(dir.Path, slot: 2, name: "BOB", callsign: "BEAR", idPic: 1, score: 25000);
+        PilotSaveStoreTests.WriteFakePilot(dir.Path, slot: 5, name: "CAROL", callsign: "CAT", idPic: 3, score: 99999);
+
+        var m = new MenuStateMachine { PilotSaveDirectory = dir.Path };
+        m.EnterMenu(0);
+        m.HandleInput("Down", 0);
+        m.HandleInput("Return", 93);
+        return m;
     }
 
     [Fact]

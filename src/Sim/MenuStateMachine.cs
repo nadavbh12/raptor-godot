@@ -89,6 +89,7 @@ public sealed class MenuStateMachine
     // After HANGAR exit → UNKNOWN (sector select dialog). One Return → game enter.
     private bool _inSectorSelect = false;
     private bool _inOptions = false;
+    private bool _inLoadMission = false;
     private int _optionsField = 0; // 0=detail, 1=music volume, 2=sound FX volume.
     private bool _optionDetailHigh = true;
     private int _optionMusicVolume = 64;
@@ -121,11 +122,19 @@ public sealed class MenuStateMachine
     public int HangarPosition => _hangarPos;
     public bool InSectorSelect => _inSectorSelect;
     public bool InOptions => _inOptions;
+    public bool InLoadMission => _inLoadMission;
     public int OptionsField => _optionsField;
     public bool OptionDetailHigh => _optionDetailHigh;
     public int OptionMusicVolume => _optionMusicVolume;
     public int OptionFxVolume => _optionFxVolume;
     public string HelpTextName => _helpTextName;
+    public string? PilotSaveDirectory { get; init; }
+    public System.Collections.Generic.IReadOnlyList<PilotSaveSummary> LoadMissionPilots => _loadMissionPilots;
+    public int LoadMissionSelectedIndex { get; private set; }
+    public PilotSaveSummary? LoadMissionPilot =>
+        _loadMissionPilots.Count == 0 ? null : _loadMissionPilots[LoadMissionSelectedIndex];
+
+    private System.Collections.Generic.List<PilotSaveSummary> _loadMissionPilots = new();
 
     /// <summary>
     /// The frame number at which the CURRENT (non-Unknown) context was entered.
@@ -197,6 +206,9 @@ public sealed class MenuStateMachine
         _hangarPos = 1;
         _inSectorSelect = false;
         _inOptions = false;
+        _inLoadMission = false;
+        _loadMissionPilots = new();
+        LoadMissionSelectedIndex = 0;
         _optionsField = 0;
         _helpTextName = "HELP1_TXT";
         EnterState(WinState.Menu, currentFrame, reAnchor: true);
@@ -319,6 +331,8 @@ public sealed class MenuStateMachine
     {
         if (_inOptions)
             return HandleOptionsInput(action);
+        if (_inLoadMission)
+            return HandleLoadMissionInput(action);
 
         // Pilot-creation sub-flow: absorb inputs until we've consumed enough Returns.
         if (_pilotCreateStep > 0)
@@ -448,7 +462,16 @@ public sealed class MenuStateMachine
                 // No win-state change; still MENU during character creation.
                 return true;
             }
-            // LOAD, OPTS, QUIT, RETURN: stub.
+            if (CurrentItem == LoadItemIndex)
+            {
+                _loadMissionPilots = PilotSaveStore.LoadAll(PilotSaveDirectory);
+                if (_loadMissionPilots.Count == 0)
+                    return false;
+                LoadMissionSelectedIndex = 0;
+                _inLoadMission = true;
+                return true;
+            }
+            // QUIT, RETURN: stub.
             return false;
         }
         if (action == "Escape")
@@ -458,6 +481,38 @@ public sealed class MenuStateMachine
             return true;
         }
         return false;
+    }
+
+    private bool HandleLoadMissionInput(string action)
+    {
+        if (action == "Escape")
+        {
+            _inLoadMission = false;
+            return true;
+        }
+
+        if (action == "Return")
+        {
+            _inLoadMission = false;
+            return true;
+        }
+
+        if (_loadMissionPilots.Count == 0)
+            return true;
+
+        // C RAP_LoadWin: Down/PageDown/Left → next; Up/PageUp/Right → prev; wrap.
+        int delta = action switch
+        {
+            "Down" or "PageDown" or "Left" => +1,
+            "Up" or "PageUp" or "Right" => -1,
+            _ => 0,
+        };
+        if (delta != 0)
+        {
+            int n = _loadMissionPilots.Count;
+            LoadMissionSelectedIndex = ((LoadMissionSelectedIndex + delta) % n + n) % n;
+        }
+        return true;
     }
 
     private bool HandleOptionsInput(string action)
