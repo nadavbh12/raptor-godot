@@ -66,6 +66,22 @@ public sealed class PlayerLogic
         _gAddY = 0;
     }
 
+    /// <summary>
+    /// Forced player displacement, mirroring C INPUT.C <c>IPT_FMovePlayer</c>.
+    /// Bypasses the input-driven velocity ramp. Y is unclamped at the top
+    /// (the ship is allowed to fly off-screen during the end-wave fly-off);
+    /// X stays inside the playfield gutters.
+    /// </summary>
+    public void ApplyForcedMove(int dx, int dy)
+    {
+        _oldX = X;
+        X = System.Math.Clamp(X + dx, MinX, MaxX);
+        Y += dy;
+        // Reset input-driven velocity so it doesn't fight the forced motion.
+        _gAddX = 0;
+        _gAddY = 0;
+    }
+
     public void SetShield(int shield)
     {
         Shield = System.Math.Clamp(shield, 0, MaxShield);

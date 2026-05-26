@@ -325,6 +325,13 @@ public partial class WaveController : Node
     private bool                  _endWaveFlag = false;
     private bool                  _missionCompleteNotified = false;
     private int                   _playerDeathCountdown = -1;
+    // End-of-wave fly-off countdown. -1 = inactive. When the wave ends and no
+    // enemies/explosions remain, this counts down from EndWaveSequence.Duration
+    // (60). The player ship glides up by 4 px/iter (and centers horizontally)
+    // once it crosses below EndWaveSequence.FlyOff (40). Mission complete fires
+    // when the countdown reaches 0. Mirrors RAP.C:599-617, 1039-1047.
+    private int                   _endWaveCountdown = -1;
+    public int                    EndWaveCountdown => _endWaveCountdown;
 
     // ── Scheduler ─────────────────────────────────────────────────────────────
     private readonly GamePhaseScheduler _scheduler;
@@ -501,6 +508,7 @@ public partial class WaveController : Node
         _endWaveFlag = false;
         _missionCompleteNotified = false;
         _playerDeathCountdown = -1;
+        _endWaveCountdown = -1;
         DrawPlayer = true;
         _subTick = 0;
         _gameLoopIter = 0;
@@ -670,7 +678,14 @@ public partial class WaveController : Node
             playthroughSpecial: _playthrough?.IsFireSpHeld ?? false,
             playthroughMega: _playthrough?.IsMegaHeld ?? false,
             interactive);
-        PlayerLogic.Tick(input.Dx, input.Dy);
+        // During end-of-wave fly-off, C calls IPT_PauseControl(TRUE) and the
+        // ship's motion comes entirely from RAP_DisplayStats' IPT_FMovePlayer
+        // (applied later in PhaseCleanup). Zero out directional input so the
+        // forced glide isn't fought by residual velocity.
+        if (EndWaveSequence.InputLocked(_endWaveCountdown))
+            PlayerLogic.Tick(0, 0);
+        else
+            PlayerLogic.Tick(input.Dx, input.Dy);
 
         // RAP.C SC_1..SC_MINUS — script-issued special-weapon switches.
         // Mirrors OBJS_MakeSpecial: silently ignored if the type isn't owned.
@@ -1535,15 +1550,35 @@ public partial class WaveController : Node
     {
         if (_missionCompleteNotified) return;
         bool enemiesRemaining = _enemies.Exists(e => e.Alive || e.PendingRemovalDump);
-        if (!ShouldCompleteMission(
-            _waveActive,
-            _demoReplay != null,
-            _endWaveFlag,
-            PlayerLogic.Alive,
-            enemiesRemaining,
-            _explosions.Count > 0))
-            return;
 
+        // Once the wave-end conditions are met, start the fly-off countdown
+        // instead of jumping straight to the hangar (mirrors RAP.C:1039-1047
+        // where startendwave counts down from END_DURATION before end_wave fires).
+        if (_endWaveCountdown < 0
+            && ShouldCompleteMission(
+                _waveActive,
+                _demoReplay != null,
+                _endWaveFlag,
+                PlayerLogic.Alive,
+                enemiesRemaining,
+                _explosions.Count > 0))
+        {
+            _endWaveCountdown = EndWaveSequence.Duration;
+        }
+
+        if (_endWaveCountdown < 0) return;
+
+        // Per-tick fly-off displacement (RAP.C:599-617).
+        var (dx, dy) = EndWaveSequence.PlayerDelta(
+            _endWaveCountdown, PlayerLogic.X, PlayerLogic.Alive);
+        if (dx != 0 || dy != 0)
+            PlayerLogic.ApplyForcedMove(dx, dy);
+
+        _endWaveCountdown--;
+        if (_endWaveCountdown > 0) return;
+
+        // Countdown hit zero: actually leave the wave (mirrors end_wave=TRUE
+        // in RAP.C:1041-1046 ending the gameplay loop).
         _missionCompleteNotified = true;
         _waveActive = false;
         _menu?.CompleteMission(SimClock.Frame);
