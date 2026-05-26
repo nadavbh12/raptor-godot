@@ -31,6 +31,8 @@ tests/screenshots/
 tests/.fsharp/
 tests/__pycache__/
 *.pyc
+# Pilot save files written by the C binary or Godot during parity sweeps.
+CHAR[0-9][0-9][0-9][0-9].FIL
 
 # Held-out test materials never enter Git in a sealed scenario; for now we
 # DO commit the held-out scripts and goldens (per spec §13a accepted risk),
