@@ -199,6 +199,7 @@ public partial class InteractiveInputController : Node
             Key.KpEnter => "Return",
             Key.Escape => "Escape",
             Key.F1 => "F1",
+            Key.F2 => "F2",
             Key.Space => "Space",
             _ => KeyToTextAction(keyEvent.Keycode, keyEvent.Unicode),
         };
