@@ -23,6 +23,9 @@ public partial class MenuController : Node
             Menu.OnStateChanged += emitter.OnStateChanged;
         }
 
+        // Wire MAIN_QUIT (EXIT TO DOS confirmation) to Godot's tree quit.
+        Menu.OnQuit += () => GetTree().Quit();
+
         // Enter MENU state immediately — mirrors raptor_parity_set_win_state(1)
         // called right after WIN_MainMenu shows its window.
         Menu.EnterMenu(SimClock.Frame);

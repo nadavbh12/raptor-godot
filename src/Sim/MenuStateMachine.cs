@@ -39,6 +39,16 @@ public sealed class MenuStateMachine
     public const int OptionsItemIndex = 2;
     public const int LoadItemIndex    = 1;
     public const int NewItemIndex     = 0;
+    public const int QuitItemIndex    = 5;
+    public const int ReturnItemIndex  = 6;
+
+    /// <summary>
+    /// Number of menu items selectable in the current context. C only shows
+    /// MAIN_RETURN when ingameflag is set (after pausing out of a wave). At
+    /// cold launch and after a clean menu return, navigation wraps over
+    /// 6 items (NEW..QUIT) and skips RETURN entirely.
+    /// </summary>
+    public int VisibleItemCount => InGame ? ItemCount : ItemCount - 1;
 
     /// <summary>
     /// Simulated animation delay (in frames at 70 Hz) before CREDITS state is anchored.
@@ -340,6 +350,8 @@ public sealed class MenuStateMachine
 
     private bool HandleMenuInput(string action, int currentFrame)
     {
+        if (_inAskBool)
+            return HandleAskBoolInput(action);
         if (_inOptions)
             return HandleOptionsInput(action);
         if (_inLoadMission)
@@ -430,15 +442,17 @@ public sealed class MenuStateMachine
             return true;
         }
 
-        // Normal menu navigation.
+        // Normal menu navigation. Wrap over the visible item set so the
+        // hidden MAIN_RETURN slot isn't reachable when not in-game.
+        int n = VisibleItemCount;
         if (action == "Down")
         {
-            CurrentItem = (CurrentItem + 1) % ItemCount;
+            CurrentItem = (CurrentItem + 1) % n;
             return false;
         }
         if (action == "Up")
         {
-            CurrentItem = (CurrentItem - 1 + ItemCount) % ItemCount;
+            CurrentItem = (CurrentItem - 1 + n) % n;
             return false;
         }
         if (action == "F1")
@@ -482,7 +496,13 @@ public sealed class MenuStateMachine
                 _inLoadMission = true;
                 return true;
             }
-            // QUIT, RETURN: stub.
+            if (CurrentItem == QuitItemIndex)
+            {
+                // C WINDOWS.C:608-611: case MAIN_QUIT → WIN_AskExit → WIN_AskBool("EXIT TO DOS")
+                OpenAskBoolQuit();
+                return true;
+            }
+            // RETURN: stub (only reachable when InGame).
             return false;
         }
         if (action == "Escape")
@@ -531,6 +551,23 @@ public sealed class MenuStateMachine
         _askBoolOnYes = () => PilotSaveStore.Save(saveDir, name, callsign, idPic: 0, score: 0);
         _inAskBool = true;
     }
+
+    private void OpenAskBoolQuit()
+    {
+        _askBoolQuestion = "EXIT TO DOS ?";
+        _askBoolYes = true;
+        _askBoolOnYes = () => { QuitRequested = true; OnQuit?.Invoke(); };
+        _inAskBool = true;
+    }
+
+    /// <summary>
+    /// True once the user confirmed YES on the EXIT TO DOS AskBool. The UI
+    /// layer should observe this each frame and call <c>GetTree().Quit()</c>.
+    /// </summary>
+    public bool QuitRequested { get; private set; }
+
+    /// <summary>Fired when the user confirmed EXIT TO DOS. UI may bind a Quit handler.</summary>
+    public event System.Action? OnQuit;
 
     private bool HandleLoadMissionInput(string action)
     {

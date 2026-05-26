@@ -27,22 +27,24 @@ public class MenuStateMachineTests
     }
 
     [Fact]
-    public void Down_advances_item_with_wrap()
+    public void Down_advances_item_with_wrap_skipping_RETURN_when_not_in_game()
     {
         var m = new MenuStateMachine();
         m.EnterMenu(0);
-        for (int i = 0; i < MenuStateMachine.ItemCount; i++)
+        for (int i = 0; i < m.VisibleItemCount; i++)
             m.HandleInput("Down", 0);
-        Assert.Equal(0, m.CurrentItem);  // wrapped back to 0
+        Assert.Equal(0, m.CurrentItem);  // wrapped back to NEW
     }
 
     [Fact]
-    public void Up_decrements_item_with_wrap()
+    public void Up_wraps_to_QUIT_skipping_RETURN_when_not_in_game()
     {
         var m = new MenuStateMachine();
         m.EnterMenu(0);
         m.HandleInput("Up", 0);
-        Assert.Equal(MenuStateMachine.ItemCount - 1, m.CurrentItem);
+        // C only shows MAIN_RETURN when ingameflag. From cold launch we wrap
+        // to QUIT (item 5), not RETURN (item 6).
+        Assert.Equal(MenuStateMachine.QuitItemIndex, m.CurrentItem);
     }
 
     [Fact]
@@ -772,6 +774,84 @@ public class MenuStateMachineTests
             Assert.False(m.InAskBool);
             Assert.Empty(PilotSaveStore.LoadAll(dir.Path));
         }
+    }
+
+    [Fact]
+    public void Up_from_NEW_wraps_to_QUIT_when_not_in_game()
+    {
+        var m = new MenuStateMachine();
+        m.EnterMenu(0);
+        Assert.Equal(MenuStateMachine.NewItemIndex, m.CurrentItem);
+
+        m.HandleInput("Up", 1);
+
+        // Wrap excludes RETURN (item 6) at cold launch — lands on QUIT (5).
+        Assert.Equal(MenuStateMachine.QuitItemIndex, m.CurrentItem);
+    }
+
+    [Fact]
+    public void Down_from_QUIT_wraps_to_NEW_when_not_in_game()
+    {
+        var m = new MenuStateMachine();
+        m.EnterMenu(0);
+        for (int i = 0; i < MenuStateMachine.QuitItemIndex; i++)
+            m.HandleInput("Down", 0);
+        Assert.Equal(MenuStateMachine.QuitItemIndex, m.CurrentItem);
+
+        m.HandleInput("Down", 1);
+
+        Assert.Equal(MenuStateMachine.NewItemIndex, m.CurrentItem);
+    }
+
+    [Fact]
+    public void Return_on_QUIT_opens_exit_to_dos_confirmation()
+    {
+        var m = new MenuStateMachine();
+        m.EnterMenu(0);
+        for (int i = 0; i < MenuStateMachine.QuitItemIndex; i++)
+            m.HandleInput("Down", 0);
+
+        bool transitioned = m.HandleInput("Return", 100);
+
+        Assert.True(transitioned);
+        Assert.True(m.InAskBool);
+        Assert.Equal("EXIT TO DOS ?", m.AskBoolQuestion);
+        Assert.True(m.AskBoolYesSelected);
+        Assert.False(m.QuitRequested);
+    }
+
+    [Fact]
+    public void Return_YES_on_exit_to_dos_sets_QuitRequested()
+    {
+        var m = new MenuStateMachine();
+        m.EnterMenu(0);
+        for (int i = 0; i < MenuStateMachine.QuitItemIndex; i++)
+            m.HandleInput("Down", 0);
+        m.HandleInput("Return", 100);  // open dialog
+
+        bool quitFired = false;
+        m.OnQuit += () => quitFired = true;
+        m.HandleInput("Return", 110);  // YES selected by default
+
+        Assert.True(m.QuitRequested);
+        Assert.True(quitFired);
+        Assert.False(m.InAskBool);
+    }
+
+    [Fact]
+    public void Return_NO_on_exit_to_dos_does_not_quit()
+    {
+        var m = new MenuStateMachine();
+        m.EnterMenu(0);
+        for (int i = 0; i < MenuStateMachine.QuitItemIndex; i++)
+            m.HandleInput("Down", 0);
+        m.HandleInput("Return", 100);  // open dialog
+        m.HandleInput("Right", 110);   // toggle to NO
+
+        m.HandleInput("Return", 120);
+
+        Assert.False(m.QuitRequested);
+        Assert.False(m.InAskBool);
     }
 
     private static MenuStateMachine HangarReadyMachineWithSaveDir(out PilotSaveStoreTests.TempDir dir)
