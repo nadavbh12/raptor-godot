@@ -13,6 +13,8 @@ namespace Raptor.Sim.Enemy;
 /// FlightType handling:
 ///   0 (REPEAT)  — cycle through flightx[0..NumFlight-1], wrap forever.
 ///   1 (LINEAR)  — walk flightx[0..NumFlight-1] once, then mark Done.
+///   2 (KAMI)    — walk waypoints, then chase player_cx/player_cy, then
+///                 fly past until off-screen (KAMI_FLY → KAMI_CHASE → KAMI_END).
 /// Other flight types stubbed to LINEAR for now.
 /// </summary>
 public sealed class EnemyLogic
@@ -46,6 +48,12 @@ public sealed class EnemyLogic
     }
 
     // ── Flight-path state ────────────────────────────────────────────────────
+    // C kami states: KAMI_FLY=0 (walk waypoints), KAMI_CHASE=1 (target player),
+    // KAMI_END=2 (continue past, terminate when off-screen).
+    private const int KamiFly = 0;
+    private const int KamiChase = 1;
+    private const int KamiEnd = 2;
+    private int _kami = KamiFly;
     private int _flightIdx;   // index into next flight step (0-based)
     // Bresenham movement state (mirrors MOVEOBJ in C).
     private int _tgtX, _tgtY;   // target screen position for current step
@@ -138,7 +146,7 @@ public sealed class EnemyLogic
     {
         _firedThisTick = null;  // reset every tick so extras aren't re-emitted
         if (!Alive && !PendingRemovalDump) return null;
-        AdvancePath();
+        AdvancePath(playerX, playerY);
         var fired = MaybeFireAll(playerX, playerY);
         if (fired == null || fired.Count == 0) return null;
         _firedThisTick = fired.Count > 1 ? fired : null;
@@ -234,7 +242,7 @@ public sealed class EnemyLogic
         _pathInitialised = true;
     }
 
-    private void AdvancePath()
+    private void AdvancePath(int playerX = 144, int playerY = 160)
     {
         if (!_pathInitialised) return;
 
@@ -278,9 +286,20 @@ public sealed class EnemyLogic
         {
             _mx = _tgtX;
             _my = _tgtY;
-            if (!AdvanceFlightSegment()) return;
+            if (!AdvanceFlightSegment(playerX, playerY)) return;
             MoveMobjStep();
             MoveEobjSteps(leftover);
+        }
+
+        // F_KAMI in KAMI_END terminates on tight off-screen bounds (ENEMY.C:913-925).
+        if (Meta.FlightType == 2 && _kami == KamiEnd)
+        {
+            if (_my > 201 || _mx > 320 + Meta.HalfX
+                || _my + Meta.Width < 0 || _mx + Meta.Width < 0)
+            {
+                Done = true;
+                return;
+            }
         }
 
         // C removes enemies only when the flight path completes (doneflag after
@@ -347,15 +366,35 @@ public sealed class EnemyLogic
     /// move.x2/y2 from sx + flightx, sy + flighty, then InitMobj.
     /// Returns false if the path completed (Done = true).
     /// </summary>
-    private bool AdvanceFlightSegment()
+    private bool AdvanceFlightSegment(int playerX = 144, int playerY = 160)
     {
         int n = Math.Min(Meta.NumFlight,
                 Math.Min(Meta.FlightX.Length, Meta.FlightY.Length));
+
+        // F_KAMI: KAMI_END = no more target changes. The bresenham is
+        // exhausted; the off-screen check in AdvancePath handles termination.
+        if (Meta.FlightType == 2 && _kami == KamiEnd)
+            return false;
+
+        // F_KAMI: KAMI_CHASE → KAMI_END transition. Target the player one
+        // final time (mirrors ENEMY.C:935-940).
+        if (Meta.FlightType == 2 && _kami == KamiChase)
+        {
+            _kami = KamiEnd;
+            InitBresenhamForTarget(_mx, _my, playerX, playerY);
+            return true;
+        }
 
         if (_flightIdx >= n)
         {
             if (Meta.FlightType == 0)  // REPEAT: wrap around
                 _flightIdx = 0;
+            else if (Meta.FlightType == 2)  // KAMI: out of waypoints → target player, enter KAMI_END
+            {
+                _kami = KamiEnd;
+                InitBresenhamForTarget(_mx, _my, playerX, playerY);
+                return true;
+            }
             else  // LINEAR (1) or other: done after last segment
             {
                 Done = true;
@@ -366,6 +405,11 @@ public sealed class EnemyLogic
         int newTgtX = _sx + Meta.FlightX[_flightIdx];
         int newTgtY = _sy + Meta.FlightY[_flightIdx];
         _flightIdx++;
+        // F_KAMI: after assigning the LAST waypoint as the target, mark
+        // KAMI_CHASE so the NEXT move.done transitions to chasing the player
+        // (mirrors ENEMY.C:951-953).
+        if (Meta.FlightType == 2 && _kami == KamiFly && _flightIdx >= n)
+            _kami = KamiChase;
         InitBresenhamForTarget(_mx, _my, newTgtX, newTgtY);
         return true;
     }

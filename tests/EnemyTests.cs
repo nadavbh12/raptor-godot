@@ -246,6 +246,86 @@ public class EnemyLogicTests
         Assert.False(new EnemyLogic(meta, 0, 0).IsGround);
     }
 
+    // F_KAMI tests — SHIP34G1_PIC orbs in level 1 are F_KAMI enemies that
+    // walk above-screen waypoints, then chase the player, then fly past.
+    // C ENEMY.C:904-957. Bug regression: stubbing F_KAMI to LINEAR caused
+    // them to terminate after the off-screen waypoints, so they never
+    // entered the visible play area (only their projected shadows showed).
+    [Fact]
+    public void Kami_enemy_is_not_done_after_completing_waypoints()
+    {
+        var meta = new SpriteMeta
+        {
+            Hits = 10,
+            NumFlight = 2,
+            FlightType = 2,    // F_KAMI
+            FlightX = new[] { 0, 0 },
+            FlightY = new[] { 10, 20 },
+            MoveSpeed = 2,
+            Width = 16, Height = 16,
+        };
+        var e = new EnemyLogic(meta, spawnX: 160, mapY: 80);
+
+        for (int i = 0; i < 200 && !e.Done; i++)
+            e.Tick(playerX: 160, playerY: 150);
+
+        // LINEAR would Done. KAMI must transition to chase and keep going.
+        Assert.False(e.Done);
+    }
+
+    [Fact]
+    public void Kami_enemy_chases_toward_player_after_waypoints()
+    {
+        var meta = new SpriteMeta
+        {
+            Hits = 10,
+            NumFlight = 1,
+            FlightType = 2,
+            FlightX = new[] { 0 },
+            FlightY = new[] { 5 },     // tiny waypoint — chase fires fast
+            MoveSpeed = 2,
+            Width = 16, Height = 16,
+        };
+        var e = new EnemyLogic(meta, spawnX: 100, mapY: 50);
+
+        // Run until clearly past waypoints (~30 ticks moves only 60px).
+        for (int i = 0; i < 60; i++)
+            e.Tick(playerX: 200, playerY: 180);
+
+        // Without chase, the enemy stops at the waypoint (~100, sy+5) and
+        // does nothing. With chase, X must trend toward player_x=200.
+        Assert.True(e.X > 110,
+            $"Expected enemy to chase toward player (x>110), got X={e.X} Y={e.Y}");
+    }
+
+    [Fact]
+    public void Kami_enemy_terminates_only_when_off_screen()
+    {
+        var meta = new SpriteMeta
+        {
+            Hits = 10,
+            NumFlight = 1,
+            FlightType = 2,
+            FlightX = new[] { 0 },
+            FlightY = new[] { 5 },
+            MoveSpeed = 2,
+            Width = 16, Height = 16,
+        };
+        var e = new EnemyLogic(meta, spawnX: 100, mapY: 50);
+
+        for (int i = 0; i < 1000 && !e.Done; i++)
+            e.Tick(playerX: 400, playerY: 400);   // player off-screen lower-right
+
+        Assert.True(e.Done, "KAMI should eventually terminate by going off-screen");
+        // X/Y reflect the PRE-move position from the last tick (mirrors C's
+        // sprite->x/y vs move.x/y semantics — the off-screen test uses POST-move
+        // move.y). So display position is "near" the boundary at termination.
+        bool nearOffScreen = e.X > 200 || e.X + meta.Width < 5
+                           || e.Y > 195 || e.Y + meta.Width < 5;
+        Assert.True(nearOffScreen,
+            $"KAMI should be heading off-screen at termination, X={e.X} Y={e.Y}");
+    }
+
     // Regression: F_GROUNDRIGHT enemy only slides right after y reaches 0
     // (ENEMY.C:952: `if (sprite->y >= 0)`). Above the screen it just falls.
     [Fact]
