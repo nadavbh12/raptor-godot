@@ -420,6 +420,85 @@ public class MenuStateMachineTests
         Assert.Equal(expectedAnchor, m.StateEnteredFrame);
     }
 
+    // Regression: in C, WIN_Credits/HELP_Win are blocking sub-calls — control
+    // returns into the WIN_MainMenu input loop and main-menu keys still work.
+    // Godot models them as a transition out to WinState.Unknown (to match C
+    // parity.c which emits win=UNKNOWN at fc 140/210 in credits.parity.txt).
+    // The renderer draws the main menu visual when Unknown && !InSectorSelect,
+    // so the screen looks normal — but HandleInput must also keep routing keys
+    // to the main-menu handler or the menu appears stuck after Esc from
+    // Credits/Order/Help (interactive-only regression — scripted parity ended
+    // its run at Esc and never noticed).
+    [Fact]
+    public void Down_after_Credits_exit_moves_main_menu_selection()
+    {
+        var m = new MenuStateMachine();
+        m.EnterMenu(0);
+        for (int i = 0; i < 4; i++) m.HandleInput("Down", 0);
+        Assert.Equal(MenuStateMachine.CreditsItemIndex, m.CurrentItem);
+        m.HandleInput("Return", 100);           // enter CREDITS
+        m.HandleInput("Return", 200);           // exit CREDITS → UNKNOWN
+        Assert.Equal(WinState.Unknown, m.State);
+
+        m.HandleInput("Down", 210);
+        Assert.Equal(MenuStateMachine.QuitItemIndex, m.CurrentItem);
+    }
+
+    [Fact]
+    public void Down_after_Help_exit_moves_main_menu_selection()
+    {
+        var m = new MenuStateMachine();
+        m.EnterMenu(0);
+        m.HandleInput("F1", 50);                // enter HELP via F1
+        m.HandleInput("Escape", 120);           // exit HELP → UNKNOWN
+        Assert.Equal(WinState.Unknown, m.State);
+        int before = m.CurrentItem;
+
+        m.HandleInput("Down", 130);
+        int n = m.VisibleItemCount;
+        Assert.Equal((before + 1) % n, m.CurrentItem);
+    }
+
+    [Fact]
+    public void Return_after_Order_exit_reopens_help_via_main_menu()
+    {
+        // Order item routes to WinState.Help with RAP1_TXT. After Esc the
+        // user lands in Unknown but should still be able to Return on the
+        // Order item again (no Down needed — selection is preserved).
+        var m = new MenuStateMachine();
+        m.EnterMenu(0);
+        for (int i = 0; i < 3; i++) m.HandleInput("Down", 0);
+        Assert.Equal(MenuStateMachine.OrderItemIndex, m.CurrentItem);
+        m.HandleInput("Return", 50);            // enter HELP (RAP1_TXT)
+        Assert.Equal(WinState.Help, m.State);
+        m.HandleInput("Escape", 100);           // exit HELP → UNKNOWN
+        Assert.Equal(WinState.Unknown, m.State);
+        Assert.Equal(MenuStateMachine.OrderItemIndex, m.CurrentItem);
+
+        bool transitioned = m.HandleInput("Return", 110);
+        Assert.True(transitioned);
+        Assert.Equal(WinState.Help, m.State);
+        Assert.Equal("RAP1_TXT", m.HelpTextName);
+    }
+
+    [Fact]
+    public void Escape_after_Credits_exit_returns_to_Menu_state()
+    {
+        // Pressing Escape from the main menu visual rebuilds WIN_MainMenu in
+        // C; in Godot we route through EnterMenu, which transitions us back
+        // to the proper WinState.Menu (so subsequent parity emission matches
+        // a normal main-menu session, not a stale Unknown).
+        var m = new MenuStateMachine();
+        m.EnterMenu(0);
+        for (int i = 0; i < 4; i++) m.HandleInput("Down", 0);
+        m.HandleInput("Return", 100);           // enter CREDITS
+        m.HandleInput("Return", 200);           // exit CREDITS → UNKNOWN
+        Assert.Equal(WinState.Unknown, m.State);
+
+        m.HandleInput("Escape", 210);
+        Assert.Equal(WinState.Menu, m.State);
+    }
+
     // -------------------------------------------------------------------------
     // Stage 5a: ORDER item → HELP (order script)
     // -------------------------------------------------------------------------

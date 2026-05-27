@@ -347,10 +347,13 @@ public class EnemyLogicTests
         };
         var e = new EnemyLogic(meta, spawnX: 160, mapY: 80);
 
-        for (int i = 0; i < 200 && !e.Done; i++)
+        // 30 ticks: waypoints (~tick 10) + early chase. LINEAR would Done at
+        // ~tick 10 when out of waypoints; KAMI must keep going. Capped well
+        // before the off-screen termination check fires (~tick 60 for this
+        // setup, once the chase bresenham walks past the player).
+        for (int i = 0; i < 30 && !e.Done; i++)
             e.Tick(playerX: 160, playerY: 150);
 
-        // LINEAR would Done. KAMI must transition to chase and keep going.
         Assert.False(e.Done);
     }
 
@@ -405,6 +408,42 @@ public class EnemyLogicTests
                            || e.Y > 195 || e.Y + meta.Width < 5;
         Assert.True(nearOffScreen,
             $"KAMI should be heading off-screen at termination, X={e.X} Y={e.Y}");
+    }
+
+    // Regression: F_KAMI orbs got stuck at the player's position once the
+    // KAMI_CHASE→KAMI_END bresenham completed in the visible playfield.
+    // C ENEMY.C:928 only does the move.done snap-and-advance block when
+    // `kami != KAMI_END`; our port ran it unconditionally, so the snap kept
+    // reverting the post-bresenham step and AdvanceFlightSegment short-
+    // circuited before the off-screen check.
+    //
+    // With player ON-screen (typical), the orb's chase target is inside the
+    // playfield. After the bresenham reaches that target the orb must keep
+    // moving in the original direction and terminate when it leaves the
+    // tight off-screen bounds at ENEMY.C:913-925.
+    [Fact]
+    public void Kami_enemy_terminates_with_player_on_screen()
+    {
+        var meta = new SpriteMeta
+        {
+            Hits = 10,
+            NumFlight = 1,
+            FlightType = 2,        // F_KAMI
+            FlightX = new[] { 0 },
+            FlightY = new[] { 5 },  // tiny waypoint so chase fires fast
+            MoveSpeed = 2,
+            Width = 16, Height = 16,
+        };
+        var e = new EnemyLogic(meta, spawnX: 100, mapY: 50);
+
+        // Player at a typical on-screen position near the bottom of the
+        // playfield. The chase target lands inside the visible area.
+        for (int i = 0; i < 1000 && !e.Done; i++)
+            e.Tick(playerX: 144, playerY: 160);
+
+        Assert.True(e.Done,
+            $"KAMI orb should terminate even with on-screen player, " +
+            $"got X={e.X} Y={e.Y} after 1000 ticks");
     }
 
     // Regression: F_GROUNDRIGHT enemy only slides right after y reaches 0

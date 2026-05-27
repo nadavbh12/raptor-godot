@@ -294,6 +294,16 @@ public sealed class MenuStateMachine
                     EnterGame(currentFrame);
                     return true;
                 }
+                // Unknown && !InSectorSelect is the post-Credits/Help limbo
+                // state: parity-wise it must stay "UNKNOWN" (credits.parity.txt
+                // emits win=UNKNOWN at fc 140/210), but visually we render the
+                // main menu (DebugRenderer's `Unknown && !InSectorSelect`
+                // fallback). C achieves the same by returning into
+                // WIN_MainMenu's input loop after WIN_Credits/HELP_Win, so
+                // route keys to the main-menu handler here to keep parity
+                // labels intact while restoring live interactivity.
+                if (!_inSectorSelect && _pilotCreateStep == 0)
+                    return HandleMenuInput(action, currentFrame);
                 break;
         }
         return false;

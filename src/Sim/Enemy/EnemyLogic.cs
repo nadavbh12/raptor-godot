@@ -286,7 +286,16 @@ public sealed class EnemyLogic
         // C ENEMY_Think (ENEMY.C:822-853): if move.done, snap to old target,
         // advance to the next flight segment, do one free MoveMobj step, then
         // consume the leftover speed via MoveEobj on the new segment.
-        if (_moveDone)
+        //
+        // C ENEMY.C:928 gates this block on `kami != KAMI_END`: once a KAMI
+        // orb has its final player-chase target the bresenham must keep
+        // walking past it (MoveEobjSteps still steps because the while loop is
+        // gated by speed, not maxloop) so the off-screen check below can fire.
+        // Running the snap-and-advance dance in KAMI_END would revert each
+        // post-bresenham step back to the chase target and short-circuit out
+        // via AdvanceFlightSegment, leaving the orb glued near the player.
+        bool inKamiEnd = Meta.FlightType == 2 && _kami == KamiEnd;
+        if (_moveDone && !inKamiEnd)
         {
             _mx = _tgtX;
             _my = _tgtY;
@@ -296,7 +305,7 @@ public sealed class EnemyLogic
         }
 
         // F_KAMI in KAMI_END terminates on tight off-screen bounds (ENEMY.C:913-925).
-        if (Meta.FlightType == 2 && _kami == KamiEnd)
+        if (inKamiEnd)
         {
             if (_my > 201 || _mx > 320 + Meta.HalfX
                 || _my + Meta.Width < 0 || _mx + Meta.Width < 0)
