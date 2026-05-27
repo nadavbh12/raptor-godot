@@ -10,7 +10,13 @@ public sealed record PilotSaveSummary(
     string Name,
     string Callsign,
     int IdPic,
-    uint Score)
+    uint Score,
+    int SWeapon,
+    int CurGame,
+    int[] GameWave,    // 3 entries (one per game/episode)
+    int[] Diff,        // 4 entries (one per game/episode)
+    bool TrainFlag,
+    bool FinTrain)
 {
     public string CreditsText => Score.ToString("D7");
 }
@@ -105,17 +111,46 @@ public static class PilotSaveStore
         Array.Copy(encrypted, header, PlayerHeaderSize);
         Decrypt(header);
 
+        // PLAYEROBJ layout (C PUBLIC.H, sizeof = 88):
+        //   0..19   name[20]
+        //   20..31  callsign[12]
+        //   32..35  id_pic (INT)
+        //   36..39  score (DWORD)
+        //   40..43  sweapon (INT — current special weapon)
+        //   44..47  cur_game (INT — current game/episode 0..3)
+        //   48..59  game_wave[3] (INT each — current wave per game)
+        //   60..63  numobjs (INT — count of OBJ records following)
+        //   64..79  diff[4] (INT each — difficulty 0..3 per game)
+        //   80..83  trainflag (BOOL)
+        //   84..87  fintrain (BOOL)
         string name = ReadCString(header, 0, 20);
         string callsign = ReadCString(header, 20, 12);
         int idPic = BitConverter.ToInt32(header, 32);
         uint score = BitConverter.ToUInt32(header, 36);
+        int sweapon = BitConverter.ToInt32(header, 40);
+        int curGame = BitConverter.ToInt32(header, 44);
+        var gameWave = new[] {
+            BitConverter.ToInt32(header, 48),
+            BitConverter.ToInt32(header, 52),
+            BitConverter.ToInt32(header, 56),
+        };
+        // numobjs at 60..63 (used by RAP_SavePlayer to write OBJ count; we don't load the inventory yet).
+        var diff = new[] {
+            BitConverter.ToInt32(header, 64),
+            BitConverter.ToInt32(header, 68),
+            BitConverter.ToInt32(header, 72),
+            BitConverter.ToInt32(header, 76),
+        };
+        bool trainFlag = BitConverter.ToInt32(header, 80) != 0;
+        bool finTrain = BitConverter.ToInt32(header, 84) != 0;
 
         if (string.IsNullOrWhiteSpace(name) && string.IsNullOrWhiteSpace(callsign))
             return null;
         if (idPic < 0 || idPic > 3)
             idPic = 0;
 
-        return new PilotSaveSummary(slot, name, callsign, idPic, score);
+        return new PilotSaveSummary(slot, name, callsign, idPic, score,
+            sweapon, curGame, gameWave, diff, trainFlag, finTrain);
     }
 
     private static string ReadCString(byte[] bytes, int offset, int length)

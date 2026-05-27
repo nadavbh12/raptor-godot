@@ -134,6 +134,12 @@ public sealed class MenuStateMachine
     public int PilotCreateStep => _pilotCreateStep;
     public string PilotName { get; private set; } = "";
     public string Callsign { get; private set; } = "";
+    /// <summary>Portrait variant (0=WMALE, 1=BMALE, 2=WFEMALE, 3=BFEMALE).</summary>
+    public int IdPic { get; private set; } = 0;
+    /// <summary>Fires when a saved pilot is loaded via the LOAD dialog. Receives the
+    /// full summary so subscribers (e.g. WaveController) can apply Score, CurGame,
+    /// diff, etc. to active game state.</summary>
+    public event System.Action<PilotSaveSummary>? OnPilotLoaded;
     public int DifficultyFieldId => _difficultyFieldId;
     public int HangarPosition => _hangarPos;
     public bool InSectorSelect => _inSectorSelect;
@@ -559,6 +565,22 @@ public sealed class MenuStateMachine
         return true;
     }
 
+    /// <summary>
+    /// Apply a loaded pilot's PLAYEROBJ header to active menu state, fire
+    /// OnPilotLoaded so subscribers can pick up gameplay-state fields (score,
+    /// cur_game, diff), and transition to Hangar. Mirrors the C path
+    /// LOADSAVE.C:608-612 → WINDOWS.C:2112-2114 (ingameflag=FALSE, exit menu).
+    /// </summary>
+    public void ApplyLoadedPilot(PilotSaveSummary pilot, int currentFrame)
+    {
+        PilotName = pilot.Name;
+        Callsign = pilot.Callsign;
+        IdPic = pilot.IdPic;
+        OnPilotLoaded?.Invoke(pilot);
+        EnterState(WinState.Hangar, currentFrame + HangarFadeFrames, reAnchor: true);
+        _hangarPos = 1;  // HANGTOSTORE → SUPPLIES
+    }
+
     private void OpenAskBoolSave()
     {
         _askBoolQuestion = $"Save {PilotName} - {Callsign} ?";
@@ -597,7 +619,16 @@ public sealed class MenuStateMachine
 
         if (action == "Return")
         {
+            // C LOADSAVE.C:608-612: Return on LOAD_LOAD calls RAP_LoadPlayer
+            // which copies the saved PLAYEROBJ into active game state, then
+            // returns to the hangar (ingameflag=FALSE in WIN_MainMenu exits
+            // the menu loop). Apply the selected pilot's data here, fire
+            // OnPilotLoaded so WaveController can pick up Score etc., then
+            // transition to Hangar.
+            var picked = LoadMissionPilot;
             _inLoadMission = false;
+            if (picked != null)
+                ApplyLoadedPilot(picked, StateEnteredFrame);
             return true;
         }
 

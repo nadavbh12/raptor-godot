@@ -26,6 +26,12 @@ public partial class MenuController : Node
         // Wire MAIN_QUIT (EXIT TO DOS confirmation) to Godot's tree quit.
         Menu.OnQuit += () => GetTree().Quit();
 
+        // Apply gameplay state from a loaded pilot (Score for now; CurGame and
+        // diff are reserved for when those fields drive game start).
+        var wave = GetNodeOrNull<WaveController>("../WaveController");
+        if (wave != null)
+            Menu.OnPilotLoaded += pilot => wave.SetScore(pilot.Score);
+
         // Enter MENU state immediately — mirrors raptor_parity_set_win_state(1)
         // called right after WIN_MainMenu shows its window.
         Menu.EnterMenu(SimClock.Frame);

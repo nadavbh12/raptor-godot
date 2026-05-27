@@ -729,6 +729,54 @@ public class MenuStateMachineTests
     }
 
     [Fact]
+    public void Return_on_LOAD_dialog_applies_pilot_and_transitions_to_Hangar()
+    {
+        using var dir = new PilotSaveStoreTests.TempDir();
+        PilotSaveStoreTests.WriteFakePilot(dir.Path, slot: 0,
+            name: "VETERAN", callsign: "VET", idPic: 3, score: 42000,
+            sweapon: 4, curGame: 1, gameWave: new[] { 5, 0, 0 },
+            diff: new[] { 2, 2, 2, 0 }, trainFlag: false, finTrain: false);
+        var m = new MenuStateMachine { PilotSaveDirectory = dir.Path };
+        m.EnterMenu(0);
+        m.HandleInput("Down", 0);   // → LOAD MISSION
+        m.HandleInput("Return", 1); // open LOAD dialog
+
+        PilotSaveSummary? loadedSummary = null;
+        m.OnPilotLoaded += s => loadedSummary = s;
+
+        m.HandleInput("Return", 10); // confirm selection
+
+        Assert.False(m.InLoadMission);
+        Assert.Equal(WinState.Hangar, m.State);
+        Assert.Equal("VETERAN", m.PilotName);
+        Assert.Equal("VET", m.Callsign);
+        Assert.Equal(3, m.IdPic);
+        Assert.NotNull(loadedSummary);
+        Assert.Equal(42000u, loadedSummary!.Score);
+    }
+
+    [Fact]
+    public void Escape_in_LOAD_dialog_does_not_apply_pilot()
+    {
+        using var dir = new PilotSaveStoreTests.TempDir();
+        PilotSaveStoreTests.WriteFakePilot(dir.Path, slot: 0,
+            name: "VETERAN", callsign: "VET", idPic: 3, score: 42000);
+        var m = new MenuStateMachine { PilotSaveDirectory = dir.Path };
+        m.EnterMenu(0);
+        m.HandleInput("Down", 0);
+        m.HandleInput("Return", 1); // open LOAD dialog
+
+        bool fired = false;
+        m.OnPilotLoaded += _ => fired = true;
+        m.HandleInput("Escape", 10);
+
+        Assert.False(m.InLoadMission);
+        Assert.False(fired);
+        Assert.Equal(WinState.Menu, m.State);
+        Assert.Equal("", m.PilotName);
+    }
+
+    [Fact]
     public void Return_with_YES_in_AskBool_save_writes_pilot_and_closes()
     {
         var m = HangarReadyMachineWithSaveDir(out var dir);

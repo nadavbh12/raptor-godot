@@ -168,6 +168,10 @@ public partial class WaveController : Node
     public  PlayerShooter  Shooter       { get; } = new();
     public  uint           Score { get; private set; } = 0;
 
+    /// <summary>Forcibly set the score (e.g. when loading a saved pilot).
+    /// Bypasses the normal incremental score-from-enemy-kills path.</summary>
+    public void SetScore(uint score) => Score = score;
+
     // C SHOTS_PlayerShoot uses libc `random()` for DUMB_MISSLE scatter and
     // MINI_GUN target picks. We share a dedicated Random seeded off the wave
     // RNG so PlayerShooter remains testable without a Godot RNG.
