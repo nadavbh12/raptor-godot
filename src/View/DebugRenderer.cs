@@ -845,12 +845,7 @@ public partial class DebugRenderer : Node2D
         int selectedFieldId = menu.AskBoolYesSelected ? 2 : 3; // YES id=2, NO id=3.
         SwdRenderer.Draw(_swdHost, swd, selectedFieldId: selectedFieldId);
 
-        var dragbar = swd.Fields[5];
-        DrawDosFont(menu.AskBoolQuestion,
-            swd.Window.X + dragbar.X,
-            swd.Window.Y + dragbar.Y,
-            dragbar.FontName,
-            dragbar.FontBaseColor);
+        DrawDragBarText(swd, menu.AskBoolQuestion);
     }
 
     private void DrawWinMsgOverlay(MenuStateMachine menu)
@@ -864,12 +859,24 @@ public partial class DebugRenderer : Node2D
         var skip = new HashSet<int> { 6, 7 };
         SwdRenderer.Draw(_swdHost, swd, selectedFieldId: -1, skipFieldIndices: skip);
 
+        DrawDragBarText(swd, menu.WinMsgText);
+    }
+
+    /// <summary>
+    /// Render text centered inside a window's DRAGBAR field (index 5 in both
+    /// ASK_SWD and other DRAGBAR-bearing SWDs). C's SWD_PutField centers the
+    /// dragbar title via `text_x = (lx - GFX_StrPixelLen)/2 + fld_x`; without
+    /// this Godot draws every AskBool/WinMsg title left-aligned at the field's
+    /// x, which had read as a ~46 px (~15%) offset on `02_save_dialog`.
+    /// </summary>
+    private void DrawDragBarText(SwdWindow swd, string text)
+    {
         var dragbar = swd.Fields[5];
-        DrawDosFont(menu.WinMsgText,
-            swd.Window.X + dragbar.X,
-            swd.Window.Y + dragbar.Y,
-            dragbar.FontName,
-            dragbar.FontBaseColor);
+        int tw = _swdHost.MeasureText(text, dragbar.FontName);
+        int fh = _swdHost.FontHeight(dragbar.FontName);
+        int x = swd.Window.X + dragbar.X + (dragbar.Lx - tw) / 2;
+        int y = swd.Window.Y + dragbar.Y + (dragbar.Ly - fh) / 2;
+        DrawDosFont(text, x, y, dragbar.FontName, dragbar.FontBaseColor);
     }
 
     private void DrawLoadMissionOverlay(MenuStateMachine menu)
