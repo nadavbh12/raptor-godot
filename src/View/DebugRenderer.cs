@@ -748,6 +748,10 @@ public partial class DebugRenderer : Node2D
             DrawLoadMissionOverlay(menu);
         if (menu.InOptions)
             DrawOptionsOverlay(menu);
+        if (menu.InAskBool)
+            DrawAskBoolOverlay(menu);
+        if (menu.InWinMsg)
+            DrawWinMsgOverlay(menu);
     }
 
     private void DrawDeathMovieOverlay(MenuStateMachine menu)
@@ -843,6 +847,25 @@ public partial class DebugRenderer : Node2D
 
         var dragbar = swd.Fields[5];
         DrawDosFont(menu.AskBoolQuestion,
+            swd.Window.X + dragbar.X,
+            swd.Window.Y + dragbar.Y,
+            dragbar.FontName,
+            dragbar.FontBaseColor);
+    }
+
+    private void DrawWinMsgOverlay(MenuStateMachine menu)
+    {
+        // C WIN_Msg has its own SWD but it's not extracted; reuse ASK_SWD's
+        // dragbar layout for a centered message panel, skipping the YES/NO
+        // button fields (indices 6 and 7, ids 2 and 3).
+        var swd = LoadSwd("ASK_SWD");
+        if (swd == null) return;
+
+        var skip = new HashSet<int> { 6, 7 };
+        SwdRenderer.Draw(_swdHost, swd, selectedFieldId: -1, skipFieldIndices: skip);
+
+        var dragbar = swd.Fields[5];
+        DrawDosFont(menu.WinMsgText,
             swd.Window.X + dragbar.X,
             swd.Window.Y + dragbar.Y,
             dragbar.FontName,

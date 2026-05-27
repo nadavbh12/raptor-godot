@@ -104,6 +104,8 @@ public sealed class MenuStateMachine
     private string _askBoolQuestion = "";
     private bool _askBoolYes = true;
     private Action? _askBoolOnYes;
+    private bool _inWinMsg = false;
+    private string _winMsgText = "";
     private int _optionsField = 0; // 0=detail, 1=music volume, 2=sound FX volume.
     private bool _optionDetailHigh = true;
     private int _optionMusicVolume = 64;
@@ -140,6 +142,8 @@ public sealed class MenuStateMachine
     public bool InAskBool => _inAskBool;
     public string AskBoolQuestion => _askBoolQuestion;
     public bool AskBoolYesSelected => _askBoolYes;
+    public bool InWinMsg => _inWinMsg;
+    public string WinMsgText => _winMsgText;
     public int OptionsField => _optionsField;
     public bool OptionDetailHigh => _optionDetailHigh;
     public int OptionMusicVolume => _optionMusicVolume;
@@ -230,6 +234,8 @@ public sealed class MenuStateMachine
         _askBoolQuestion = "";
         _askBoolYes = true;
         _askBoolOnYes = null;
+        _inWinMsg = false;
+        _winMsgText = "";
         _optionsField = 0;
         _helpTextName = "HELP1_TXT";
         EnterState(WinState.Menu, currentFrame, reAnchor: true);
@@ -350,6 +356,13 @@ public sealed class MenuStateMachine
 
     private bool HandleMenuInput(string action, int currentFrame)
     {
+        if (_inWinMsg)
+        {
+            // C WIN_Msg: any key dismisses.
+            _inWinMsg = false;
+            _winMsgText = "";
+            return true;
+        }
         if (_inAskBool)
             return HandleAskBoolInput(action);
         if (_inOptions)
@@ -491,7 +504,12 @@ public sealed class MenuStateMachine
             {
                 _loadMissionPilots = PilotSaveStore.LoadAll(PilotSaveDirectory);
                 if (_loadMissionPilots.Count == 0)
-                    return false;
+                {
+                    // C WINDOWS.C:2104-2106: RAP_LoadWin returns -1 → WIN_Msg.
+                    _winMsgText = "No Pilots to Load";
+                    _inWinMsg = true;
+                    return true;
+                }
                 LoadMissionSelectedIndex = 0;
                 _inLoadMission = true;
                 return true;

@@ -574,7 +574,7 @@ public class MenuStateMachineTests
     }
 
     [Fact]
-    public void Return_on_load_item_with_no_pilots_does_not_enter_dialog()
+    public void Return_on_load_item_with_no_pilots_shows_no_pilots_popup()
     {
         using var dir = new PilotSaveStoreTests.TempDir();
         var m = new MenuStateMachine { PilotSaveDirectory = dir.Path };
@@ -583,10 +583,29 @@ public class MenuStateMachineTests
 
         bool transitioned = m.HandleInput("Return", 93);
 
-        Assert.False(transitioned);
+        // C WINDOWS.C:2104-2106: RAP_LoadWin returns -1 → WIN_Msg("No Pilots to Load")
+        Assert.True(transitioned);
         Assert.False(m.InLoadMission);
-        Assert.Null(m.LoadMissionPilot);
+        Assert.True(m.InWinMsg);
+        Assert.Equal("No Pilots to Load", m.WinMsgText);
         Assert.Empty(m.LoadMissionPilots);
+    }
+
+    [Fact]
+    public void Any_key_dismisses_no_pilots_popup()
+    {
+        using var dir = new PilotSaveStoreTests.TempDir();
+        var m = new MenuStateMachine { PilotSaveDirectory = dir.Path };
+        m.EnterMenu(42);
+        m.HandleInput("Down", 0);
+        m.HandleInput("Return", 93);
+        Assert.True(m.InWinMsg);
+
+        m.HandleInput("Return", 100);
+
+        Assert.False(m.InWinMsg);
+        Assert.Equal(WinState.Menu, m.State);
+        Assert.Equal(42, m.StateEnteredFrame);
     }
 
     [Fact]
