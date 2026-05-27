@@ -55,6 +55,10 @@ public sealed class EnemyLogic
     private const int KamiEnd = 2;
     private int _kami = KamiFly;
     private int _flightIdx;   // index into next flight step (0-based)
+    // F_REPEAT direction. C ENEMY.C uses E_FORWARD/E_BACKWARD; we use +1/-1.
+    // F_REPEAT walks waypoints forward from 0 to numflight-1, then BACKWARD
+    // to `repos`, then forward again, ping-ponging forever.
+    private int _flightStep = +1;
     // Bresenham movement state (mirrors MOVEOBJ in C).
     private int _tgtX, _tgtY;   // target screen position for current step
     private int _mx, _my;        // current movement position (= X, Y initially)
@@ -385,11 +389,29 @@ public sealed class EnemyLogic
             return true;
         }
 
-        if (_flightIdx >= n)
+        // F_REPEAT ping-pong (ENEMY.C:883-900). Walk the waypoint array
+        // forward to numflight-1, then BACKWARD to `repos`, then forward
+        // again. Direction is _flightStep (±1).
+        if (Meta.FlightType == 0)
         {
-            if (Meta.FlightType == 0)  // REPEAT: wrap around
-                _flightIdx = 0;
-            else if (Meta.FlightType == 2)  // KAMI: out of waypoints → target player, enter KAMI_END
+            int repos = System.Math.Max(0, Meta.Repos);
+            // _flightIdx already points one past the just-completed waypoint.
+            // Check whether the new index is out of bounds in the current
+            // direction, and reverse if so.
+            if (_flightStep > 0 && _flightIdx >= n)
+            {
+                _flightStep = -1;
+                _flightIdx = n - 1;  // C: movepos = numflight - 1
+            }
+            else if (_flightStep < 0 && _flightIdx <= repos)
+            {
+                _flightStep = +1;
+                _flightIdx = repos;
+            }
+        }
+        else if (_flightIdx >= n)
+        {
+            if (Meta.FlightType == 2)  // KAMI: out of waypoints → target player, enter KAMI_END
             {
                 _kami = KamiEnd;
                 InitBresenhamForTarget(_mx, _my, playerX, playerY);
@@ -404,7 +426,7 @@ public sealed class EnemyLogic
 
         int newTgtX = _sx + Meta.FlightX[_flightIdx];
         int newTgtY = _sy + Meta.FlightY[_flightIdx];
-        _flightIdx++;
+        _flightIdx += Meta.FlightType == 0 ? _flightStep : 1;
         // F_KAMI: after assigning the LAST waypoint as the target, mark
         // KAMI_CHASE so the NEXT move.done transitions to chasing the player
         // (mirrors ENEMY.C:951-953).
@@ -420,6 +442,20 @@ public sealed class EnemyLogic
         _my = fromY;
         _tgtX = toX;
         _tgtY = toY;
+
+        // Zero-length segment (target == current position). F_REPEAT hits this
+        // immediately after a direction reversal, because C re-uses the last
+        // waypoint as the next target on the reversal tick. Marking done here
+        // lets AdvanceFlightSegment fire again immediately on the next tick.
+        if (fromX == toX && fromY == toY)
+        {
+            _addX = _addY = 0;
+            _delX = _delY = 0;
+            _err = 0;
+            _maxloop = 0;
+            _moveDone = true;
+            return;
+        }
 
         _addX = 1; _addY = 1;
         _delX = toX - fromX;

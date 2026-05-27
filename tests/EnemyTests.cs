@@ -1,3 +1,4 @@
+using System.Linq;
 using FsCheck;
 using FsCheck.Fluent;
 using FsCheck.Xunit;
@@ -244,6 +245,86 @@ public class EnemyLogicTests
         Assert.False(new EnemyLogic(meta, 0, 0).IsGround);
         meta.FlightType = 2;  // SINGLE? whichever
         Assert.False(new EnemyLogic(meta, 0, 0).IsGround);
+    }
+
+    // F_REPEAT ping-pong: forward through waypoints, then BACKWARD to `repos`,
+    // then forward again. C ENEMY.C:883-900. Naive wrap (idx=0 on overflow)
+    // breaks the back-and-forth animation that boss-like REPEAT enemies use.
+    [Fact]
+    public void F_repeat_enemy_ping_pongs_between_repos_and_last_waypoint()
+    {
+        // 4 waypoints all walking DOWN: 102 → 112 → 122 → 132 (sy=92, +y[i]).
+        // Ping-pong reversal: after reaching y=132, the next target is
+        // waypoint[2]=122 (a smooth 10-pixel reversal, not a jump back to 102).
+        // Wrap behavior incorrectly targets waypoint[0]=102 → a 30-pixel jump.
+        var meta = new SpriteMeta
+        {
+            Hits = 10,
+            NumFlight = 4,
+            FlightType = 0,    // F_REPEAT
+            FlightX = new[] { 0, 0, 0, 0 },
+            FlightY = new[] { 10, 20, 30, 40 },
+            MoveSpeed = 4,
+            Repos = 0,
+            Width = 16, Height = 16,
+        };
+        var e = new EnemyLogic(meta, spawnX: 160, mapY: 80);
+
+        // Run long enough to traverse all 4 waypoints forward (≈ 13 ticks at
+        // speed 4 covers 52 px), then a few more ticks to enter the reverse leg.
+        int maxY = 0;
+        int firstY = e.Y;
+        int yAtMaxPlus6 = -1;
+        bool sawMax = false;
+        for (int i = 0; i < 200; i++)
+        {
+            e.Tick(playerX: 160, playerY: 160);
+            if (e.Y > maxY) { maxY = e.Y; sawMax = false; }
+            if (!sawMax && i > 13 && e.Y == maxY) sawMax = true;
+            if (sawMax && yAtMaxPlus6 == -1 && i >= 14 + 6) yAtMaxPlus6 = e.Y;
+        }
+
+        Assert.True(maxY >= 130, $"Forward walk should reach last waypoint (~132). Max={maxY}");
+
+        // Build a full Y trace to detect smooth reversal.
+        var ys2 = new System.Collections.Generic.List<int>();
+        var e2 = new EnemyLogic(meta, spawnX: 160, mapY: 80);
+        for (int i = 0; i < 50; i++)
+        {
+            e2.Tick(playerX: 160, playerY: 160);
+            ys2.Add(e2.Y);
+        }
+        // After hitting 132 (max), the next 6 Y values should be DECREASING
+        // (smooth reversal). With wrap behavior they'd jump back to ~102.
+        int maxIdx = ys2.IndexOf(ys2.Max());
+        Assert.True(maxIdx + 6 < ys2.Count,
+            $"Trace too short. maxIdx={maxIdx} traceLen={ys2.Count}");
+        int yAfter = ys2[maxIdx + 6];
+        Assert.InRange(yAfter, 100, 130);
+        // Smooth reversal means yAfter < max, and substantially so.
+        Assert.True(yAfter < ys2[maxIdx],
+            $"After max(idx={maxIdx},Y={ys2[maxIdx]}), Y should decrease. Got Y={yAfter}. Trace[maxIdx-2..maxIdx+10] = [{string.Join(',', ys2.GetRange(System.Math.Max(0, maxIdx - 2), System.Math.Min(13, ys2.Count - System.Math.Max(0, maxIdx - 2))))}]");
+    }
+
+    [Fact]
+    public void F_repeat_enemy_never_terminates_under_normal_conditions()
+    {
+        var meta = new SpriteMeta
+        {
+            Hits = 10,
+            NumFlight = 2,
+            FlightType = 0,
+            FlightX = new[] { 0, 0 },
+            FlightY = new[] { 5, 10 },
+            MoveSpeed = 2,
+            Repos = 0,
+            Width = 16, Height = 16,
+        };
+        var e = new EnemyLogic(meta, spawnX: 160, mapY: 80);
+
+        for (int i = 0; i < 500; i++) e.Tick();
+
+        Assert.False(e.Done, "F_REPEAT enemy should ping-pong forever, not terminate");
     }
 
     // F_KAMI tests — SHIP34G1_PIC orbs in level 1 are F_KAMI enemies that

@@ -50,8 +50,14 @@ public sealed class SpriteMeta
     // C SOURCE/MAP.H SPRITE.bonus — OBJ_TYPE value to drop when this enemy is
     // destroyed (-1 = no drop). Consumed by WaveController's death handler.
     [JsonPropertyName("bonus")]      public int    Bonus       { get; set; } = -1;
+    // F_REPEAT ping-pong lower bound. Mirrors C SPRITE.repos (MAP.H). The enemy
+    // walks waypoints forward to numflight-1, then backward to `repos`, then
+    // forward again. For repos==0 this is a full ping-pong; for repos>0 the
+    // forward end of the bounce skips the early waypoints once initial flight
+    // completes. See ENEMY.C:894-900.
+    [JsonPropertyName("repos")]      public int    Repos       { get; set; }
     // Additional fields present in JSON but not consumed:
-    // suck, animtype, bossflag, repos, sfx, song.
+    // suck, animtype, bossflag, sfx, song.
 
     // ── Sprite image dimensions (populated by SpriteMetaLibrary from PNG files) ──
     // Not in JSON; set after deserialisation.
