@@ -420,6 +420,204 @@ public class MenuStateMachineTests
         Assert.Equal(expectedAnchor, m.StateEnteredFrame);
     }
 
+    // Help pagination — mirrors HELP.C/HELP_Win modular page cycle through
+    // 39 items (HELP1_TXT through VEND00_TXT, GLB indices 0x12..0x38).
+    // Keys mapped from HELP.C:91-121: SC_HOME→0, SC_F1→1 (note: not 0!),
+    // SC_END→maxpages-1, SC_DOWN/RIGHT/PAGEDN→++, SC_UP/LEFT/PAGEUP→--.
+    [Fact]
+    public void Help_page_order_starts_with_HELP1_TXT_and_has_39_entries()
+    {
+        Assert.Equal(39, MenuStateMachine.HelpPageOrder.Count);
+        Assert.Equal("HELP1_TXT", MenuStateMachine.HelpPageOrder[0]);
+        Assert.Equal("STORY1_TXT", MenuStateMachine.HelpPageOrder[1]);
+        Assert.Equal("RAP1_TXT", MenuStateMachine.HelpPageOrder[30]);
+        Assert.Equal("VEND00_TXT", MenuStateMachine.HelpPageOrder[38]);
+    }
+
+    [Fact]
+    public void Down_in_Help_advances_page_and_updates_help_text_name()
+    {
+        var m = new MenuStateMachine();
+        m.EnterMenu(0);
+        m.HandleInput("F1", 50);                // enter HELP at page 0 = HELP1_TXT
+        Assert.Equal(WinState.Help, m.State);
+        Assert.Equal(0, m.HelpPageIndex);
+        Assert.Equal("HELP1_TXT", m.HelpTextName);
+
+        m.HandleInput("Down", 100);
+        Assert.Equal(1, m.HelpPageIndex);
+        Assert.Equal("STORY1_TXT", m.HelpTextName);
+    }
+
+    [Fact]
+    public void Up_in_Help_wraps_to_last_page_from_page_zero()
+    {
+        var m = new MenuStateMachine();
+        m.EnterMenu(0);
+        m.HandleInput("F1", 50);                // page 0
+        m.HandleInput("Up", 100);
+        Assert.Equal(38, m.HelpPageIndex);
+        Assert.Equal("VEND00_TXT", m.HelpTextName);
+    }
+
+    [Fact]
+    public void PageDown_in_Help_advances_page()
+    {
+        var m = new MenuStateMachine();
+        m.EnterMenu(0);
+        m.HandleInput("F1", 50);
+        m.HandleInput("PageDown", 100);
+        Assert.Equal(1, m.HelpPageIndex);
+    }
+
+    [Fact]
+    public void Right_in_Help_advances_page()
+    {
+        var m = new MenuStateMachine();
+        m.EnterMenu(0);
+        m.HandleInput("F1", 50);
+        m.HandleInput("Right", 100);
+        Assert.Equal(1, m.HelpPageIndex);
+    }
+
+    [Fact]
+    public void Home_in_Help_jumps_to_page_zero()
+    {
+        var m = new MenuStateMachine();
+        m.EnterMenu(0);
+        m.HandleInput("F1", 50);
+        m.HandleInput("Down", 60);
+        m.HandleInput("Down", 70);
+        Assert.Equal(2, m.HelpPageIndex);
+
+        m.HandleInput("Home", 80);
+        Assert.Equal(0, m.HelpPageIndex);
+        Assert.Equal("HELP1_TXT", m.HelpTextName);
+    }
+
+    [Fact]
+    public void F1_in_Help_jumps_to_page_one_matching_HELP_C_behavior()
+    {
+        // C HELP.C:98-101: SC_F1 sets curpage = 1, not 0. So pressing F1 while
+        // already inside the Help window jumps to page index 1 = STORY1_TXT.
+        var m = new MenuStateMachine();
+        m.EnterMenu(0);
+        m.HandleInput("F1", 50);                // enter HELP at page 0
+        Assert.Equal(0, m.HelpPageIndex);
+
+        m.HandleInput("F1", 100);
+        Assert.Equal(1, m.HelpPageIndex);
+        Assert.Equal("STORY1_TXT", m.HelpTextName);
+    }
+
+    [Fact]
+    public void End_in_Help_jumps_to_last_page()
+    {
+        var m = new MenuStateMachine();
+        m.EnterMenu(0);
+        m.HandleInput("F1", 50);
+        m.HandleInput("End", 100);
+        Assert.Equal(38, m.HelpPageIndex);
+        Assert.Equal("VEND00_TXT", m.HelpTextName);
+    }
+
+    // F1 entry points from C — each sub-screen has its own context-specific
+    // help topic, all routing through HELP_Win.
+    [Fact]
+    public void F1_in_Hangar_enters_Help_at_HANGHLP1_TXT()
+    {
+        var m = ReachHangar();
+        Assert.Equal(WinState.Hangar, m.State);
+
+        bool transitioned = m.HandleInput("F1", 200);
+
+        Assert.True(transitioned);
+        Assert.Equal(WinState.Help, m.State);
+        Assert.Equal("HANGHLP1_TXT", m.HelpTextName);
+        Assert.Equal(24, m.HelpPageIndex);   // HANGHLP1_TXT is page 24 in HelpPageOrder
+    }
+
+    [Fact]
+    public void F1_in_Store_enters_Help_at_STORHLP1_TXT()
+    {
+        var m = ReachHangar();
+        m.HandleInput("Return", 200);        // hangarPos=1 SUPPLIES → STORE
+        Assert.Equal(WinState.Store, m.State);
+
+        bool transitioned = m.HandleInput("F1", 210);
+
+        Assert.True(transitioned);
+        Assert.Equal(WinState.Help, m.State);
+        Assert.Equal("STORHLP1_TXT", m.HelpTextName);
+        Assert.Equal(28, m.HelpPageIndex);
+    }
+
+    [Fact]
+    public void F1_in_SectorSelect_enters_Help_at_COMPHLP1_TXT()
+    {
+        var m = ReachHangar();
+        // Navigate hangar to MISSION (pos=0), then Return → sector select.
+        m.HandleInput("Down", 200);          // pos 1→0=MISSION
+        m.HandleInput("Return", 210);
+        Assert.Equal(WinState.Unknown, m.State);
+        Assert.True(m.InSectorSelect);
+
+        bool transitioned = m.HandleInput("F1", 220);
+
+        Assert.True(transitioned);
+        Assert.Equal(WinState.Help, m.State);
+        Assert.Equal("COMPHLP1_TXT", m.HelpTextName);
+        Assert.Equal(26, m.HelpPageIndex);
+    }
+
+    [Fact]
+    public void F1_in_pilot_creation_enters_Help_at_NEWPLAY1_TXT()
+    {
+        var m = new MenuStateMachine();
+        m.EnterMenu(0);
+        m.HandleInput("Return", 50);         // NEW → step 1
+        Assert.Equal(1, m.PilotCreateStep);
+
+        bool transitioned = m.HandleInput("F1", 60);
+
+        Assert.True(transitioned);
+        Assert.Equal(WinState.Help, m.State);
+        Assert.Equal("NEWPLAY1_TXT", m.HelpTextName);
+        Assert.Equal(20, m.HelpPageIndex);
+    }
+
+    // Helper: walk a fresh state machine through the pilot-creation flow
+    // until it lands in WinState.Hangar. Used by the F1 entry-point tests.
+    private static MenuStateMachine ReachHangar()
+    {
+        var m = new MenuStateMachine();
+        m.EnterMenu(0);
+        m.HandleInput("Return", 10);   // NEW → step 1
+        m.HandleInput("Return", 20);   // confirm name → step 2
+        m.HandleInput("Return", 30);   // confirm callsign → step 3
+        m.HandleInput("Return", 40);   // accept difficulty → Hangar
+        return m;
+    }
+
+    [Fact]
+    public void Order_entry_sets_curpage_to_RAP1_TXT_index()
+    {
+        // ORDER routes to HELP_Win("RAP1_TXT") (WINDOWS.C:2126). That's
+        // page index 30 in the table — Down from there must advance to
+        // RAP2_TXT (index 31), not wrap to HELP2_TXT or similar.
+        var m = new MenuStateMachine();
+        m.EnterMenu(0);
+        for (int i = 0; i < 3; i++) m.HandleInput("Down", 0);  // ORDER
+        m.HandleInput("Return", 50);
+        Assert.Equal(WinState.Help, m.State);
+        Assert.Equal("RAP1_TXT", m.HelpTextName);
+        Assert.Equal(30, m.HelpPageIndex);
+
+        m.HandleInput("Down", 100);
+        Assert.Equal(31, m.HelpPageIndex);
+        Assert.Equal("RAP2_TXT", m.HelpTextName);
+    }
+
     // Regression: in C, WIN_Credits/HELP_Win are blocking sub-calls — control
     // returns into the WIN_MainMenu input loop and main-menu keys still work.
     // Godot models them as a transition out to WinState.Unknown (to match C

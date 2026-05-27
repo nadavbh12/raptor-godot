@@ -111,6 +111,7 @@ public sealed class MenuStateMachine
     private int _optionMusicVolume = 64;
     private int _optionFxVolume = 64;
     private string _helpTextName = "HELP1_TXT";
+    private int _helpPageIndex = 0;
 
     public WinState State { get; private set; } = WinState.Unknown;
 
@@ -155,6 +156,29 @@ public sealed class MenuStateMachine
     public int OptionMusicVolume => _optionMusicVolume;
     public int OptionFxVolume => _optionFxVolume;
     public string HelpTextName => _helpTextName;
+    public int HelpPageIndex => _helpPageIndex;
+
+    /// <summary>
+    /// Ordered table of Help item names mirroring C HELP.C's modular page
+    /// cycle. Derived from <c>SOURCE/file0000.inc</c>: items 0x12 (HELP1_TXT,
+    /// the first STARTHELP entry after the +=2 unregistered offset and post-
+    /// increment) through 0x38 (VEND00_TXT, last item before ENDHELP=0x39).
+    /// 39 entries; mirrors <c>maxpages = enditem - startitem - 1 = 0x27</c>
+    /// at HELP.C:33.
+    /// </summary>
+    public static readonly System.Collections.Generic.IReadOnlyList<string> HelpPageOrder = new[]
+    {
+        "HELP1_TXT",    "STORY1_TXT",   "OVERVW01_TXT", "OVERVW02_TXT",
+        "TRAIN01_TXT",  "TRAIN02_TXT",  "OVERVW03_TXT", "OVERVW04_TXT",
+        "OVERVW05_TXT", "OVERVW06_TXT", "OVERVW07_TXT", "OVERVW08_TXT",
+        "OVERVW09_TXT", "GAMEHLP1_TXT", "GAMEHLP2_TXT", "GAMEHLP3_TXT",
+        "GAMEHLP4_TXT", "GAMEHLP5_TXT", "HINTS01_TXT",  "HINTS02_TXT",
+        "NEWPLAY1_TXT", "NEWPLAY2_TXT", "LOADPLY1_TXT", "LOADPLY2_TXT",
+        "HANGHLP1_TXT", "HANGHLP2_TXT", "COMPHLP1_TXT", "COMPHLP2_TXT",
+        "STORHLP1_TXT", "STORHLP2_TXT", "RAP1_TXT",     "RAP2_TXT",
+        "WEAP01_TXT",   "WEAP02_TXT",   "WEAP03_TXT",   "RAP3_TXT",
+        "RAP4_TXT",     "RAP5_TXT",     "VEND00_TXT",
+    };
     public string? PilotSaveDirectory { get; init; }
     public System.Collections.Generic.IReadOnlyList<PilotSaveSummary> LoadMissionPilots => _loadMissionPilots;
     public int LoadMissionSelectedIndex { get; private set; }
@@ -273,6 +297,33 @@ public sealed class MenuStateMachine
                     EnterState(WinState.Unknown, currentFrame, reAnchor: false);
                     return true;
                 }
+                // Pagination (HELP.C:91-121 keypress switch + modular wrap).
+                if (action == "Down" || action == "Right" || action == "PageDown")
+                {
+                    SetHelpPage(_helpPageIndex + 1);
+                    return true;
+                }
+                if (action == "Up" || action == "Left" || action == "PageUp")
+                {
+                    SetHelpPage(_helpPageIndex - 1);
+                    return true;
+                }
+                if (action == "Home")
+                {
+                    SetHelpPage(0);
+                    return true;
+                }
+                if (action == "End")
+                {
+                    SetHelpPage(HelpPageOrder.Count - 1);
+                    return true;
+                }
+                if (action == "F1")
+                {
+                    // HELP.C:98-101 — SC_F1 sets curpage = 1, not 0.
+                    SetHelpPage(1);
+                    return true;
+                }
                 break;
 
             case WinState.Hangar:
@@ -292,6 +343,12 @@ public sealed class MenuStateMachine
                 {
                     // Sector select → game enter (raptor_parity_game_enter).
                     EnterGame(currentFrame);
+                    return true;
+                }
+                if (_inSectorSelect && action == "F1")
+                {
+                    // C WINDOWS.C:1449 — SC_F1 in sector_select → HELP_Win("COMPHLP1_TXT").
+                    EnterHelp("COMPHLP1_TXT", currentFrame);
                     return true;
                 }
                 // Unknown && !InSectorSelect is the post-Credits/Help limbo
@@ -389,6 +446,12 @@ public sealed class MenuStateMachine
         // Pilot-creation sub-flow: absorb inputs until we've consumed enough Returns.
         if (_pilotCreateStep > 0)
         {
+            if (action == "F1")
+            {
+                // C WINDOWS.C:800 — SC_F1 in registration → HELP_Win("NEWPLAY1_TXT").
+                EnterHelp("NEWPLAY1_TXT", currentFrame);
+                return true;
+            }
             if (action == "Escape")
             {
                 if (_pilotCreateStep == 1)
@@ -486,8 +549,7 @@ public sealed class MenuStateMachine
         }
         if (action == "F1")
         {
-            _helpTextName = "HELP1_TXT";
-            EnterState(WinState.Help, currentFrame + HelpFadeFrames, reAnchor: true);
+            EnterHelp("HELP1_TXT", currentFrame);
             return true;
         }
         if (action == "Return")
@@ -499,8 +561,7 @@ public sealed class MenuStateMachine
             }
             if (CurrentItem == OrderItemIndex)
             {
-                _helpTextName = "RAP1_TXT";
-                EnterState(WinState.Help, currentFrame + HelpFadeFrames, reAnchor: true);
+                EnterHelp("RAP1_TXT", currentFrame);
                 return true;
             }
             if (CurrentItem == OptionsItemIndex)
@@ -777,6 +838,12 @@ public sealed class MenuStateMachine
             OpenAskBoolSave();
             return true;
         }
+        if (action == "F1")
+        {
+            // C WINDOWS.C:1137 — SC_F1 in hangar → HELP_Win("HANGHLP1_TXT").
+            EnterHelp("HANGHLP1_TXT", currentFrame);
+            return true;
+        }
         if (action == "Down" || action == "Right")
         {
             // In C: Down/Right → pos-- (SC_DOWN case in WINDOWS.C); wraps from 0 to 3.
@@ -840,6 +907,11 @@ public sealed class MenuStateMachine
                 Store.ToggleMode();
                 return false;
 
+            case "F1":
+                // C STORE.C:475 — SC_F1 in supply room → HELP_Win("STORHLP1_TXT").
+                EnterHelp("STORHLP1_TXT", currentFrame);
+                return true;
+
             case "Escape":
                 Store = null;
                 EnterState(WinState.Hangar, currentFrame, reAnchor: false);
@@ -866,6 +938,44 @@ public sealed class MenuStateMachine
         State = next;
         if (reAnchor)
             StateEnteredFrame = frame;
+        OnStateChanged?.Invoke();
+    }
+
+    /// <summary>
+    /// Enter WinState.Help at the page indexed by <paramref name="itemName"/>
+    /// in <see cref="HelpPageOrder"/>. Unknown names fall back to page 0
+    /// (HELP1_TXT) — matches C HELP_Win's <c>EXIT_Error("Invalid Page")</c>
+    /// path being unreachable in practice.
+    /// </summary>
+    private void EnterHelp(string itemName, int currentFrame)
+    {
+        int idx = -1;
+        for (int i = 0; i < HelpPageOrder.Count; i++)
+        {
+            if (HelpPageOrder[i] == itemName) { idx = i; break; }
+        }
+        if (idx < 0) { idx = 0; itemName = HelpPageOrder[0]; }
+        _helpPageIndex = idx;
+        _helpTextName = itemName;
+        EnterState(WinState.Help, currentFrame + HelpFadeFrames, reAnchor: true);
+    }
+
+    /// <summary>
+    /// Set the current Help page with C-style modular wrap (HELP.C:75-78).
+    /// Updates both <see cref="HelpPageIndex"/> and <see cref="HelpTextName"/>.
+    /// </summary>
+    private void SetHelpPage(int newPage)
+    {
+        int n = HelpPageOrder.Count;
+        // C: `if (curpage >= 0) curpage %= maxpages; else curpage = maxpages + curpage`.
+        // Handles -1 → n-1, n → 0 cleanly.
+        if (newPage >= 0)
+            newPage = newPage % n;
+        else
+            newPage = n + (newPage % n);
+        if (newPage == n) newPage = 0;
+        _helpPageIndex = newPage;
+        _helpTextName = HelpPageOrder[_helpPageIndex];
         OnStateChanged?.Invoke();
     }
 }

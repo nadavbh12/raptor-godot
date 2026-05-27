@@ -201,6 +201,11 @@ public partial class InteractiveInputController : Node
             Key.F1 => "F1",
             Key.F2 => "F2",
             Key.Space => "Space",
+            Key.Home => "Home",
+            Key.End => "End",
+            Key.Pageup => "PageUp",
+            Key.Pagedown => "PageDown",
+            Key.Tab => "Tab",
             _ => KeyToTextAction(keyEvent.Keycode, keyEvent.Unicode),
         };
     }
