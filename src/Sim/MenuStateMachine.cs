@@ -108,8 +108,10 @@ public sealed class MenuStateMachine
     private string _winMsgText = "";
     private int _optionsField = 0; // 0=detail, 1=music volume, 2=sound FX volume.
     private bool _optionDetailHigh = true;
-    private int _optionMusicVolume = 64;
-    private int _optionFxVolume = 64;
+    // WINDOWS.C:39 opt_vol = {127,127}; FX.C:906/973 default both volume globals
+    // to 127 (full) on first run. No persisted-prefs layer yet, so seed full.
+    private int _optionMusicVolume = 127;
+    private int _optionFxVolume = 127;
     private string _helpTextName = "HELP1_TXT";
     private int _helpPageIndex = 0;
 
@@ -665,7 +667,7 @@ public sealed class MenuStateMachine
 
     private void OpenAskBoolQuit()
     {
-        _askBoolQuestion = "EXIT TO DOS ?";
+        _askBoolQuestion = "EXIT TO DOS";
         _askBoolYes = true;
         _askBoolOnYes = () => { QuitRequested = true; OnQuit?.Invoke(); };
         _inAskBool = true;

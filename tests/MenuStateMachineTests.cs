@@ -775,14 +775,28 @@ public class MenuStateMachineTests
         m.HandleInput("Down", 12);
         Assert.Equal(1, m.OptionsField);
         int music = m.OptionMusicVolume;
-        m.HandleInput("Right", 13);
-        Assert.Equal(music + 8, m.OptionMusicVolume);
+        // Round-trip so the assertion holds regardless of the default (which is
+        // the C first-run max of 127, where Right would clamp).
+        m.HandleInput("Left", 13);
+        Assert.Equal(music - 8, m.OptionMusicVolume);
+        m.HandleInput("Right", 14);
+        Assert.Equal(music, m.OptionMusicVolume);
 
-        m.HandleInput("Down", 14);
+        m.HandleInput("Down", 15);
         Assert.Equal(2, m.OptionsField);
         int fx = m.OptionFxVolume;
-        m.HandleInput("Left", 15);
+        m.HandleInput("Left", 16);
         Assert.Equal(fx - 8, m.OptionFxVolume);
+    }
+
+    [Fact]
+    public void Options_volume_defaults_to_full()
+    {
+        // WINDOWS.C:39 opt_vol initializes to {127,127}; FX.C:906/973 default
+        // both globals to 127. A fresh install shows both knobs fully right.
+        var m = new MenuStateMachine();
+        Assert.Equal(127, m.OptionMusicVolume);
+        Assert.Equal(127, m.OptionFxVolume);
     }
 
     [Fact]
@@ -1159,7 +1173,9 @@ public class MenuStateMachineTests
 
         Assert.True(transitioned);
         Assert.True(m.InAskBool);
-        Assert.Equal("EXIT TO DOS ?", m.AskBoolQuestion);
+        // WINDOWS.C:609 — WIN_AskExit calls WIN_AskBool("EXIT TO DOS") verbatim
+        // (no trailing "?"; the dragbar shows the literal string).
+        Assert.Equal("EXIT TO DOS", m.AskBoolQuestion);
         Assert.True(m.AskBoolYesSelected);
         Assert.False(m.QuitRequested);
     }
