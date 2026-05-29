@@ -173,24 +173,24 @@ public class WaveControllerTests
     }
 
     [Theory]
-    [InlineData(true, false, true, true, false, false, true)]
-    [InlineData(true, false, true, true, false, true, false)]
-    [InlineData(true, false, true, true, true, false, false)]
-    [InlineData(true, false, true, false, false, false, false)]
-    [InlineData(true, true, true, true, false, false, false)]
-    [InlineData(false, false, true, true, false, false, false)]
-    [InlineData(true, false, false, true, false, false, false)]
-    public void Mission_completion_waits_for_wave_enemies_and_explosions(
+    [InlineData(true, false, true, true, false, true)]   // all met -> complete
+    [InlineData(true, false, true, true, true, false)]   // enemies remain -> wait
+    [InlineData(true, false, true, false, false, false)] // player dead -> no
+    [InlineData(true, true, true, true, false, false)]   // demo replay -> no
+    [InlineData(false, false, true, true, false, false)] // wave inactive -> no
+    [InlineData(true, false, false, true, false, false)] // not end-wave -> no
+    public void Mission_completion_waits_for_wave_and_enemies_not_explosions(
         bool waveActive,
         bool demoActive,
         bool endWave,
         bool playerAlive,
         bool enemiesRemaining,
-        bool explosionsRemaining,
         bool expected)
     {
+        // ENEMY.C:391-392 — the end-wave countdown arms on last-enemy-removed,
+        // regardless of lingering explosions (which keep rendering during fly-off).
         Assert.Equal(expected, WaveController.ShouldCompleteMission(
-            waveActive, demoActive, endWave, playerAlive, enemiesRemaining, explosionsRemaining));
+            waveActive, demoActive, endWave, playerAlive, enemiesRemaining));
     }
 
     [Fact]

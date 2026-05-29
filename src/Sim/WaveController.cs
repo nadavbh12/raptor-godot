@@ -1454,18 +1454,20 @@ public partial class WaveController : Node
         PlayerShooter.NextRandom(rng, 40, label);
     }
 
+    // ENEMY.C:391-392 arms startendwave = END_DURATION the instant the last
+    // enemy is removed during an end-wave — there is NO explosion/ANIMS gate.
+    // RAP.C:1039-1046 then just counts down. Explosions keep ticking/rendering
+    // during the fly-off; they never block the wave from ending.
     internal static bool ShouldCompleteMission(bool waveActive,
                                                bool demoActive,
                                                bool endWave,
                                                bool playerAlive,
-                                               bool enemiesRemaining,
-                                               bool explosionsRemaining) =>
+                                               bool enemiesRemaining) =>
         waveActive
         && !demoActive
         && endWave
         && playerAlive
-        && !enemiesRemaining
-        && !explosionsRemaining;
+        && !enemiesRemaining;
 
     private void SpawnTileExplosion(int mapspot)
     {
@@ -1574,8 +1576,7 @@ public partial class WaveController : Node
                 _demoReplay != null,
                 _endWaveFlag,
                 PlayerLogic.Alive,
-                enemiesRemaining,
-                _explosions.Count > 0))
+                enemiesRemaining))
         {
             _endWaveCountdown = EndWaveSequence.Duration;
         }
