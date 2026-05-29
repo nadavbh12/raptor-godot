@@ -51,14 +51,37 @@ public class BonusTests
     }
 
     [Fact]
-    public void Bonus_dies_when_falling_below_screen()
+    public void Bonus_despawns_using_glow_center_gy_not_raw_y()
     {
-        // BONUS.C:241 — `if (cur->gy > 200) remove`. Our equivalent: y > 200.
-        var b = new BonusLogic(objType: 16 /* S_ENERGY */, x: 100, y: 199);
-        b.Tick();   // y → 200, still alive.
-        Assert.True(b.Alive);
-        b.Tick();   // y → 201, despawn.
-        Assert.False(b.Alive);
+        // BONUS.C:220+278 — the off-bottom cull uses gy, not raw y:
+        //   gy = y - (glow_ly>>1) + ypos[pos]
+        // with glow_ly = ICNGLW_BLK height = 32 (>>1 = 16) and the wobble table
+        // ypos = { -3,-3,-3,-2,-1,0,1,2,3,3,3,2,1,0,-1,-2 }. gy is taken from the
+        // pre-increment y/pos, so the despawn Y depends on the wobble phase.
+
+        // Pos=5 → ypos=0: gy = y - 16. Alive at y=216 (gy=200), dead at y=217.
+        var flat = new BonusLogic(objType: 16, x: 100, y: 216, initialPos: 5);
+        flat.Tick();
+        Assert.True(flat.Alive);
+        var flatDead = new BonusLogic(objType: 16, x: 100, y: 217, initialPos: 5);
+        flatDead.Tick();
+        Assert.False(flatDead.Alive);
+
+        // Pos=0 → ypos=-3: gy = y - 19. Survives longer — dead only at y=220.
+        var low = new BonusLogic(objType: 16, x: 100, y: 219, initialPos: 0);
+        low.Tick();
+        Assert.True(low.Alive);
+        var lowDead = new BonusLogic(objType: 16, x: 100, y: 220, initialPos: 0);
+        lowDead.Tick();
+        Assert.False(lowDead.Alive);
+
+        // Pos=8 → ypos=+3: gy = y - 13. Dies earlier — dead at y=214.
+        var high = new BonusLogic(objType: 16, x: 100, y: 213, initialPos: 8);
+        high.Tick();
+        Assert.True(high.Alive);
+        var highDead = new BonusLogic(objType: 16, x: 100, y: 214, initialPos: 8);
+        highDead.Tick();
+        Assert.False(highDead.Alive);
     }
 
     [Fact]

@@ -46,6 +46,11 @@ public sealed class BonusLogic
     {
         if (!Alive) return;
 
+        // BONUS.C:220 — the glow center gy is computed from the CURRENT y/pos,
+        // BEFORE the y++ (222) and the gcnt&1 pos++ (226). glow_ly = ICNGLW_BLK
+        // height = 32, so glow_ly>>1 = 16.
+        int gy = Y - GlowHalfHeight + Ypos[Pos];
+
         Y++;
         if ((_tickCount & 1) != 0)
         {
@@ -63,8 +68,16 @@ public sealed class BonusLogic
             return;
         }
 
-        if (Y > 200) Alive = false;
+        // BONUS.C:278 — off-bottom cull uses the glow center gy, not raw y.
+        if (gy > 200) Alive = false;
     }
+
+    /// <summary>glow_ly (ICNGLW_BLK height = 32) >> 1, from BONUS.C:220.</summary>
+    private const int GlowHalfHeight = 16;
+
+    /// <summary>Wobble offset table, BONUS.C:19 (indexed by Pos 0..15).</summary>
+    private static readonly int[] Ypos =
+        { -3, -3, -3, -2, -1, 0, 1, 2, 3, 3, 3, 2, 1, 0, -1, -2 };
 
     /// <summary>Force-kill (used on player pickup).</summary>
     public void Kill() => Alive = false;
