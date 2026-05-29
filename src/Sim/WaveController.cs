@@ -1085,6 +1085,30 @@ public partial class WaveController : Node
     private const int SparkBlueExpType = 101;
     private const int SparkOrangeExpType = 102;
 
+    /// <summary>
+    /// Per-type explosion lifetime in game-loop iters — the source of truth for
+    /// when a sim explosion entity is culled, mirroring ANIMS_Register numframes
+    /// (ANIMS.C:187-218). Each anim type lives a different number of frames; the
+    /// renderer stops drawing at the same count, so culling here at the true
+    /// length (instead of a flat 50) removes the entity exactly when it stops
+    /// being visible. Mirrors the view's ExpAnim table (DebugRenderer.cs).
+    /// </summary>
+    internal static int AnimFramesFor(int expType) => expType switch
+    {
+        0  => 13,   // EXP_AIRSMALL1 → EXPLO2_BLK
+        1  => 12,   // EXP_AIRMED    → LGFLAK_BLK
+        2  => 12,   // EXP_AIRLARGE  → LGFLAK_BLK
+        3  => 42,   // EXP_GRDSMALL  → GEXPLO_BLK
+        4  => 42,   // EXP_GRDMED    → GEXPLO_BLK
+        5  => 42,   // EXP_GRDLARGE  → GEXPLO_BLK
+        8  => 12,   // EXP_ENERGY    → NRGBANG_BLK
+        10 => 14,   // EXP_AIRSMALL2 → SMFLAK_BLK
+        SmokeExpType => 4,        // SMOKTRAL_BLK
+        SparkBlueExpType => 9,    // BSPARK_BLK
+        SparkOrangeExpType => 9,  // OSPARK_BLK
+        _ => 13,                  // EXPLO2_BLK default (unused EXP_ slots 6/7/9)
+    };
+
     private void AddExplosion(int expType, int x, int y, int startDelayIters = 0)
     {
         int startIter = AnimationStartIterForSpawn(_gameLoopIter) + startDelayIters;
@@ -1554,11 +1578,9 @@ public partial class WaveController : Node
         // view's BlkInfo table; we cap at a conservative 50 frames so a missing
         // mapping can't leak an explosion forever. Smoke trails are short-
         // lived (SMOKTRAL_BLK has 4 frames) so we cull them aggressively.
-        const int MaxAnimFrames = 50;
-        const int MaxSmokeFrames = 4;
         int currentIter = GameLoopIter;
         _explosions.RemoveAll(x =>
-            AnimationAge(currentIter, x.StartIter) >= (x.ExpType == SmokeExpType ? MaxSmokeFrames : MaxAnimFrames));
+            AnimationAge(currentIter, x.StartIter) >= AnimFramesFor(x.ExpType));
         CompleteMissionIfWaveEnded();
     }
 

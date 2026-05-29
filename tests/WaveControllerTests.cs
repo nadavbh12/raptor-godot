@@ -193,6 +193,23 @@ public class WaveControllerTests
             waveActive, demoActive, endWave, playerAlive, enemiesRemaining));
     }
 
+    [Theory]
+    [InlineData(0, 13)]    // EXP_AIRSMALL1 → EXPLO2_BLK
+    [InlineData(1, 12)]    // EXP_AIRMED    → LGFLAK_BLK
+    [InlineData(2, 12)]    // EXP_AIRLARGE  → LGFLAK_BLK
+    [InlineData(5, 42)]    // EXP_GRDLARGE  → GEXPLO_BLK
+    [InlineData(8, 12)]    // EXP_ENERGY    → NRGBANG_BLK
+    [InlineData(10, 14)]   // EXP_AIRSMALL2 → SMFLAK_BLK
+    [InlineData(100, 4)]   // smoke         → SMOKTRAL_BLK
+    [InlineData(101, 9)]   // blue spark    → BSPARK_BLK
+    [InlineData(102, 9)]   // orange spark  → OSPARK_BLK
+    public void Explosion_culled_at_per_type_frame_count_not_flat_50(int expType, int frames)
+    {
+        // ANIMS.C:187-218 numframes per type — the sim entity must cull at its
+        // own length (not a flat 50), matching where the renderer stops drawing.
+        Assert.Equal(frames, WaveController.AnimFramesFor(expType));
+    }
+
     [Fact]
     public void Explosion_animation_age_uses_game_loop_iterations_not_framecount()
     {
