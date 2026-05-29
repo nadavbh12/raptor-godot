@@ -512,6 +512,7 @@ public sealed class EnemyLogic
     private static (int xoff, int yoff) BulletOffsets(EshotType t) => t switch
     {
         EshotType.ES_MISSLE => (4, 0),   // missile: anchor y at gunY (no yoff)
+        EshotType.ES_PLASMA => (4, 0),   // plasma: ESHOT.C:398 subtracts xoff only
         _ => (4, 4),                      // all other ESHOT_BLK family bullets
     };
 
@@ -572,10 +573,26 @@ public sealed class EnemyLogic
                 b = BulletLogic.EnemyMine(bx, by, pos: 0, fuseTicks: 150);
                 break;
 
+            case EshotType.ES_PLASMA:
+                // ESHOT.C:395-403 — vertical descent (move.x2 = move.x, y2 = 200),
+                // cur->speed = 8, LIB_PLASMA.speed = 10, hits = 15. Distinct from
+                // ES_ATPLAYER: plasma does NOT home on the player.
+                b = new BulletLogic(BulletKind.Enemy, sx, sy,
+                    dx: 0, dy: 1, initSpeed: 8, maxSpeed: 10, damage: HitsPlasma);
+                break;
+
             case EshotType.ES_ATPLAYER:
             default:
                 {
-                    int dmg = (shootType == (int)EshotType.ES_ATPLAYER) ? HitsAtPlay : HitsNormal;
+                    // ESHOT.C lib->hits per shoot_type. ATPLAYER and COCONUTS both
+                    // aim at the player center (homing) but carry different damage:
+                    // LIB_ATPLAY.hits = 1, LIB_COCO.hits = 1, default LIB_NORMAL = 2.
+                    int dmg = shootType switch
+                    {
+                        (int)EshotType.ES_ATPLAYER => HitsAtPlay,
+                        (int)EshotType.ES_COCONUTS => HitsCoco,
+                        _ => HitsNormal,
+                    };
                     // C aims at player CENTER (player_cx, player_cy) via Bresenham
                     // (ESHOT.C:324-325 + InitMobj/MoveSobj). The caller passes the
                     // player's centre coords. Bresenham mirrors C exactly so

@@ -89,6 +89,59 @@ public class EnemyLogicTests
         Assert.Equal(2, 1 + e.ExtraBulletsThisTick!.Count);
     }
 
+    // Drives a single-gun enemy until it fires one bullet of the given
+    // ES shoot_type, returning that bullet for inspection.
+    private static BulletLogic FireOneBullet(int shootType, int enemyX, int enemyY,
+                                             int playerX, int playerY)
+    {
+        var meta = SyntheticPath((0, 0));
+        meta.Hits = 5;
+        meta.NumGuns = 1;
+        meta.ShootFrame = 20;
+        meta.ShootCnt = 1;
+        meta.ShootStart = -1;
+        meta.ShotSpace = 0;
+        meta.ShootX = new[] { 0 };
+        meta.ShootY = new[] { 0 };
+        meta.ShootType = new[] { shootType };
+        var e = new EnemyLogic(meta, enemyX, enemyY);
+        for (int i = 0; i < 200; i++)
+        {
+            var b = e.Tick(playerX, playerY);
+            if (b != null) return b;
+        }
+        throw new Xunit.Sdk.XunitException("enemy never fired");
+    }
+
+    [Fact]
+    public void Plasma_fires_straight_down_with_full_damage()
+    {
+        // ESHOT.C:395-403 — ES_PLASMA: cur->move.x -= xoff (x-only, no yoff),
+        // move.x2 = move.x (vertical), move.y2 = 200, speed 8 -> lib 10, hits=15.
+        // It must descend vertically, NOT home on the player like ES_ATPLAYER.
+        var b = FireOneBullet(7, enemyX: 100, enemyY: 40, playerX: 200, playerY: 180);
+
+        Assert.Equal(EnemyShotType.Plasma, b.ShotType);
+        Assert.Equal(15, b.Damage);
+
+        int startX = b.X;
+        for (int i = 0; i < 6; i++) b.Tick();
+        Assert.Equal(startX, b.X);   // vertical — no drift toward playerX=200
+        Assert.True(b.Y > 40);        // descends
+    }
+
+    [Fact]
+    public void Coconut_deals_one_damage_not_two()
+    {
+        // ESHOT.C:405-414 — ES_COCONUTS aims at player center (homing) like
+        // ATPLAYER, but lib->hits = 1 (LIB_COCO). Trajectory is already correct
+        // via the default branch; only the per-hit damage was wrong (was 2).
+        var b = FireOneBullet(8, enemyX: 100, enemyY: 40, playerX: 200, playerY: 180);
+
+        Assert.Equal(EnemyShotType.Coconuts, b.ShotType);
+        Assert.Equal(1, b.Damage);
+    }
+
     [Fact]
     public void Deferred_shot_damage_keeps_dead_enemy_for_one_dump()
     {
