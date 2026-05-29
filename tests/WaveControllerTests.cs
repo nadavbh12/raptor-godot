@@ -76,6 +76,42 @@ public class WaveControllerTests
     }
 
     [Fact]
+    public void Shield_recharge_is_suppressed_during_death_and_endwave()
+    {
+        const int charge = 96;
+
+        // Normal play: heals when think_cnt crosses CHARGE_SHIELD, resets to 0.
+        var (tc, heal) = WaveController.ShieldRechargeStep(
+            charge, diff: 0, charge, deathActive: false, endWaveActive: false);
+        Assert.Equal(0, tc);
+        Assert.True(heal);
+
+        // OBJECTS.C:1365 — during the death-explosion countdown the heal is
+        // suppressed (startendwave != EMPTY) so a recharge cannot revive a dead
+        // ship. think_cnt still resets, matching OBJS_Think.
+        (tc, heal) = WaveController.ShieldRechargeStep(
+            charge, diff: 0, charge, deathActive: true, endWaveActive: false);
+        Assert.Equal(0, tc);
+        Assert.False(heal);
+
+        // Same suppression during the end-of-wave fly-off.
+        (_, heal) = WaveController.ShieldRechargeStep(
+            charge, diff: 0, charge, deathActive: false, endWaveActive: true);
+        Assert.False(heal);
+
+        // Below threshold: just increments.
+        (tc, heal) = WaveController.ShieldRechargeStep(
+            10, diff: 0, charge, deathActive: false, endWaveActive: false);
+        Assert.Equal(11, tc);
+        Assert.False(heal);
+
+        // High difficulty (diff >= 3) never heals (existing behavior preserved).
+        (_, heal) = WaveController.ShieldRechargeStep(
+            charge, diff: 3, charge, deathActive: false, endWaveActive: false);
+        Assert.False(heal);
+    }
+
+    [Fact]
     public void Coconut_enemy_shot_consumes_monkey_pick_before_random_pitch()
     {
         var actual = new System.Random(1234);

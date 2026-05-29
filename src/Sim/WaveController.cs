@@ -1588,6 +1588,27 @@ public partial class WaveController : Node
         _menu?.CompleteMission(SimClock.Frame);
     }
 
+    /// <summary>
+    /// Pure-C# shield-recharge step (mirrors OBJS_Think, OBJECTS.C:1361-1368).
+    /// think_cnt increments and, on crossing CHARGE_SHIELD, resets to 0; the
+    /// heal itself fires only when the end sequence is inactive
+    /// (startendwave == EMPTY) so the ship cannot recharge — or revive — during
+    /// the death-explosion countdown or the end-of-wave fly-off.
+    /// </summary>
+    internal static (int thinkCnt, bool heal) ShieldRechargeStep(
+        int thinkCnt, int diff, int chargeShield,
+        bool deathActive, bool endWaveActive)
+    {
+        thinkCnt++;
+        bool heal = false;
+        if (diff < 3 && thinkCnt > chargeShield)
+        {
+            thinkCnt = 0;
+            if (!deathActive && !endWaveActive) heal = true;
+        }
+        return (thinkCnt, heal);
+    }
+
     internal void PhaseHud()
     {
         if (_skipInitialPaletteStuff)
@@ -1607,12 +1628,12 @@ public partial class WaveController : Node
         // Shield recharge (mirrors OBJS_Think in OBJECTS.C).
         // CHARGE_SHIELD = 96. Every 97 game loops, heal 1 shield.
         // Only on curplr_diff < DIFF_3.
-        _thinkCnt++;
-        if (_curPlayerDiff < 3 && _thinkCnt > ChargeShield)
-        {
-            _thinkCnt = 0;
-            PlayerLogic.Heal(1);
-        }
+        var (newThinkCnt, heal) = ShieldRechargeStep(
+            _thinkCnt, _curPlayerDiff, ChargeShield,
+            deathActive: _playerDeathCountdown >= 0,
+            endWaveActive: _endWaveCountdown >= 0);
+        _thinkCnt = newThinkCnt;
+        if (heal) PlayerLogic.Heal(1);
 
         bool systemDamaged = false;
         if (_oldShieldForLowLoss >= 0
