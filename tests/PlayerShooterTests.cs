@@ -179,14 +179,20 @@ public class PlayerShooterTests
     }
 
     [Fact]
-    public void Turret_with_no_air_enemies_does_not_fire_and_resets_cooldown()
+    public void Turret_with_no_air_enemies_does_not_fire_but_keeps_cooldown()
     {
-        // SHOTS.C:792-799 — if ENEMY_GetRandomAir returns NULL, no shot.
+        // SHOTS.C:650-652 arms lib->cur_shoot = shoot_rate BEFORE the enemy
+        // lookup. The S_TURRET no-air-enemy branch (SHOTS.C:811-818) only does
+        // SHOTS_Remove + SND_Patch(FX_NOSHOOT) + break — it never clears
+        // cur_shoot, so the 6-tick gate stays armed exactly like the MiniGun
+        // no-target branch below. Resetting it to 0 lets the player re-attempt
+        // a turret shot every tick, shifting the shared per-wave RNG stream
+        // (each turret fire consumes turret.aim.x/y).
         var ps = new PlayerShooter();
         var sink = new List<BulletLogic>();
         Assert.False(ps.Shoot(WeaponType.Turret, 160, 176, 3, sink, enemies: null));
         Assert.Empty(sink);
-        Assert.Equal(0, ps.GetCooldown(WeaponType.Turret));
+        Assert.Equal(ShotLib.Get(WeaponType.Turret).ShootRate, ps.GetCooldown(WeaponType.Turret));
     }
 
     [Fact]

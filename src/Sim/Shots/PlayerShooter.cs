@@ -396,7 +396,10 @@ public sealed class PlayerShooter
                     var target = PickRandomAirEnemy(enemies, rng);
                     if (target == null)
                     {
-                        _curShoot[idx] = 0;
+                        // SHOTS.C:811-818 — no air enemy: SHOTS_Remove + break,
+                        // leaving lib->cur_shoot armed at shoot_rate (set at
+                        // SHOTS.C:652 before the lookup). Do NOT clear the gate;
+                        // mirror the MiniGun no-target branch above.
                         return false;
                     }
                     ConsumeRandomPitchSound(rng, "sound.fx_turret");
