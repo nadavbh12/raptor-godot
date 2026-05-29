@@ -12,6 +12,29 @@ public class PlayerShooterTests
     // ── ShotLib table ────────────────────────────────────────────────────────
 
     [Fact]
+    public void ForwardGuns_does_not_consume_a_sound_pitch_random_draw()
+    {
+        // FX.C SND_Patch gates its random(40) pitch draw behind fx_volume>=1,
+        // numsnds<=2 (a wall-clock Mix_Playing count), item!=EMPTY and rpflag —
+        // all off in the deterministic parity golden, so C draws ZERO sound RNG
+        // for weapon fire. ForwardGuns must consume only its two bullet curframe
+        // draws (forward.frame.r/l), not a sound-pitch draw. The spurious draw
+        // was the full_demo MiniGun-divergence root cause.
+        var ps = new PlayerShooter();
+        var sink = new List<BulletLogic>();
+        var actual = new Random(4242);
+        ps.Shoot(WeaponType.ForwardGuns, 160, 176, 3, sink, enemies: null, rng: actual);
+
+        int numFrames = ShotLib.Get(WeaponType.ForwardGuns).NumFrames;
+        var expected = new Random(4242);
+        PlayerShooter.NextRandom(expected, numFrames, "expected.frame.r");
+        PlayerShooter.NextRandom(expected, numFrames, "expected.frame.l");
+
+        Assert.Equal(PlayerShooter.NextRandom(expected, 1000, "expected.next"),
+                     PlayerShooter.NextRandom(actual, 1000, "actual.next"));
+    }
+
+    [Fact]
     public void ShotLib_FORWARD_GUNS_matches_C()
     {
         // SOURCE/SHOTS.C:137-165 sets these exact values.

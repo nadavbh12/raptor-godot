@@ -551,10 +551,18 @@ public sealed class PlayerShooter
 
     private static void ConsumeRandomPitchSound(Random? rng, string label)
     {
-        // FX.C SND_Patch randomizes pitch for rpflag sounds with random(40).
-        // The C game shares that rand() stream with weapon targeting, so
-        // headless/no-audio parity still needs to consume it.
-        NextRandom(rng, 40, label);
+        // FX.C SND_Patch gates its random(40) pitch draw behind fx_volume>=1,
+        // numsnds<=2 (a wall-clock Mix_Playing count), item!=EMPTY and rpflag.
+        // In the deterministic parity golden the audio path is off, so C draws
+        // NOTHING here — confirmed empirically: consuming this draw desynced the
+        // shared per-wave RNG stream and was the long-standing full_demo MiniGun
+        // divergence (removing it makes mission_start/mission_long/full_demo all
+        // pass). The no-wall-clock sim rule forbids modeling the audio-gated draw
+        // anyway. Kept as a no-op call site so the per-weapon SND_Patch mapping
+        // stays documented. (Enemy positional SND_3DPatch DOES draw and is handled
+        // separately in WaveController.ConsumeEnemyShotSoundRandomForParity.)
+        _ = rng;
+        _ = label;
     }
 
     private static StreamWriter? OpenRngTrace()
