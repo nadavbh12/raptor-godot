@@ -76,6 +76,19 @@ public class WaveControllerTests
     }
 
     [Fact]
+    public void Bonus_overlapping_player_is_not_collectible_when_shield_zero()
+    {
+        // BONUS.C:244 gates pickup on OBJS_GetAmt(S_ENERGY) > 0 — a dead/depleted
+        // ship (shield 0 => !Alive) cannot collect an overlapping bonus.
+        int plx = 100, ply = 100;
+        var bonus = new Raptor.Sim.Bonus.BonusLogic(objType: 16, x: plx + 8, y: ply + 8);
+        Assert.True(bonus.CanBePickedUpBy(plx, ply));   // overlap holds
+
+        Assert.False(WaveController.BonusCollectible(playerAlive: false, bonus, plx, ply));
+        Assert.True(WaveController.BonusCollectible(playerAlive: true, bonus, plx, ply));
+    }
+
+    [Fact]
     public void Shield_recharge_is_suppressed_during_death_and_endwave()
     {
         const int charge = 96;

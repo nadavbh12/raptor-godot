@@ -1177,13 +1177,23 @@ public partial class WaveController : Node
         // cur->y) must be inside the player's top-left-anchored rect.
         int plx = PlayerLogic.X;
         int ply = PlayerLogic.Y;
+        bool playerAlive = PlayerLogic.Alive;
         _pickedUpBonuses.Clear();
         foreach (var bn in _bonuses)
         {
-            if (bn.CanBePickedUpBy(plx, ply))
+            if (BonusCollectible(playerAlive, bn, plx, ply))
                 _pickedUpBonuses.Add(bn);
         }
     }
+
+    /// <summary>
+    /// Bonus pickup eligibility (BONUS.C:242-244): the overlap AABB
+    /// (BonusLogic.CanBePickedUpBy) AND the C gate `OBJS_GetAmt(S_ENERGY) > 0`,
+    /// i.e. the player must be alive (shield > 0). A depleted/dead ship cannot
+    /// collect bonuses — the overlap is skipped entirely while shield == 0.
+    /// </summary>
+    internal static bool BonusCollectible(bool playerAlive, Raptor.Sim.Bonus.BonusLogic bn, int plx, int ply)
+        => playerAlive && bn.CanBePickedUpBy(plx, ply);
 
     /// <summary>True when the player has picked up an S_DETECT bonus.
     /// Used by the view's secrets-locator UI. Persists across waves
