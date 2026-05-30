@@ -161,6 +161,16 @@ internal class ParityEmitWorker : IDisposable
         }
         else
         {
+            // C's parity emitter (parity.c win_state_name) has NO "DEATH" state:
+            // the player-death cinematic runs without the emit hook, so C goes
+            // straight from MISSION_N (death anim plays in-game) to MENU. Godot
+            // models the death movie as a distinct WinState.Death phase; emitting
+            // it here injects DEATH checkpoints C never has, which (a) mismatch
+            // C's MENU rows by index and (b) shift the whole tail. Suppress them
+            // to mirror C. (Landing/Intro are likewise C-absent transitional
+            // states, but only Death occurs in the death scenarios.)
+            if (Menu.State == Sim.WinState.Death) return;
+
             int demoSeq = GetMenuDemoEmitSequence?.Invoke() ?? DemoEmitDisabled;
             if (demoSeq != DemoEmitDisabled)
             {
