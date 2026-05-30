@@ -4,8 +4,10 @@ namespace Raptor.Sim;
 
 internal static class DeterministicRandom
 {
+    internal static bool? Override;   // test seam; null => read env
+
     public static bool Enabled =>
-        Environment.GetEnvironmentVariable("RAPTOR_DETERMINISTIC_RNG") == "1";
+        Override ?? (Environment.GetEnvironmentVariable("RAPTOR_DETERMINISTIC_RNG") == "1");
 
     public static int NextOrMidpoint(Random? rng, int maxValue, int fallback)
     {
