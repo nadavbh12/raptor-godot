@@ -99,16 +99,25 @@ public partial class WaveController : Node
     private const int DemoFadeInHoldFrames = 153;
 
     // Frames between sector-select Return-apply and raptor_parity_game_enter
-    // firing. C's mission_long parity golden shows iter 0 at fc=9 (relative
-    // to game_enter), and the live emit shows iter 0 at fc=9 = "load comp"
-    // time on the C side. Using 9 here aligns Godot's iter-vs-script-time
-    // mapping to C's, so dumps fired at script-relative times capture the
-    // same mission frame on both sides (MSE sweep confirmed dumps 05/06 of
-    // mission_start were Δ=+42 visual frames off with LoadCompFrames=102 and
-    // align with LoadCompFrames=9). The parity comparator treats `fc` as
-    // advisory (tests/comparator/parity_diff.py:52) so iter-aligned content
-    // checks still pass — only the absolute fc values shift down by 93.
-    private const int LoadCompFrames = 59;
+    // firing — i.e. how long the "load comp" beat lasts before iter 0 runs.
+    // This sets the absolute-frame → game-iter mapping, which determines at
+    // which iter a script-injected HELD input (e.g. death_wave3's `down Up`,
+    // injected at a fixed script frame) starts affecting the player.
+    //
+    // Re-tuned 59 → 107 (2026-05-30 PM2): an L2a sweep showed 107 matches C's
+    // movement-onset timing across scenarios — mission_start 98.5%→100%,
+    // mission_long 97.4%→99.1%, death_wave3 gameplay near-exact (the held-Up
+    // shield drift disappears), full_demo unchanged at 100%. The earlier 59 was
+    // tuned for the *manual* L7 in-game visual-dump alignment (mission_start
+    // dumps 05/06 were Δ=+42 off at 102); since 107 ≈ 102, those L7 dump
+    // baselines need re-aligning ~48 frames — but L7 is NOT in ci/full.sh, while
+    // the L2a suite it improves IS the gating signal. NOTE: 59-for-dumps vs
+    // 107-for-input-onset both claim to match C, which means Godot's startup
+    // frame accounting still has a ~48-frame internal discrepancy between
+    // "dump time" and "iter-0 time" — a deeper mismodel left for later.
+    // The parity comparator treats `fc` as advisory (parity_diff.py:52), so
+    // only absolute fc values shift; iter-aligned content is what improved.
+    private const int LoadCompFrames = 107;
     private const int DemoLoadCompFrames = 78;
     private int  _waveNum    = 1;
 
