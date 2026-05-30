@@ -370,6 +370,76 @@ public sealed class BulletLogic
         _bresenham = false;
     }
 
+    // Enemy laser (ES_LASER). A short-lived beam that tracks the firing enemy's
+    // gun each tick and damages the player on horizontal alignment (ESHOT.C:
+    // 453-470). Unlike normal enemy bullets it is NOT subject to AABB collision:
+    // WaveController calls LaserTick each iter and applies the returned damage
+    // directly (mirrors OBJS_SubEnergy inside ESHOT_Think). Vertical-column
+    // RENDERING (ESHOT.C:558+) is a View concern and is NOT modeled here.
+    private readonly bool _enemyLaser;
+    private readonly Raptor.Sim.Enemy.EnemyLogic? _laserEnemy;
+    private readonly int _laserShootX, _laserShootY, _laserNumFrames;
+    private const int PlayerWidth2 = 16;   // PLAYERWIDTH/2
+
+    /// <summary>True iff this is an enemy ES_LASER beam (driven via LaserTick).</summary>
+    public bool IsEnemyLaser => _enemyLaser;
+
+    /// <summary>
+    /// Spawn an enemy ES_LASER beam (ESHOT.C:385-393). It tracks the firing
+    /// <paramref name="enemy"/>'s gun (offsets <paramref name="gunShootX"/>/
+    /// <paramref name="gunShootY"/> = the enemy's shootx[gun]/shooty[gun]) and
+    /// lives <paramref name="numFrames"/> passes, damaging the player by
+    /// <paramref name="hits"/> (LIB_LASER.hits = 12).
+    /// </summary>
+    public static BulletLogic EnemyLaser(Raptor.Sim.Enemy.EnemyLogic enemy,
+                                         int gunShootX, int gunShootY,
+                                         int numFrames = 4, int hits = 12)
+        => new BulletLogic(enemy, gunShootX, gunShootY, numFrames, hits);
+
+    private BulletLogic(Raptor.Sim.Enemy.EnemyLogic enemy, int gunShootX, int gunShootY,
+                        int numFrames, int hits)
+    {
+        Kind = BulletKind.Enemy;
+        ShotType = EnemyShotType.Laser;
+        _enemyLaser = true;
+        _laserEnemy = enemy;
+        _laserShootX = gunShootX;
+        _laserShootY = gunShootY;
+        _laserNumFrames = numFrames;
+        Damage = hits;
+        _accelerating = false;
+        _bresenham = false;
+        // Initial beam tip (ESHOT.C:456-457: x = en.x + shootx - 4, y = en.y + shooty).
+        X = enemy.X + gunShootX - 4;
+        Y = enemy.Y + gunShootY;
+    }
+
+    /// <summary>
+    /// One ESHOT_Think pass for an ES_LASER beam (ESHOT.C:449/453-470). Tracks
+    /// the firing enemy's gun, lives num_frames passes (curframe++ each), and on
+    /// each of the first (num_frames-1) passes damages the player by Damage when
+    /// horizontally aligned (|x - player_cx| &lt; PLAYERWIDTH/2) and above the
+    /// player (y &lt; player_cy). Returns the damage to apply this pass (0 if
+    /// none); sets Alive=false when the beam expires. The deterministic
+    /// random(4)-2 jitter on move.y2 (ESHOT.C:464) only nudges the rendered beam
+    /// endpoint (=0 under RAPTOR_DETERMINISTIC_RNG) and is not modeled here.
+    /// </summary>
+    public int LaserTick(int playerCx, int playerCy)
+    {
+        if (!Alive || !_enemyLaser || _laserEnemy == null) return 0;
+        FrameCounter++;                                   // shot->curframe++ (ESHOT.C:449)
+        if (FrameCounter < _laserNumFrames)               // ESHOT.C:454
+        {
+            X = _laserEnemy.X + _laserShootX - 4;          // ESHOT.C:456
+            Y = _laserEnemy.Y + _laserShootY;              // ESHOT.C:457
+            if (System.Math.Abs(X - playerCx) < PlayerWidth2 && Y < playerCy)  // ESHOT.C:462
+                return Damage;                             // OBJS_SubEnergy(lib->hits) (ESHOT.C:465)
+            return 0;
+        }
+        Alive = false;                                     // ESHOT.C:469 doneflag
+        return 0;
+    }
+
     private BulletLogic(int x, int y, int pos, int fuseTicks, bool enemyMineMarker)
     {
         Kind = BulletKind.Enemy;
@@ -493,6 +563,10 @@ public sealed class BulletLogic
     public void Tick()
     {
         if (!Alive) return;
+        // ES_LASER is driven by WaveController via LaserTick(player_cx, player_cy),
+        // not the generic movement path (it tracks the firing enemy + needs the
+        // player centre for its alignment-damage rule). Ignore a stray Tick().
+        if (_enemyLaser) return;
         if (_enemyMine)
         {
             FrameCounter++;

@@ -573,6 +573,20 @@ public sealed class EnemyLogic
                 b = BulletLogic.EnemyMine(bx, by, pos: 0, fuseTicks: 150);
                 break;
 
+            case EshotType.ES_LASER:
+                // ESHOT.C:385-393 — a beam that TRACKS this firing enemy's gun
+                // each tick (x = en.x + shootx[gun] - 4, y = en.y + shooty[gun]),
+                // lives LIB_LASER.num_frames=4 passes, and damages the player by
+                // LIB_LASER.hits=12 on horizontal alignment (NOT AABB). The caller
+                // passed bx = X + ShootX[gun], by = Y + ShootY[gun], so the gun
+                // offset is recovered as (bx - X, by - Y). Driven by
+                // WaveController.LaserTick, not the generic bullet movement path.
+                // NOTE: only secret-gated wave-8 enemies fire this; no parity
+                // scenario exercises it, and the vertical-column rendering needs
+                // visual review (see EnemyLaserTests / ES_LASER notes).
+                b = BulletLogic.EnemyLaser(this, gunShootX: bx - X, gunShootY: by - Y);
+                break;
+
             case EshotType.ES_PLASMA:
                 // ESHOT.C:395-403 — vertical descent (move.x2 = move.x, y2 = 200),
                 // cur->speed = 8, LIB_PLASMA.speed = 10, hits = 15. Distinct from

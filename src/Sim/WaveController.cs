@@ -1089,6 +1089,16 @@ public partial class WaveController : Node
         // ESHOT_Think which runs after ENEMY_Think in the same game-loop iteration).
         foreach (var b in _enemyBullets)
         {
+            // ES_LASER (ESHOT.C:453-470): tracks the firing enemy, lives 4 passes,
+            // and damages the player directly on horizontal alignment (NOT via the
+            // AABB collision phase, which skips lasers). Mirrors C applying
+            // OBJS_SubEnergy inside ESHOT_Think rather than at collision time.
+            if (b.IsEnemyLaser)
+            {
+                int laserDmg = b.LaserTick(pcx, pcy);
+                if (laserDmg > 0) PlayerLogic.TakeDamage(laserDmg);
+                continue;
+            }
             b.Tick();
             // ESHOT.C:534-539: shot->cnt++ then if (smokeflag && cnt&1) spawn
             // A_SMALL_SMOKE_UP at (shot->x + xoff, shot->y). For us the smoke
@@ -1153,6 +1163,9 @@ public partial class WaveController : Node
         foreach (var b in _enemyBullets)
         {
             if (!b.Alive) continue;
+            // ES_LASER applies its own alignment-based damage in the tick phase
+            // (ESHOT.C:462-465); it is not an AABB hit. Skip it here.
+            if (b.IsEnemyLaser) continue;
             int dx = Math.Abs(b.X - px);
             int dy = Math.Abs(b.Y - py);
             if (dx < playerHw && dy < playerHh)
