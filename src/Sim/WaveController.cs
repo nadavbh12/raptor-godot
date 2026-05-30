@@ -417,12 +417,23 @@ public partial class WaveController : Node
     }
 
     /// <summary>
+    /// Resolves the episode-1 start wave from the RAPTOR_START_WAVE env override
+    /// (1-9), falling back to <paramref name="defaultWave"/> when unset/invalid.
+    /// Mirrors the C hook in RAP.C.
+    /// </summary>
+    internal static int ResolveStartWave(string? env, int defaultWave)
+    {
+        if (int.TryParse(env, out int w) && w >= 1 && w <= 9) return w;
+        return defaultWave;
+    }
+
+    /// <summary>
     /// Fires the deferred iter-0 body and arms the wave. Splits out of the
     /// hot path so _PhysicsProcess stays readable.
     /// </summary>
     private void ApplyPendingGameEnter()
     {
-        _waveNum    = _pendingGameNum + 1;  // gameNum is 0-based; wave files are 1-based.
+        _waveNum    = ResolveStartWave(OS.GetEnvironment("RAPTOR_START_WAVE"), _pendingGameNum + 1);  // gameNum is 0-based; wave files are 1-based.
         SeedRngForWave(_waveNum, OS.GetEnvironment("RAPTOR_RNG_SEED_OVERRIDE"));
         LoadWave(_waveNum);
         _gameEnterFc = SimClock.Frame;

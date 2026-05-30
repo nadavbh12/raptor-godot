@@ -278,4 +278,14 @@ public class WaveControllerTests
         return count;
     }
 
+    [Theory]
+    [InlineData(null, 1, 1)]
+    [InlineData("3", 1, 3)]
+    [InlineData("9", 1, 9)]
+    [InlineData("0", 1, 1)]
+    [InlineData("10", 1, 1)]
+    [InlineData("abc", 1, 1)]
+    public void StartWave_resolves_override(string? env, int defaultWave, int expected)
+        => Assert.Equal(expected, WaveController.ResolveStartWave(env, defaultWave));
+
 }
