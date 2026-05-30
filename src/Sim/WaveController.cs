@@ -226,6 +226,12 @@ public partial class WaveController : Node
     private readonly List<BonusLogic>   _bonuses       = new();
     private readonly List<EnemyLogic>   _weaponTargetEnemies = new();
 
+    // Mirrors C's BONUS_Think static `gcnt` (BONUS.C:205): incremented once per
+    // bonus-think pass (every game-loop iter), read as (gcnt & 1) to drive the
+    // shared wobble/sprite-frame advance for ALL bonuses in lockstep. Like the C
+    // static it is NOT reset per wave, so the phase stays continuous across waves.
+    private int _bonusThinkCnt;
+
     // Active explosion animations spawned when an enemy dies. Each entry
     // records the C exptype (SOURCE/MAP.H), the center position, and the
     // game-loop iteration at which it should first display. C ANIMS_Think
@@ -1073,7 +1079,11 @@ public partial class WaveController : Node
         }
 
         // Tick bonuses (BONUS_Think — drift down 1 px/iter, despawn at y > 200).
-        foreach (var bn in _bonuses) bn.Tick();
+        // The wobble/sprite-frame advance fires on the global (gcnt & 1) phase,
+        // shared across all bonuses; gcnt increments once per pass (BONUS.C:288).
+        bool bonusAdvance = (_bonusThinkCnt & 1) != 0;
+        foreach (var bn in _bonuses) bn.Tick(bonusAdvance);
+        _bonusThinkCnt++;
 
         // Tick enemy bullets (includes newly fired ones from this frame, matching C's
         // ESHOT_Think which runs after ENEMY_Think in the same game-loop iteration).

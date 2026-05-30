@@ -19,7 +19,6 @@ public sealed class BonusLogic
     public bool DisplayAsPickedUpMoney { get; private set; }
     public int PickedUpMoneyCountdown { get; private set; }
     public bool Alive  { get; private set; } = true;
-    private int _tickCount;
 
     /// <summary>
     /// BONUS_Think pickup-AABB half-width. BONUS_WIDTH=16, BONUS_HEIGHT=16
@@ -39,10 +38,16 @@ public sealed class BonusLogic
     }
 
     /// <summary>
-    /// One game-loop iteration. BONUS.C:187 advances y by 1 each tick.
-    /// BONUS.C:241-242 despawns when off the bottom of the screen.
+    /// One game-loop iteration (one BONUS_Think pass). BONUS.C:187 advances y by
+    /// 1 each tick. BONUS.C:241-242 despawns when off the bottom of the screen.
     /// </summary>
-    public void Tick()
+    /// <param name="advance">
+    /// True on the (gcnt &amp; 1) phase. In C, gcnt is a GLOBAL static incremented
+    /// once per BONUS_Think (BONUS.C:205/288), so the wobble/sprite-frame advance
+    /// happens for every bonus in lockstep on alternating game iterations —
+    /// independent of when each bonus spawned. WaveController owns the counter.
+    /// </param>
+    public void Tick(bool advance)
     {
         if (!Alive) return;
 
@@ -52,13 +57,12 @@ public sealed class BonusLogic
         int gy = Y - GlowHalfHeight + Ypos[Pos];
 
         Y++;
-        if ((_tickCount & 1) != 0)
+        if (advance)
         {
             Pos = (Pos + 1) % 16;
             Frame = (Frame + 1) % FrameCountFor(ObjType);
         }
         GlowFrame = (GlowFrame + 1) % 4;
-        _tickCount++;
 
         if (DisplayAsPickedUpMoney)
         {

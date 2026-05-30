@@ -8,26 +8,34 @@ public class BonusTests
     [Fact]
     public void Bonus_drifts_down_one_pixel_per_tick()
     {
-        // BONUS.C:187 — cur->y++ each iter.
+        // BONUS.C:187 — cur->y++ each iter (independent of the gcnt phase).
         var b = new BonusLogic(objType: 1 /* S_PLASMA_GUNS */, x: 100, y: 50);
-        b.Tick();
+        b.Tick(advance: false);
         Assert.Equal(50 + 1, b.Y);
         Assert.Equal(100, b.X);
-        for (int i = 0; i < 10; i++) b.Tick();
+        for (int i = 0; i < 10; i++) b.Tick(advance: false);
         Assert.Equal(61, b.Y);
         Assert.True(b.Alive);
     }
 
     [Fact]
-    public void Bonus_wobble_and_sprite_frame_advance_every_other_tick()
+    public void Bonus_wobble_and_sprite_frame_advance_only_on_advance_phase()
     {
+        // BONUS.C:224 — pos/curframe advance only when (gcnt & 1). gcnt is a
+        // GLOBAL counter incremented once per BONUS_Think, so the advance phase
+        // is driven externally (by WaveController) and shared across all bonuses,
+        // independent of when each bonus spawned.
         var b = new BonusLogic(objType: 4 /* S_MINI_GUN */, x: 100, y: 50, initialPos: 15);
 
-        b.Tick();
+        b.Tick(advance: false);
         Assert.Equal(15, b.Pos);
         Assert.Equal(0, b.Frame);
 
-        b.Tick();
+        b.Tick(advance: false);
+        Assert.Equal(15, b.Pos);   // still no advance — phase, not tick parity
+        Assert.Equal(0, b.Frame);
+
+        b.Tick(advance: true);
         Assert.Equal(0, b.Pos);
         Assert.Equal(1, b.Frame);
     }
@@ -35,18 +43,19 @@ public class BonusTests
     [Fact]
     public void Bonus_glow_frame_advances_every_tick_like_c()
     {
+        // BONUS.C:237 — curglow advances every iter regardless of the gcnt phase.
         var b = new BonusLogic(objType: 23 /* S_ITEMBUY6 */, x: 100, y: 50);
 
-        b.Tick();
+        b.Tick(advance: false);
         Assert.Equal(1, b.GlowFrame);
 
-        b.Tick();
+        b.Tick(advance: false);
         Assert.Equal(2, b.GlowFrame);
 
-        b.Tick();
+        b.Tick(advance: true);
         Assert.Equal(3, b.GlowFrame);
 
-        b.Tick();
+        b.Tick(advance: false);
         Assert.Equal(0, b.GlowFrame);
     }
 
@@ -61,26 +70,26 @@ public class BonusTests
 
         // Pos=5 → ypos=0: gy = y - 16. Alive at y=216 (gy=200), dead at y=217.
         var flat = new BonusLogic(objType: 16, x: 100, y: 216, initialPos: 5);
-        flat.Tick();
+        flat.Tick(advance: false);
         Assert.True(flat.Alive);
         var flatDead = new BonusLogic(objType: 16, x: 100, y: 217, initialPos: 5);
-        flatDead.Tick();
+        flatDead.Tick(advance: false);
         Assert.False(flatDead.Alive);
 
         // Pos=0 → ypos=-3: gy = y - 19. Survives longer — dead only at y=220.
         var low = new BonusLogic(objType: 16, x: 100, y: 219, initialPos: 0);
-        low.Tick();
+        low.Tick(advance: false);
         Assert.True(low.Alive);
         var lowDead = new BonusLogic(objType: 16, x: 100, y: 220, initialPos: 0);
-        lowDead.Tick();
+        lowDead.Tick(advance: false);
         Assert.False(lowDead.Alive);
 
         // Pos=8 → ypos=+3: gy = y - 13. Dies earlier — dead at y=214.
         var high = new BonusLogic(objType: 16, x: 100, y: 213, initialPos: 8);
-        high.Tick();
+        high.Tick(advance: false);
         Assert.True(high.Alive);
         var highDead = new BonusLogic(objType: 16, x: 100, y: 214, initialPos: 8);
-        highDead.Tick();
+        highDead.Tick(advance: false);
         Assert.False(highDead.Alive);
     }
 
@@ -89,7 +98,7 @@ public class BonusTests
     {
         var b = new BonusLogic(objType: 1, x: 100, y: 50);
         b.Kill();
-        b.Tick();
+        b.Tick(advance: true);
         Assert.Equal(50, b.Y);
         Assert.False(b.Alive);
     }
@@ -106,12 +115,12 @@ public class BonusTests
         Assert.Equal(50, b.PickedUpMoneyCountdown);
 
         for (int i = 0; i < 49; i++)
-            b.Tick();
+            b.Tick(advance: false);
 
         Assert.True(b.Alive);
         Assert.True(b.DisplayAsPickedUpMoney);
 
-        b.Tick();
+        b.Tick(advance: false);
         Assert.False(b.Alive);
     }
 
@@ -124,12 +133,12 @@ public class BonusTests
         var b = new BonusLogic(objType: 23 /* S_ITEMBUY6 */, x: 100, y: 50, initialPos: 15);
         b.MarkPickedUpMoney();
 
-        b.Tick();
+        b.Tick(advance: false);
         Assert.Equal(51, b.Y);
         Assert.Equal(15, b.Pos);
         Assert.Equal(49, b.PickedUpMoneyCountdown);
 
-        b.Tick();
+        b.Tick(advance: true);
         Assert.Equal(52, b.Y);
         Assert.Equal(0, b.Pos);
         Assert.Equal(48, b.PickedUpMoneyCountdown);
