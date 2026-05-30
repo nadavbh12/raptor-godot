@@ -84,6 +84,7 @@ echo "[run_l2a] running godot..."
 RAPTOR_PLAYTHROUGH="$SCRIPT" \
 RAPTOR_PARITY_OUT="$OUT/godot.parity.txt" \
 RAPTOR_TEST_FAST=1 \
+RAPTOR_DETERMINISTIC_RNG=1 \
 "$GODOT_BIN" --path "$REPO" --headless --quit-after $MAX_FRAMES \
     --audio-driver Dummy \
     >"$OUT/godot.log" 2>&1 || {
