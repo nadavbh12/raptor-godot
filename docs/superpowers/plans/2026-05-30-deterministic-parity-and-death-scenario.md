@@ -35,56 +35,37 @@
 
 ---
 
-## Phase 0 — Tracer: C deterministic-random chokepoint (BLOCKING)
+## Phase 0 — Tracer: verify the EXISTING C deterministic RNG (BLOCKING)
 
-Fail-fast on the two UNVERIFIED spec dependencies for the C side: (a) one chokepoint makes `random()` deterministic, (b) the C build is byte-deterministic run-to-run under it. This is the un-mocked external-dependency test for the C binary.
-
-### Task 0: C `raptor_random` chokepoint + self-determinism gate
-
-**Files:**
-- Modify: `dosraptor/port/platform/dos_compat.h` (the `random(x)` macro, ~line 215)
-- Create/modify: `dosraptor/port/platform/parity.c` — add `raptor_random` + reuse the existing `g_deterministic` (currently in `gfx_sdl.c`; expose via a shared accessor `int raptor_is_deterministic(void)`).
-
-- [ ] **Step 1: Expose the deterministic flag.** In `gfx_sdl.c`, add `int raptor_is_deterministic(void){ return g_deterministic; }` and declare it in a shared header (`parity.h` or `dos_compat.h`).
-
-- [ ] **Step 2: Add the chokepoint.** In `parity.c`:
-
+**Discovery (2026-05-30):** the C repo already has the chokepoint. `GFX/types.h`:
 ```c
-#include <stdlib.h>
-int raptor_is_deterministic(void);
-int raptor_random(int x) {
-    if (x <= 0) return 0;
-    if (raptor_is_deterministic()) return x / 2;   /* midpoint, order-independent */
-    return rand() % x;
+static inline int raptor_random(int x) {           // #define random(x) raptor_random(x)
+   if (x <= 0) return 0;
+   if (getenv("RAPTOR_DETERMINISTIC_RNG") == "1") return x >> 1;   // = x/2, order-independent
+   return rand() % x;
 }
 ```
+So `random()` is **already** blanket-deterministic-capable, gated on `RAPTOR_DETERMINISTIC_RNG` — the *same* flag Godot's `DeterministicRandom.Enabled` reads, and that `SHOTS.C:30` / `ENEMY.C:69` key off. **No C code patch is needed.** The foundation is just *setting the flag* during capture and Godot L2a. This task only verifies the two UNVERIFIED spec dependencies: (a) C is byte-deterministic run-to-run under the flag, (b) C↔Godot agree under it.
 
-- [ ] **Step 3: Route the macro.** In `dos_compat.h`, replace `#define random(x) (rand()%x)` with:
+### Task 0: Tracer — C self-determinism + C↔Godot diff under `RAPTOR_DETERMINISTIC_RNG`
 
-```c
-int raptor_random(int x);
-#define random(x) raptor_random(x)
-```
+**Files:** none changed (verification only).
 
-- [ ] **Step 4: Build C.** Run: `cd /Users/nadavb/dev/dosraptor && cmake --build build 2>&1 | tail -5`. Expected: builds clean.
-
-- [ ] **Step 5: Self-determinism gate (un-mocked tracer).** Confirm two deterministic runs are byte-identical (this is the real-binary happy-path test; do NOT skip). **Ask the user before running — grabs the mouse.**
+- [ ] **Step 1: C self-determinism gate (un-mocked tracer).** Two deterministic runs must be byte-identical. **Ask the user before running — grabs the mouse.**
 
 ```bash
 cd /Users/nadavb/dev/dosraptor
 BIN=build/raptor.app/Contents/MacOS/raptor
-for r in A B; do RAPTOR_PLAYTHROUGH=tests/scripts/mission_start.txt \
-  RAPTOR_PARITY_OUT=/tmp/det_$r.txt RAPTOR_TEST_DETERMINISTIC=1 timeout 120 "$BIN" >/dev/null 2>&1 || true; done
-diff -q /tmp/det_A.txt /tmp/det_B.txt && echo "DETERMINISTIC OK" || { echo "NONDETERMINISTIC — STOP, investigate non-RNG source"; diff /tmp/det_A.txt /tmp/det_B.txt | head; }
+for r in A B; do RAPTOR_PLAYTHROUGH=tests/scripts/mission_start.txt RAPTOR_PARITY_OUT=/tmp/det_$r.txt \
+  RAPTOR_TEST_DETERMINISTIC=1 RAPTOR_DETERMINISTIC_RNG=1 timeout 120 "$BIN" >/dev/null 2>&1 || true; done
+diff -q /tmp/det_A.txt /tmp/det_B.txt && echo "DETERMINISTIC OK" || { echo "NONDETERMINISTIC — STOP"; diff /tmp/det_A.txt /tmp/det_B.txt | head; }
 ```
 
-Expected: `DETERMINISTIC OK`. If not, a non-RNG nondeterminism source exists — **stop and investigate before proceeding** (the whole approach depends on this).
+Expected: `DETERMINISTIC OK`. If not, a non-RNG nondeterminism source exists — **stop and investigate** (the whole approach depends on this).
 
-- [ ] **Step 6: Commit (in dosraptor).**
+- [ ] **Step 2: C↔Godot diff under the flag.** Run Godot `mission_start` with `RAPTOR_DETERMINISTIC_RNG=1` and diff against the C run from Step 1 (`/tmp/det_A.txt`). Mismatches here are either Godot draws not yet honoring the flag (Phase 1 audit fixes them) or a real non-RNG divergence. Record the diff; it informs Phase 1.
 
-```bash
-cd /Users/nadavb/dev/dosraptor && git add -A && git commit -m "Deterministic random(): route through raptor_random (x/2 under RAPTOR_TEST_DETERMINISTIC)"
-```
+- [ ] **Step 3: No commit** (verification only). Proceed to Phase 1.
 
 ---
 
@@ -258,7 +239,7 @@ cd /Users/nadavb/dev/dosraptor && git add -A && git commit -m "Remove SHOTS_Dete
 
 ```bash
 RAPTOR_PLAYTHROUGH=tests/scripts/mission_start.txt RAPTOR_PARITY_OUT=/tmp/w3.txt \
-  RAPTOR_TEST_DETERMINISTIC=1 RAPTOR_START_WAVE=3 timeout 120 build/raptor.app/Contents/MacOS/raptor >/dev/null 2>&1 || true
+  RAPTOR_TEST_DETERMINISTIC=1 RAPTOR_DETERMINISTIC_RNG=1 RAPTOR_START_WAVE=3 timeout 120 build/raptor.app/Contents/MacOS/raptor >/dev/null 2>&1 || true
 head -3 /tmp/w3.txt; wc -l /tmp/w3.txt
 ```
 
@@ -311,9 +292,9 @@ Then call it where the gameplay wave is chosen: `_waveNum = ResolveStartWave(OS.
 
 **Files:**
 - Modify: `tests/run_l2a.sh` (add the Godot deterministic env)
-- Modify: `dosraptor/tests/parity_capture.sh` and `golden_capture.sh` already set `RAPTOR_TEST_DETERMINISTIC=1` (now also governs RNG) — no change needed there.
+- Modify: `dosraptor/tests/parity_capture.sh`, `golden_capture.sh` — add `RAPTOR_DETERMINISTIC_RNG=1` to the C run env (they set `RAPTOR_TEST_DETERMINISTIC=1` for the clock, but RNG determinism is gated on the separate `RAPTOR_DETERMINISTIC_RNG` flag).
 
-- [ ] **Step 1: Set the Godot flag** in `run_l2a.sh` alongside `RAPTOR_TEST_FAST=1`: add `RAPTOR_DETERMINISTIC_RNG=1 \` to the Godot launch env block.
+- [ ] **Step 1: Set the Godot flag** in `run_l2a.sh` alongside `RAPTOR_TEST_FAST=1`: add `RAPTOR_DETERMINISTIC_RNG=1 \` to the Godot launch env block. Add the same env to the C capture lines in `parity_capture.sh` / `golden_capture.sh` (dosraptor).
 
 - [ ] **Step 2: Commit.** `git add tests/run_l2a.sh && git commit -m "Run L2a Godot side in deterministic-RNG mode"`
 
@@ -331,7 +312,7 @@ cd /Users/nadavb/dev/dosraptor; BIN=build/raptor.app/Contents/MacOS/raptor
 GDIR=/Users/nadavb/dev/raptor-godot/tests/parity/scripts
 for s in mission_start mission_long full_demo menu_demo; do
   for r in A B; do RAPTOR_PLAYTHROUGH=tests/scripts/$s.txt RAPTOR_PARITY_OUT=/tmp/g_$s.$r \
-    RAPTOR_TEST_DETERMINISTIC=1 timeout 120 "$BIN" >/dev/null 2>&1 || true; done
+    RAPTOR_TEST_DETERMINISTIC=1 RAPTOR_DETERMINISTIC_RNG=1 timeout 120 "$BIN" >/dev/null 2>&1 || true; done
   if diff -q /tmp/g_$s.A /tmp/g_$s.B >/dev/null; then cp /tmp/g_$s.A "$GDIR/$s.parity.txt"; echo "$s OK"; else echo "$s NONDETERMINISTIC"; fi
 done
 ```
@@ -377,7 +358,7 @@ quit
 ```bash
 cd /Users/nadavb/dev/dosraptor; BIN=build/raptor.app/Contents/MacOS/raptor
 RAPTOR_PLAYTHROUGH=tests/scripts/death_wave3.txt RAPTOR_PARITY_OUT=/tmp/death.txt \
-  RAPTOR_TEST_DETERMINISTIC=1 RAPTOR_START_WAVE=3 timeout 120 "$BIN" >/dev/null 2>&1 || true
+  RAPTOR_TEST_DETERMINISTIC=1 RAPTOR_DETERMINISTIC_RNG=1 RAPTOR_START_WAVE=3 timeout 120 "$BIN" >/dev/null 2>&1 || true
 grep -o '"shield":[0-9]*' /tmp/death.txt | tail -5   # expect shield -> 0
 ```
 

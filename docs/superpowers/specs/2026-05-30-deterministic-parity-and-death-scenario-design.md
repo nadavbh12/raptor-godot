@@ -45,6 +45,14 @@ both sides.
 
 ## Design
 
+> **Correction (2026-05-30, during execution):** A1 below assumed C needed a new
+> `random()` patch under `RAPTOR_TEST_DETERMINISTIC`. In fact `GFX/types.h` already
+> defines `random(x) → raptor_random(x)` returning `x>>1` when `RAPTOR_DETERMINISTIC_RNG`
+> is set — the **same flag** Godot's `DeterministicRandom` and `SHOTS.C`/`ENEMY.C` use.
+> So **no C patch is required**; the foundation is just *setting `RAPTOR_DETERMINISTIC_RNG=1`*
+> during capture + L2a. The flag of record is `RAPTOR_DETERMINISTIC_RNG` (not
+> `RAPTOR_TEST_DETERMINISTIC`, which remains clock-only). The plan reflects this.
+
 ### Part A — Deterministic-RNG migration (foundation)
 
 **A1. C patch (`dosraptor`).** Today `random(x)` is `#define random(x) (rand()%x)`
