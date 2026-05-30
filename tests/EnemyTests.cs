@@ -142,6 +142,43 @@ public class EnemyLogicTests
         Assert.Equal(1, b.Damage);
     }
 
+    // Regression (waves 4 & 6 enemy-bullet retention, no-input death_wave sweep
+    // 2026-05-30): ES_ANGLELEFT/ANGLERIGHT must travel a 45° diagonal at a speed
+    // that RAMPS 3->6, not a constant (±3,+3). C (ESHOT.C:341-360) targets
+    // (move.x ± 32, move.y + 32) — a 45° Bresenham direction — with
+    // cur->speed = LIB_NORMAL.speed>>1 = 3, then speed++ each tick up to
+    // LIB_NORMAL.speed = 6 (ESHOT_Think default branch, ESHOT.C:476-484).
+    // MoveSobj (RAP.C:416) walks past maxloop==0, so the 32px target only sets
+    // direction and the shot crosses the whole screen at the ramping speed. A
+    // constant velocity made these shots ~2× too slow, so they lingered and
+    // Godot retained more enemy bullets than C in MAP4G1/MAP6G1. Displayed-
+    // position deltas mirror the ATDOWN lag pattern: 1,3,4,5,6,6.
+    [Fact]
+    public void Angle_shots_ramp_speed_3_to_6_on_45_diagonal_like_C()
+    {
+        int[] cum = { 1, 4, 8, 13, 19, 25 };   // cumulative of deltas 1,3,4,5,6,6
+
+        var left = FireOneBullet(2, enemyX: 160, enemyY: 40, playerX: 144, playerY: 160);
+        Assert.Equal(EnemyShotType.AngleLeft, left.ShotType);
+        int lsx = left.X, lsy = left.Y;
+        for (int i = 0; i < cum.Length; i++)
+        {
+            left.Tick();
+            Assert.Equal(lsx - cum[i], left.X);   // moves LEFT
+            Assert.Equal(lsy + cum[i], left.Y);   // and DOWN at 45°
+        }
+
+        var right = FireOneBullet(3, enemyX: 160, enemyY: 40, playerX: 144, playerY: 160);
+        Assert.Equal(EnemyShotType.AngleRight, right.ShotType);
+        int rsx = right.X, rsy = right.Y;
+        for (int i = 0; i < cum.Length; i++)
+        {
+            right.Tick();
+            Assert.Equal(rsx + cum[i], right.X);   // moves RIGHT
+            Assert.Equal(rsy + cum[i], right.Y);   // and DOWN at 45°
+        }
+    }
+
     [Fact]
     public void Deferred_shot_damage_keeps_dead_enemy_for_one_dump()
     {

@@ -549,13 +549,20 @@ public sealed class EnemyLogic
                 break;
 
             case EshotType.ES_ANGLELEFT:
+                // ESHOT.C:341-350 — 45° down-left. C targets (move.x-32,
+                // move.y+32) but MoveSobj (RAP.C:416) walks past the 32px
+                // target, so it just sets a 45° direction; speed =
+                // LIB_NORMAL.speed>>1 = 3 and ramps +1/tick to LIB_NORMAL.speed
+                // = 6 (ESHOT_Think default branch, ESHOT.C:476-484). A constant
+                // (-3,+3) made the shot ~2× too slow → lingered on screen.
                 b = new BulletLogic(BulletKind.Enemy, sx, sy,
-                    velX: -3, velY: 3, damage: HitsNormal);
+                    dx: -1, dy: 1, initSpeed: 3, maxSpeed: 6, damage: HitsNormal);
                 break;
 
             case EshotType.ES_ANGLERIGHT:
+                // ESHOT.C:352-361 — 45° down-right; speed ramps 3->6 as above.
                 b = new BulletLogic(BulletKind.Enemy, sx, sy,
-                    velX: 3, velY: 3, damage: HitsNormal);
+                    dx: 1, dy: 1, initSpeed: 3, maxSpeed: 6, damage: HitsNormal);
                 break;
 
             case EshotType.ES_MISSLE:
