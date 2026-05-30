@@ -81,10 +81,17 @@ dotnet build "$REPO/raptor.csproj" --nologo --verbosity quiet 2>&1
 MAX_FRAMES=20000
 
 echo "[run_l2a] running godot..."
-RAPTOR_PLAYTHROUGH="$SCRIPT" \
+# death_wave<N> scenarios start mid-episode-1 at wave N (RAPTOR_START_WAVE).
+START_WAVE_ENV=""
+if [[ "$NAME" =~ ^death_wave([0-9]+)$ ]]; then
+    START_WAVE_ENV="RAPTOR_START_WAVE=${BASH_REMATCH[1]}"
+    echo "[run_l2a] $NAME -> $START_WAVE_ENV"
+fi
+env RAPTOR_PLAYTHROUGH="$SCRIPT" \
 RAPTOR_PARITY_OUT="$OUT/godot.parity.txt" \
 RAPTOR_TEST_FAST=1 \
 RAPTOR_DETERMINISTIC_RNG=1 \
+$START_WAVE_ENV \
 "$GODOT_BIN" --path "$REPO" --headless --quit-after $MAX_FRAMES \
     --audio-driver Dummy \
     >"$OUT/godot.log" 2>&1 || {
