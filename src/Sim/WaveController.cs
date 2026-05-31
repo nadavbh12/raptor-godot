@@ -528,6 +528,11 @@ public partial class WaveController : Node
         _oldShieldForLowLoss = PlayerLogic.Shield;
         HasSecretsDetector = true;
 
+        // DEMO_MakePlayer calls OBJS_Clear() before granting the demo loadout.
+        // Mirror that: start from a clean inventory so a demo set up after a live
+        // wave (or another demo) on the same WaveController doesn't add on top of
+        // dirty inventory state.
+        Inventory.Clear();
         DemoLoadout.Apply(Shooter, game, registered: false);
     }
 
