@@ -299,6 +299,7 @@ public sealed class Inventory
     /// </summary>
     public void CopyFrom(Inventory other)
     {
+        System.ArgumentNullException.ThrowIfNull(other);
         _slots.Clear();
         foreach (var kvp in other._slots)
             _slots[kvp.Key] = new ObjSlot { Num = kvp.Value.Num, InUse = kvp.Value.InUse };

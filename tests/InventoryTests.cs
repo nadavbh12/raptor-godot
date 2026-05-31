@@ -211,6 +211,34 @@ public class InventoryCopyFromTests
         Assert.Same(bRef, b);                  // same instance
         Assert.True(b.IsEquip(ObjType.MiniGun));
     }
+
+    [Fact]
+    public void CopyFrom_does_not_alias_source()
+    {
+        // CopyFrom is a deep copy: mutating the source after the copy must NOT
+        // affect the target (no shared ObjSlot references).
+        var a = new Inventory();
+        a.Load(ObjType.MiniGun, 1, true);
+
+        var b = new Inventory();
+        b.CopyFrom(a);
+
+        // Mutate A after the copy.
+        a.Add(ObjType.MegaBomb);          // new slot in A
+        a.EquippedSpecial = ObjType.MiniGun;
+
+        // B is unaffected by A's later mutations.
+        Assert.Equal(0, b.GetAmt(ObjType.MegaBomb));
+        Assert.False(b.IsEquip(ObjType.MegaBomb));
+        Assert.Null(b.EquippedSpecial);   // B kept A's pre-copy EquippedSpecial (null)
+    }
+
+    [Fact]
+    public void CopyFrom_null_throws()
+    {
+        var b = new Inventory();
+        Assert.Throws<System.ArgumentNullException>(() => b.CopyFrom(null!));
+    }
 }
 
 public class InventoryGetNextTests

@@ -38,6 +38,38 @@ public class PilotSaveStoreTests
     }
 
     [Fact]
+    public void LoadAll_summary_carries_loadable_FilePath()
+    {
+        // Bug fix (review): the summary must carry the EXACT file path it was read
+        // from so the inventory loads from that same file — not a re-derived path.
+        using var dir = new TempDir();
+        WriteFakePilot(dir.Path, slot: 3, name: "PATHY", callsign: "PX", idPic: 0, score: 0u,
+            sweapon: (int)ObjType.MiniGun, curGame: 0, gameWave: new[] { 0, 0, 0 },
+            diff: new[] { 0, 0, 0, 0 }, trainFlag: false, finTrain: false,
+            objs: new[] {
+                (ObjType.ForwardGuns, 1, true),
+                (ObjType.MiniGun,     1, true),
+                (ObjType.MegaBomb,    3, false),
+            });
+
+        var pilots = PilotSaveStore.LoadAll(dir.Path);
+        Assert.Single(pilots);
+        var summary = pilots[0];
+
+        // FilePath points at the actual file that was enumerated.
+        string expected = Path.Combine(dir.Path, "CHAR0003.FIL");
+        Assert.Equal(expected, summary.FilePath);
+        Assert.True(File.Exists(summary.FilePath));
+
+        // And LoadInventory(summary.FilePath) round-trips the inventory.
+        var inv = PilotSaveStore.LoadInventory(summary.FilePath);
+        Assert.True(inv.IsEquip(ObjType.ForwardGuns));
+        Assert.True(inv.IsEquip(ObjType.MiniGun));
+        Assert.Equal(3, inv.GetAmt(ObjType.MegaBomb));
+        Assert.Equal(ObjType.MiniGun, inv.EquippedSpecial);
+    }
+
+    [Fact]
     public void Save_writes_pilot_summary_readable_by_LoadAll()
     {
         using var dir = new TempDir();

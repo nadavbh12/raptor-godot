@@ -1,4 +1,3 @@
-using System.IO;
 using Godot;
 using Raptor.Test;
 
@@ -35,9 +34,10 @@ public partial class MenuController : Node
             Menu.OnPilotLoaded += pilot =>
             {
                 wave.SetScore(pilot.Score);
-                string saveDir = Menu.PilotSaveDirectory ?? Directory.GetCurrentDirectory();
-                string savePath = Path.Combine(saveDir, $"CHAR{pilot.Slot:D4}.FIL");
-                wave.Inventory.CopyFrom(PilotSaveStore.LoadInventory(savePath));
+                // Load from the exact file the summary was read from (pilot.FilePath),
+                // not a re-derived path — LoadAll's directory resolution (RAPTOR_SAVE_DIR,
+                // sibling probe, etc.) may differ from PilotSaveDirectory.
+                wave.Inventory.CopyFrom(PilotSaveStore.LoadInventory(pilot.FilePath));
             };
         }
 

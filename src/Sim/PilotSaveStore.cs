@@ -20,6 +20,13 @@ public sealed record PilotSaveSummary(
     bool FinTrain)
 {
     public string CreditsText => Score.ToString("D7");
+
+    /// <summary>
+    /// The exact CHAR####.FIL path this summary was read from (set by LoadAll
+    /// via the resolved candidate directory). Carried so the inventory loads
+    /// from the same file the summary came from — no path re-derivation.
+    /// </summary>
+    public string FilePath { get; init; } = string.Empty;
 }
 
 public static class PilotSaveStore
@@ -206,7 +213,10 @@ public static class PilotSaveStore
             idPic = 0;
 
         return new PilotSaveSummary(slot, name, callsign, idPic, score,
-            sweapon, curGame, gameWave, diff, trainFlag, finTrain);
+            sweapon, curGame, gameWave, diff, trainFlag, finTrain)
+        {
+            FilePath = path,
+        };
     }
 
     private static string ReadCString(byte[] bytes, int offset, int length)
