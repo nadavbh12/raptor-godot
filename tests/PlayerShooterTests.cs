@@ -658,21 +658,6 @@ public class PlayerShooterTests
     }
 
     [Fact]
-    public void Shield_low_loss_deletes_current_special_and_cycles_to_next_owned()
-    {
-        var ps = new PlayerShooter();
-        ps.GrantWeapon((int)ObjType.MiniGun);
-        ps.GrantWeapon((int)ObjType.AirMissile);
-        ps.GrantWeapon((int)ObjType.GrdMissile);
-        Assert.True(ps.SelectSpecial(ObjType.AirMissile));
-
-        Assert.True(ps.LoseCurrentSpecialForShieldLow());
-
-        Assert.DoesNotContain(ObjType.AirMissile, ps.OwnedSpecials);
-        Assert.Equal(ObjType.GrdMissile, ps.SpecialWeapon);
-    }
-
-    [Fact]
     public void Reset_clears_cooldowns_but_not_inventory()
     {
         // Reset() only clears per-weapon cooldowns (SHOTS_Init). The Inventory

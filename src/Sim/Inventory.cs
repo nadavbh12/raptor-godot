@@ -367,7 +367,7 @@ public sealed class Inventory
     /// math; "owned" == IsEquip (p_objs[type] != NULL in C).
     ///
     /// If a super-shield is owned, drain it; when it goes negative the slot is DELETED
-    /// (via <see cref="RemoveSlot"/>) with NO spill-back to energy — exactly like
+    /// (via _slots.Remove) with NO spill-back to energy — exactly like
     /// C's OBJS_Del(S_SUPER_SHIELD). Otherwise drain energy, clamping at 0.
     /// Returns the resulting Num (0 once the super-shield slot is deleted, or on the
     /// no-slot early-return).
@@ -389,7 +389,7 @@ public sealed class Inventory
             // C:1248-1249  if (num < 0) OBJS_Del(S_SUPER_SHIELD).
             if (shield.Num < 0)
             {
-                RemoveSlot(ObjType.SuperShield);
+                _slots.Remove(ObjType.SuperShield);
                 return 0;
             }
 
@@ -408,33 +408,6 @@ public sealed class Inventory
             energy.Num = 0;
 
         return energy.Num;
-    }
-
-    // -----------------------------------------------------------------------
-    // DecrementMegaBomb — Task 3.3 minimal seam (Task 5.1 replaces with Use)
-    // -----------------------------------------------------------------------
-    /// <summary>
-    /// Decrements the MegaBomb slot's Num by 1. Removes the slot when it reaches 0.
-    /// Returns false if no MegaBomb slot exists or Num was already 0 (nothing consumed).
-    /// Returns true iff a megabomb was consumed.
-    ///
-    /// INTENTIONALLY does NOT touch EquippedSpecial or cycle to the next weapon —
-    /// that cycle-on-zero behaviour belongs to Task 5.1's Inventory.Use and is
-    /// parity-gated separately. This minimal decrement preserves today's exact
-    /// ConsumeMegaBomb semantics.
-    ///
-    /// SUPERSEDED by <see cref="Use"/> (Task 5.1): the megabomb consume path now routes
-    /// through the C-faithful OBJS_Use port. Kept (unused) until Phase 6 removes the
-    /// dead Task-3.3 seams; left in place to keep the Task 5.1 diff focused.
-    /// </summary>
-    public bool DecrementMegaBomb()
-    {
-        if (!_slots.TryGetValue(ObjType.MegaBomb, out var slot) || slot.Num <= 0)
-            return false;
-        slot.Num--;
-        if (slot.Num == 0)
-            _slots.Remove(ObjType.MegaBomb);
-        return true;
     }
 
     // -----------------------------------------------------------------------
@@ -457,7 +430,7 @@ public sealed class Inventory
     ///
     /// PARITY NOTE: MegaBomb (the only shipped non-Forever weapon) has SpecialW=false, so
     /// EquippedSpecial is never MegaBomb and the cycle-on-zero branch never fires for it —
-    /// making Use(MegaBomb) identical to the legacy <see cref="DecrementMegaBomb"/>.
+    /// making Use(MegaBomb) a plain decrement-and-remove.
     /// </summary>
     public void Use(ObjType type)
     {
@@ -663,23 +636,6 @@ public sealed class Inventory
 
         Del(EquippedSpecial.Value);                                  // C else: OBJS_Del(plr.sweapon)
         return true;
-    }
-
-    // -----------------------------------------------------------------------
-    // RemoveSlot — Task 3.3 narrow helper for LoseCurrentSpecialForShieldLow
-    // -----------------------------------------------------------------------
-    /// <summary>
-    /// Removes the inventory slot for <paramref name="type"/> entirely (Num=0,
-    /// InUse=false). Used by <see cref="Raptor.Sim.Shots.PlayerShooter.LoseCurrentSpecialForShieldLow"/>
-    /// to evict a special weapon when shield drops below the warning threshold.
-    ///
-    /// NOTE: Task 5.3 replaces the call site with the C-faithful
-    /// <c>Inventory.LoseObj</c>. This helper provides a clean, purpose-named
-    /// removal primitive until that task is implemented.
-    /// </summary>
-    public void RemoveSlot(ObjType type)
-    {
-        _slots.Remove(type);
     }
 
     // -----------------------------------------------------------------------

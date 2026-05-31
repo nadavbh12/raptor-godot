@@ -57,12 +57,11 @@ public sealed class PlayerShooter
     public int MegaBombCount => _inv.GetAmt(ObjType.MegaBomb);
 
     /// <summary>
-    /// The active special weapon, mapped from _inv.EquippedSpecial (ObjType?→ObjType?).
+    /// The active special weapon — the inventory's EquippedSpecial.
     /// Null = no special equipped. Mirrors C plr.sweapon (RAP.C:1006).
     /// Read-only accessor; set via SelectSpecial / CycleSpecial / GrantWeapon.
     /// </summary>
-    public ObjType? SpecialWeapon =>
-        _inv.EquippedSpecial is ObjType t ? (ObjType)(int)t : (ObjType?)null;
+    public ObjType? SpecialWeapon => _inv.EquippedSpecial;
 
     /// <summary>
     /// Owned special weapons — types that are equipped (IsEquip) and flagged SpecialW.
@@ -76,7 +75,7 @@ public sealed class PlayerShooter
             foreach (var (type, _, inuse) in _inv.Slots())
             {
                 if (inuse && ObjLib.Of(type).SpecialW)
-                    result.Add((ObjType)(int)type);
+                    result.Add(type);
             }
             return result;
         }
@@ -87,7 +86,7 @@ public sealed class PlayerShooter
     /// Delegates to Inventory.MakeSpecial (mirrors OBJS_MakeSpecial, OBJECTS.C:1315).
     /// Returns true on success.
     /// </summary>
-    public bool SelectSpecial(ObjType w) => _inv.MakeSpecial((ObjType)(int)w);
+    public bool SelectSpecial(ObjType w) => _inv.MakeSpecial(w);
 
     /// <summary>Cycle to the next owned special. Delegates to Inventory.GetNext (verified C OBJS_GetNext equivalent).</summary>
     public void CycleSpecial()
@@ -163,32 +162,13 @@ public sealed class PlayerShooter
     /// Routes through the C-faithful <see cref="Inventory.Use"/> (Task 5.1, OBJS_Use).
     /// The explicit count-0 guard preserves the tested bool semantics (Use is a
     /// no-op when nothing is owned). Parity-neutral: MegaBomb is SpecialW=false, so
-    /// Use's cycle-on-zero branch never fires for it — behaviour matches the legacy
-    /// DecrementMegaBomb seam this replaces.
+    /// Use's cycle-on-zero branch never fires for it — behaviour is a plain
+    /// decrement-and-remove.
     /// </summary>
     public bool ConsumeMegaBomb()
     {
         if (_inv.GetAmt(ObjType.MegaBomb) <= 0) return false;
         _inv.Use(ObjType.MegaBomb);
-        return true;
-    }
-
-    /// <summary>
-    /// Remove the currently equipped special from ownership and cycle to the next.
-    /// Minimal behavior-preserving routing: removes the slot then calls GetNext.
-    ///
-    /// SUPERSEDED by the C-faithful deterministic <see cref="Inventory.LoseObj"/> (Task 5.3):
-    /// the low-shield "system damage" object-loss path in <c>WaveController</c> now routes
-    /// through <c>Inventory.LoseObj</c>. This method is unused in production and kept only
-    /// to keep its existing unit test green; to be removed in Phase 6.
-    /// </summary>
-    public bool LoseCurrentSpecialForShieldLow()
-    {
-        if (_inv.EquippedSpecial is not ObjType current) return false;
-        // Remove the slot (mirrors old _ownedSpecials.Remove), then advance to next.
-        _inv.RemoveSlot(current);
-        _inv.GetNext();
-        TraceSpecial("next", _inv.EquippedSpecial.HasValue ? (int)_inv.EquippedSpecial.Value : -1);
         return true;
     }
 
