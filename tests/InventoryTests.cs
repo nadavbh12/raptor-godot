@@ -37,3 +37,40 @@ public class ObjLibTests
         Assert.Equal(max, e.MaxCnt);
     }
 }
+
+public class InventoryCoreTests
+{
+    [Fact]
+    public void Add_new_weapon_auto_equips_and_is_owned()
+    {
+        var inv = new Inventory();
+        Assert.Equal(BuyStuff.GotIt, inv.Add(ObjType.MiniGun));
+        Assert.True(inv.IsEquip(ObjType.MiniGun));
+        Assert.Equal(1, inv.GetAmt(ObjType.MiniGun));
+    }
+
+    [Fact]
+    public void Add_onlyflag_stacks_capped_at_max()
+    {
+        var inv = new Inventory();
+        for (int i = 0; i < 10; i++) inv.Add(ObjType.MegaBomb);   // max_cnt=5
+        Assert.Equal(5, inv.GetAmt(ObjType.MegaBomb));
+    }
+
+    [Fact]
+    public void Add_moneyflag_returns_gotit_without_slot()
+    {
+        var inv = new Inventory();
+        inv.Add(ObjType.ItemBuy1);
+        Assert.False(inv.IsEquip(ObjType.ItemBuy1));   // money bonus: no slot
+    }
+
+    [Fact]
+    public void Clear_empties_all()
+    {
+        var inv = new Inventory();
+        inv.Add(ObjType.MiniGun);
+        inv.Clear();
+        Assert.False(inv.IsEquip(ObjType.MiniGun));
+    }
+}
