@@ -630,6 +630,42 @@ public sealed class Inventory
     }
 
     // -----------------------------------------------------------------------
+    // OBJS_LoseObj — OBJECTS.C:1311-1342 (Task 5.3)
+    // -----------------------------------------------------------------------
+    /// <summary>
+    /// Mirrors OBJS_LoseObj, the low-shield "system damage" object loss. DETERMINISTIC:
+    /// no RNG (Phase-0 finding 0.5 corrected the old "RNG" task text).
+    ///
+    /// If a special weapon is equipped (plr.sweapon != EMPTY), <see cref="Del"/> it.
+    /// Otherwise walk type LastObject-1 (23) down to 0 and Del the FIRST slot that is
+    /// both owned (p_objs[type] != NULL → IsEquip) AND flagged loseit; then stop.
+    ///
+    /// C QUIRK (mirrored faithfully — do NOT "fix"): rval is initialised to TRUE and the
+    /// no-special branch never resets it, so the method returns true even when the walk
+    /// finds nothing to lose (nothing is removed). The caller treats the return as the
+    /// "system damaged" HUD warning flag, not as "an object was lost".
+    /// </summary>
+    public bool LoseObj()
+    {
+        if (EquippedSpecial == null)
+        {
+            for (int t = (int)ObjType.LastObject - 1; t >= 0; t--)   // C: type = S_LAST_OBJECT-1 .. 0
+            {
+                var type = (ObjType)t;
+                if (IsEquip(type) && ObjLib.Of(type).LoseIt)         // owned (p_objs!=NULL) && loseit
+                {
+                    Del(type);                                       // remove + cycle equipped special if it was equipped
+                    return true;
+                }
+            }
+            return true;   // C: rval stays TRUE even when nothing was found/lost (mirror faithfully)
+        }
+
+        Del(EquippedSpecial.Value);                                  // C else: OBJS_Del(plr.sweapon)
+        return true;
+    }
+
+    // -----------------------------------------------------------------------
     // RemoveSlot — Task 3.3 narrow helper for LoseCurrentSpecialForShieldLow
     // -----------------------------------------------------------------------
     /// <summary>

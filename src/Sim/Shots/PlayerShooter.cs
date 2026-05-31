@@ -176,7 +176,11 @@ public sealed class PlayerShooter
     /// <summary>
     /// Remove the currently equipped special from ownership and cycle to the next.
     /// Minimal behavior-preserving routing: removes the slot then calls GetNext.
-    /// NOTE: Task 5.3 replaces this with the C-faithful deterministic Inventory.LoseObj.
+    ///
+    /// SUPERSEDED by the C-faithful deterministic <see cref="Inventory.LoseObj"/> (Task 5.3):
+    /// the low-shield "system damage" object-loss path in <c>WaveController</c> now routes
+    /// through <c>Inventory.LoseObj</c>. This method is unused in production and kept only
+    /// to keep its existing unit test green; to be removed in Phase 6.
     /// </summary>
     public bool LoseCurrentSpecialForShieldLow()
     {

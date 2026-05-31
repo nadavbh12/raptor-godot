@@ -703,3 +703,82 @@ public class InventoryUseTests
     // is covered by InventoryGetNextTests above. We deliberately do NOT force an
     // unreachable scenario by hand-corrupting EquippedSpecial — honesty over a hollow test.
 }
+
+// ---------------------------------------------------------------------------
+// OBJS_LoseObj — OBJECTS.C:1311-1342 (Task 5.3)
+// DETERMINISTIC — no RNG. With a special equipped, Del it. Otherwise walk
+// type 23..0 and Del the FIRST owned slot whose loseit flag is set.
+// ---------------------------------------------------------------------------
+public class InventoryLoseObjTests
+{
+    [Fact]
+    public void LoseObj_with_equipped_special_dels_it_and_cycles()
+    {
+        // Own two specials, equip one; LoseObj removes the equipped one and cycles.
+        var inv = new Inventory();
+        inv.Add(ObjType.DumbMissile);   // 3, special, auto-equips (EquippedSpecial = DumbMissile)
+        inv.Add(ObjType.MiniGun);       // 4, special
+        inv.EquippedSpecial = ObjType.MiniGun;
+
+        Assert.True(inv.LoseObj());
+
+        Assert.False(inv.IsEquip(ObjType.MiniGun));      // equipped special removed
+        Assert.True(inv.IsEquip(ObjType.DumbMissile));   // the other special survives
+        Assert.Equal(ObjType.DumbMissile, inv.EquippedSpecial);  // cycled via GetNext
+    }
+
+    [Fact]
+    public void LoseObj_no_special_dels_highest_index_loseit()
+    {
+        // No equipped special; own PlasmaGuns(1, loseit), MicroMissile(2, loseit),
+        // and GrdMissile(8, loseit). Walk 23..0 → the HIGHEST-index loseit owned
+        // (GrdMissile=8) is the one removed.
+        var inv = new Inventory();
+        inv.Load(ObjType.PlasmaGuns,   num: 1, inuse: true);   // 1
+        inv.Load(ObjType.MicroMissile, num: 1, inuse: true);   // 2
+        inv.Load(ObjType.GrdMissile,   num: 1, inuse: true);   // 8
+        inv.EquippedSpecial = null;
+
+        Assert.True(inv.LoseObj());
+
+        Assert.False(inv.IsEquip(ObjType.GrdMissile));   // highest-index loseit removed
+        Assert.True(inv.IsEquip(ObjType.MicroMissile));  // lower-index survive
+        Assert.True(inv.IsEquip(ObjType.PlasmaGuns));
+    }
+
+    [Fact]
+    public void LoseObj_never_removes_non_loseit()
+    {
+        // Own only non-loseit types (ForwardGuns=0, SuperShield=15, Energy=16,
+        // Detect=17), no equipped special. LoseObj finds nothing to lose: returns
+        // true (C's rval init = TRUE) and removes NOTHING.
+        var inv = new Inventory();
+        inv.Load(ObjType.ForwardGuns, num: 1,   inuse: true);   // 0  loseit=F
+        inv.Load(ObjType.SuperShield, num: 100, inuse: true);   // 15 loseit=F
+        inv.Load(ObjType.Energy,      num: 75,  inuse: true);   // 16 loseit=F
+        inv.Load(ObjType.Detect,      num: 1,   inuse: true);   // 17 loseit=F
+        inv.EquippedSpecial = null;
+
+        Assert.True(inv.LoseObj());   // mirror C: rval stays TRUE even when nothing lost
+
+        Assert.True(inv.IsEquip(ObjType.ForwardGuns));
+        Assert.True(inv.IsEquip(ObjType.SuperShield));
+        Assert.True(inv.IsEquip(ObjType.Energy));
+        Assert.True(inv.IsEquip(ObjType.Detect));
+    }
+
+    [Fact]
+    public void LoseObj_skips_unowned_loseit_types()
+    {
+        // Sanity: a loseit type that is NOT owned must not be "removed" and must not
+        // short-circuit the walk. Own only MicroMissile(2, loseit); higher-index
+        // loseit types (e.g. GrdMissile) are unowned. LoseObj must remove MicroMissile.
+        var inv = new Inventory();
+        inv.Load(ObjType.MicroMissile, num: 1, inuse: true);   // 2 loseit, owned
+        inv.EquippedSpecial = null;
+
+        Assert.True(inv.LoseObj());
+
+        Assert.False(inv.IsEquip(ObjType.MicroMissile));
+    }
+}

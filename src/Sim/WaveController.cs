@@ -1760,7 +1760,7 @@ public partial class WaveController : Node
             && PlayerLogic.Shield <= ShieldLow
             && PlayerLogic.Shield < _oldShieldForLowLoss)
         {
-            systemDamaged = Shooter.LoseCurrentSpecialForShieldLow();
+            systemDamaged = Inventory.LoseObj();
         }
         _hudWarningState.Tick(PlayerLogic.Shield, _gameLoopIter, systemDamaged);
         ShieldLowWarningVisible = _hudWarningState.ShieldLowVisible;
