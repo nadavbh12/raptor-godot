@@ -241,6 +241,83 @@ public class PilotSaveStoreTests
         }
     }
 
+    // -----------------------------------------------------------------------
+    // Task 2.3 — Save writes OBJ inventory array (production save path)
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void Production_save_round_trips_inventory_through_load()
+    {
+        using var tmp = new TempDir();
+
+        // Build an inventory via Inventory.Add/Load so we test the PRODUCTION path,
+        // not WriteFakePilot.
+        var inv = new Inventory();
+        inv.Load(ObjType.ForwardGuns, 1, true);
+        inv.Load(ObjType.MiniGun,     2, true);
+        inv.Load(ObjType.MegaBomb,    3, false);
+        inv.Load(ObjType.Energy,     75, false);
+        inv.EquippedSpecial = ObjType.MiniGun;
+
+        int slot = PilotSaveStore.Save(tmp.Path, name: "INV", callsign: "I1",
+            idPic: 0, score: 9999u, inventory: inv);
+
+        string path = System.IO.Path.Combine(tmp.Path, $"CHAR{slot:D4}.FIL");
+        var loaded = PilotSaveStore.LoadInventory(path);
+
+        // All four slots survive round-trip.
+        Assert.Equal(1,  loaded.GetAmt(ObjType.ForwardGuns));
+        Assert.True(loaded.IsEquip(ObjType.ForwardGuns));
+        Assert.Equal(2,  loaded.GetAmt(ObjType.MiniGun));
+        Assert.True(loaded.IsEquip(ObjType.MiniGun));
+        Assert.Equal(3,  loaded.GetAmt(ObjType.MegaBomb));
+        Assert.False(loaded.IsEquip(ObjType.MegaBomb));
+        Assert.Equal(75, loaded.GetAmt(ObjType.Energy));
+        Assert.False(loaded.IsEquip(ObjType.Energy));
+
+        // EquippedSpecial survives.
+        Assert.Equal(ObjType.MiniGun, loaded.EquippedSpecial);
+    }
+
+    [Fact]
+    public void Production_save_null_inventory_writes_zero_numobjs()
+    {
+        // Saving without inventory should produce the same file layout as before
+        // (88 bytes, numobjs == 0). Existing LoadInventory must return an empty inventory.
+        using var tmp = new TempDir();
+        int slot = PilotSaveStore.Save(tmp.Path, name: "EMPTY", callsign: "E1",
+            idPic: 0, score: 0u, inventory: null);
+
+        string path = System.IO.Path.Combine(tmp.Path, $"CHAR{slot:D4}.FIL");
+        long fileLen = new System.IO.FileInfo(path).Length;
+        Assert.Equal(88, fileLen);  // no OBJ records appended
+
+        var inv = PilotSaveStore.LoadInventory(path);
+        Assert.Equal(0, inv.GetAmt(ObjType.ForwardGuns));
+        Assert.False(inv.IsEquip(ObjType.ForwardGuns));
+    }
+
+    [Fact]
+    public void Production_save_null_equipped_special_encodes_as_empty()
+    {
+        // EquippedSpecial == null must be saved as -1 (C EMPTY) so LoadInventory
+        // calls GetNext() and finds no owned special → EquippedSpecial stays null.
+        using var tmp = new TempDir();
+        var inv = new Inventory();
+        inv.Load(ObjType.MegaBomb, 3, false);  // no InUse special
+        inv.EquippedSpecial = null;
+
+        int slot = PilotSaveStore.Save(tmp.Path, name: "NOSPEC", callsign: "NS",
+            idPic: 0, score: 0u, inventory: inv);
+
+        string path = System.IO.Path.Combine(tmp.Path, $"CHAR{slot:D4}.FIL");
+        var loaded = PilotSaveStore.LoadInventory(path);
+
+        // GetNext found no equipped special weapon → null.
+        Assert.Null(loaded.EquippedSpecial);
+        Assert.Equal(3, loaded.GetAmt(ObjType.MegaBomb));
+    }
+
     internal sealed class TempDir : IDisposable
     {
         public string Path { get; }

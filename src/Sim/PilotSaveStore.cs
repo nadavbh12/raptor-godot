@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 
 namespace Raptor.Sim;
@@ -27,11 +28,34 @@ public static class PilotSaveStore
     private const int PlayerHeaderSize = 88;
     private const string SaveKey = "CASTLE";
 
-    public static int Save(string directory, string name, string callsign, int idPic, uint score)
+    /// <summary>
+    /// Writes a CHAR####.FIL save file for the given pilot. Mirrors RAP_SavePlayer
+    /// (LOADSAVE.C:333-347).
+    ///
+    /// If <paramref name="inventory"/> is provided, the method:
+    /// <list type="bullet">
+    ///   <item>Sets numobjs (int32 LE @ header offset 60) = number of owned slots.</item>
+    ///   <item>Sets sweapon (int32 LE @ header offset 40) = (int)EquippedSpecial, or -1
+    ///         (C EMPTY) when EquippedSpecial is null.</item>
+    ///   <item>Encrypts and writes the 88-byte header.</item>
+    ///   <item>For each slot: builds a 40-byte OBJ record (num@16, type@20, inuse@32),
+    ///         encrypts it INDEPENDENTLY (Encrypt resets per call), appends it.</item>
+    /// </list>
+    /// When <paramref name="inventory"/> is null, writes only the 88-byte header with
+    /// numobjs=0 and sweapon=0 (legacy behaviour preserved for existing callers).
+    /// </summary>
+    public static int Save(string directory, string name, string callsign, int idPic, uint score,
+        Inventory? inventory = null)
     {
         Directory.CreateDirectory(directory);
         int slot = NextAvailableSlot(directory);
         string path = Path.Combine(directory, $"CHAR{slot:D4}.FIL");
+
+        // Collect slots before building the header so we know the count.
+        (ObjType type, int num, bool inuse)[] slots =
+            inventory != null
+                ? inventory.Slots().ToArray()
+                : Array.Empty<(ObjType, int, bool)>();
 
         byte[] header = new byte[PlayerHeaderSize];
         byte[] nameBytes = Encoding.ASCII.GetBytes(name);
@@ -41,8 +65,34 @@ public static class PilotSaveStore
         BitConverter.GetBytes(idPic).CopyTo(header, 32);
         BitConverter.GetBytes(score).CopyTo(header, 36);
 
+        // sweapon @ offset 40: (int)EquippedSpecial, or -1 (C EMPTY) when null.
+        int sweapon = inventory?.EquippedSpecial.HasValue == true
+            ? (int)inventory.EquippedSpecial.Value
+            : -1;
+        BitConverter.GetBytes(sweapon).CopyTo(header, 40);
+
+        // numobjs @ offset 60: count of OBJ records that follow the header.
+        BitConverter.GetBytes(slots.Length).CopyTo(header, 60);
+
         Encrypt(header);
-        File.WriteAllBytes(path, header);
+
+        using var fs = new FileStream(path, FileMode.Create);
+        fs.Write(header, 0, header.Length);
+
+        // Write each OBJ record (40 bytes), encrypted INDEPENDENTLY — one Encrypt call
+        // per record, mirroring RAP_SavePlayer's per-record GLB_EnCrypt loop.
+        const int RecordSize = 40;
+        foreach (var (type, num, inuse) in slots)
+        {
+            byte[] rec = new byte[RecordSize];
+            // OBJ record layout (OBJECTS.H): num@16, type@20, inuse@32 (int32 LE); other bytes 0.
+            BitConverter.GetBytes(num).CopyTo(rec, 16);
+            BitConverter.GetBytes((int)type).CopyTo(rec, 20);
+            BitConverter.GetBytes(inuse ? 1 : 0).CopyTo(rec, 32);
+            Encrypt(rec);
+            fs.Write(rec, 0, rec.Length);
+        }
+
         return slot;
     }
 

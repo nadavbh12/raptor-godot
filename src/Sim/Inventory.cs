@@ -237,6 +237,20 @@ public sealed class Inventory
     }
 
     // -----------------------------------------------------------------------
+    // Read-only slot enumerator — used by PilotSaveStore.Save to write OBJ records.
+    // Keeps ObjSlot private; exposes the minimal triple (type, num, inuse).
+    // -----------------------------------------------------------------------
+    /// <summary>
+    /// Enumerates all owned slots as (type, num, inuse) triples.
+    /// Used by <see cref="Raptor.Sim.PilotSaveStore"/> to persist the inventory.
+    /// </summary>
+    public IEnumerable<(ObjType type, int num, bool inuse)> Slots()
+    {
+        foreach (var kvp in _slots)
+            yield return (kvp.Key, kvp.Value.Num, kvp.Value.InUse);
+    }
+
+    // -----------------------------------------------------------------------
     // OBJS_Clear — OBJECTS.C:77-99
     // -----------------------------------------------------------------------
     /// <summary>
