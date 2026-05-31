@@ -116,3 +116,40 @@ public class InventoryCoreTests
         Assert.Equal(0, inv.GetAmt(ObjType.LastObject));
     }
 }
+
+public class InventoryGetNextTests
+{
+    [Fact]
+    public void GetNext_cycles_owned_specials_and_wraps()
+    {
+        var inv = new Inventory();
+        inv.Add(ObjType.DumbMissile);
+        inv.Add(ObjType.DeathRay);   // both specialw
+        inv.EquippedSpecial = ObjType.DumbMissile;
+        inv.GetNext();
+        Assert.Equal(ObjType.DeathRay, inv.EquippedSpecial);
+        inv.GetNext();               // wrap back
+        Assert.Equal(ObjType.DumbMissile, inv.EquippedSpecial);
+    }
+
+    [Fact]
+    public void GetNext_sets_empty_when_no_specials_owned()
+    {
+        var inv = new Inventory();
+        inv.Add(ObjType.ForwardGuns);   // not specialw
+        inv.GetNext();
+        Assert.Null(inv.EquippedSpecial);
+    }
+
+    [Fact]
+    public void GetNext_keeps_only_owned_special_when_it_is_the_sole_option()
+    {
+        // When only one special is owned and it is already equipped,
+        // GetNext must wrap around and re-select it (not go to null).
+        var inv = new Inventory();
+        inv.Add(ObjType.MiniGun);       // specialw, index 4
+        inv.EquippedSpecial = ObjType.MiniGun;
+        inv.GetNext();
+        Assert.Equal(ObjType.MiniGun, inv.EquippedSpecial);
+    }
+}

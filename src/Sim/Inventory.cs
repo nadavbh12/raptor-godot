@@ -170,6 +170,45 @@ public sealed class Inventory
     }
 
     // -----------------------------------------------------------------------
+    // OBJS_GetNext — OBJECTS.C:829-865
+    // -----------------------------------------------------------------------
+    /// <summary>
+    /// Advances EquippedSpecial to the next owned special weapon, wrapping around.
+    /// Mirrors OBJS_GetNext exactly: walks the range FirstSpecial..LastWeapon
+    /// (at most 12 steps), wrapping pos back to FirstSpecial when it exceeds
+    /// LastWeapon. If no owned special is found, sets EquippedSpecial to null
+    /// (C's EMPTY).
+    /// </summary>
+    public void GetNext()
+    {
+        int firstSpecial = (int)ObjLib.FirstSpecial;   // 3
+        int lastWeapon   = (int)ObjLib.LastWeapon;     // 14
+
+        int cur = (int)(EquippedSpecial ?? (ObjType)(-1));  // null → -1 → < 3 → start at 3
+        int pos = cur < firstSpecial ? firstSpecial : cur + 1;
+
+        ObjType? setval = null;   // EMPTY
+
+        // Loop over the full range (at most lastWeapon - firstSpecial + 1 = 12 iterations).
+        for (int loop = firstSpecial; loop <= lastWeapon; loop++)
+        {
+            if (pos > lastWeapon)
+                pos = firstSpecial;
+
+            var type = (ObjType)pos;
+            if (_slots.TryGetValue(type, out var slot) && slot.InUse && slot.Num > 0 && ObjLib.Of(type).SpecialW)
+            {
+                setval = type;
+                break;
+            }
+
+            pos++;
+        }
+
+        EquippedSpecial = setval;
+    }
+
+    // -----------------------------------------------------------------------
     // OBJS_Clear — OBJECTS.C:77-99
     // -----------------------------------------------------------------------
     /// <summary>
