@@ -115,16 +115,36 @@ public class PilotSaveStoreTests
         Assert.Equal("BOB", pilots[1].Name);
     }
 
-    internal static void WriteFakePilot(string dir, int slot, string name, string callsign, int idPic, uint score)
+    [Fact]
+    public void WriteFakePilot_with_objs_produces_correct_file_length()
+    {
+        using var dir = new TempDir();
+        var objs = new (ObjType type, int num, bool inuse)[]
+        {
+            (ObjType.ForwardGuns, 99, true),
+            (ObjType.MegaBomb,     3, false),
+        };
+        WriteFakePilot(dir.Path, slot: 0, name: "LEN", callsign: "L1", idPic: 0, score: 0, objs: objs);
+
+        long fileLen = new FileInfo(Path.Combine(dir.Path, "CHAR0000.FIL")).Length;
+        Assert.Equal(88 + 40 * objs.Length, fileLen);
+    }
+
+    internal static void WriteFakePilot(string dir, int slot, string name, string callsign, int idPic, uint score,
+        (ObjType type, int num, bool inuse)[]? objs = null)
     {
         WriteFakePilot(dir, slot, name, callsign, idPic, score, sweapon: 0, curGame: 0,
-            gameWave: new[] { 0, 0, 0 }, diff: new[] { 0, 0, 0, 0 }, trainFlag: false, finTrain: false);
+            gameWave: new[] { 0, 0, 0 }, diff: new[] { 0, 0, 0, 0 }, trainFlag: false, finTrain: false,
+            objs: objs);
     }
 
     internal static void WriteFakePilot(string dir, int slot, string name, string callsign,
         int idPic, uint score, int sweapon, int curGame, int[] gameWave, int[] diff,
-        bool trainFlag, bool finTrain)
+        bool trainFlag, bool finTrain,
+        (ObjType type, int num, bool inuse)[]? objs = null)
     {
+        objs ??= Array.Empty<(ObjType, int, bool)>();
+
         byte[] header = new byte[88];
         byte[] nameBytes = System.Text.Encoding.ASCII.GetBytes(name);
         Array.Copy(nameBytes, 0, header, 0, Math.Min(nameBytes.Length, 19));
@@ -136,14 +156,26 @@ public class PilotSaveStoreTests
         BitConverter.GetBytes(curGame).CopyTo(header, 44);
         for (int i = 0; i < 3 && i < gameWave.Length; i++)
             BitConverter.GetBytes(gameWave[i]).CopyTo(header, 48 + i * 4);
-        // numobjs at 60..63 left 0
+        BitConverter.GetBytes(objs.Length).CopyTo(header, 60);  // numobjs
         for (int i = 0; i < 4 && i < diff.Length; i++)
             BitConverter.GetBytes(diff[i]).CopyTo(header, 64 + i * 4);
         BitConverter.GetBytes(trainFlag ? 1 : 0).CopyTo(header, 80);
         BitConverter.GetBytes(finTrain ? 1 : 0).CopyTo(header, 84);
 
         Encrypt(header);
-        File.WriteAllBytes(Path.Combine(dir, $"CHAR{slot:D4}.FIL"), header);
+
+        using var fs = new FileStream(Path.Combine(dir, $"CHAR{slot:D4}.FIL"), FileMode.Create);
+        fs.Write(header, 0, header.Length);
+
+        foreach (var (type, num, inuse) in objs)
+        {
+            byte[] rec = new byte[40];
+            BitConverter.GetBytes(num).CopyTo(rec, 16);
+            BitConverter.GetBytes((int)type).CopyTo(rec, 20);
+            BitConverter.GetBytes(inuse ? 1 : 0).CopyTo(rec, 32);
+            Encrypt(rec);
+            fs.Write(rec, 0, rec.Length);
+        }
     }
 
     // Inverse of PilotSaveStore.Decrypt: E[i] = P[i] + Key[ki] + prev_E[i-1],
