@@ -285,6 +285,64 @@ public sealed class Inventory
     }
 
     // -----------------------------------------------------------------------
+    // OBJS_MakeSpecial — OBJECTS.C:1315-1326
+    // -----------------------------------------------------------------------
+    /// <summary>
+    /// Sets <see cref="EquippedSpecial"/> to <paramref name="type"/> iff the type
+    /// is owned (IsEquip) AND flagged as a special weapon (SpecialW).
+    /// Mirrors C OBJS_MakeSpecial: `if (p_objs[type] == NULL) return FALSE`.
+    /// Returns true on success, false if the type is not owned or not a special.
+    /// </summary>
+    public bool MakeSpecial(ObjType type)
+    {
+        var lib = ObjLib.Of(type);
+        if (!lib.SpecialW) return false;
+        if (!IsEquip(type)) return false;
+        EquippedSpecial = type;
+        return true;
+    }
+
+    // -----------------------------------------------------------------------
+    // DecrementMegaBomb — Task 3.3 minimal seam (Task 5.1 replaces with Use)
+    // -----------------------------------------------------------------------
+    /// <summary>
+    /// Decrements the MegaBomb slot's Num by 1. Removes the slot when it reaches 0.
+    /// Returns false if no MegaBomb slot exists or Num was already 0 (nothing consumed).
+    /// Returns true iff a megabomb was consumed.
+    ///
+    /// INTENTIONALLY does NOT touch EquippedSpecial or cycle to the next weapon —
+    /// that cycle-on-zero behaviour belongs to Task 5.1's Inventory.Use and is
+    /// parity-gated separately. This minimal decrement preserves today's exact
+    /// ConsumeMegaBomb semantics.
+    /// </summary>
+    public bool DecrementMegaBomb()
+    {
+        if (!_slots.TryGetValue(ObjType.MegaBomb, out var slot) || slot.Num <= 0)
+            return false;
+        slot.Num--;
+        if (slot.Num == 0)
+            _slots.Remove(ObjType.MegaBomb);
+        return true;
+    }
+
+    // -----------------------------------------------------------------------
+    // RemoveSlot — Task 3.3 narrow helper for LoseCurrentSpecialForShieldLow
+    // -----------------------------------------------------------------------
+    /// <summary>
+    /// Removes the inventory slot for <paramref name="type"/> entirely (Num=0,
+    /// InUse=false). Used by <see cref="Raptor.Sim.Shots.PlayerShooter.LoseCurrentSpecialForShieldLow"/>
+    /// to evict a special weapon when shield drops below the warning threshold.
+    ///
+    /// NOTE: Task 5.3 replaces the call site with the C-faithful
+    /// <c>Inventory.LoseObj</c>. This helper provides a clean, purpose-named
+    /// removal primitive until that task is implemented.
+    /// </summary>
+    public void RemoveSlot(ObjType type)
+    {
+        _slots.Remove(type);
+    }
+
+    // -----------------------------------------------------------------------
     // CopyFrom — Task 3.2
     // -----------------------------------------------------------------------
     /// <summary>

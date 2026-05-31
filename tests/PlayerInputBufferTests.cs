@@ -118,7 +118,7 @@ public class InputStateTests
         var shooter = new Raptor.Sim.Shots.PlayerShooter();
         shooter.GrantWeapon((int)Raptor.Sim.Shots.WeaponType.DumbMissile);
         shooter.GrantWeapon((int)Raptor.Sim.Shots.WeaponType.MiniGun);
-        shooter.SpecialWeapon = Raptor.Sim.Shots.WeaponType.DumbMissile;
+        shooter.SelectSpecial(Raptor.Sim.Shots.WeaponType.DumbMissile);
         bool latch = false;
 
         LiveInputLogic.ApplySpecialCycle(shooter, held: true, ref latch);

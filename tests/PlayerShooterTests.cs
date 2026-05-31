@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Raptor.Sim;
 using Raptor.Sim.Bullet;
 using Raptor.Sim.Enemy;
 using Raptor.Sim.Shots;
@@ -145,7 +146,9 @@ public class PlayerShooterTests
     [Fact]
     public void ApplyButton1_fires_plasma_when_owned()
     {
-        var ps = new PlayerShooter { HasPlasmaGuns = true };
+        var inv = new Inventory();
+        inv.Add(ObjType.PlasmaGuns);
+        var ps = new PlayerShooter(inv);
         var bullets = ps.ApplyButton1(160, 176, 3);
         // 2 forward + 1 plasma = 3 bullets.
         Assert.Equal(3, bullets.Count);
@@ -154,7 +157,9 @@ public class PlayerShooterTests
     [Fact]
     public void ApplyButton1_fires_micro_missile_when_owned()
     {
-        var ps = new PlayerShooter { HasMicroMissile = true };
+        var inv = new Inventory();
+        inv.Add(ObjType.MicroMissile);
+        var ps = new PlayerShooter(inv);
         var bullets = ps.ApplyButton1(160, 176, 3);
         // 2 forward + 2 micro = 4 bullets.
         Assert.Equal(4, bullets.Count);
@@ -165,12 +170,11 @@ public class PlayerShooterTests
     {
         // FORWARD_GUNS + PLASMA_GUNS + MICRO_MISSLE + SpecialWeapon=PulseCannon
         // = 2 + 1 + 2 + 1 = 6.
-        var ps = new PlayerShooter
-        {
-            HasPlasmaGuns   = true,
-            HasMicroMissile = true,
-            SpecialWeapon   = WeaponType.PulseCannon,
-        };
+        var inv = new Inventory();
+        inv.Add(ObjType.PlasmaGuns);
+        inv.Add(ObjType.MicroMissile);
+        inv.Add(ObjType.PulseCannon);  // SpecialW=true → EquippedSpecial set to PulseCannon
+        var ps = new PlayerShooter(inv);
         var bullets = ps.ApplyButton1(160, 176, 3);
         Assert.Equal(6, bullets.Count);
     }
@@ -669,17 +673,29 @@ public class PlayerShooterTests
     }
 
     [Fact]
-    public void Reset_clears_inventory_and_specials()
+    public void Reset_clears_cooldowns_but_not_inventory()
     {
-        var ps = new PlayerShooter { HasPlasmaGuns = true, HasMicroMissile = true };
-        ps.GrantWeapon(3);
-        ps.GrantWeapon(5);
+        // Reset() only clears per-weapon cooldowns (SHOTS_Init). The Inventory
+        // lifetime is owned by WaveController and persists across waves/resets.
+        // Test that cooldowns are cleared and inventory state is untouched.
+        var inv = new Inventory();
+        inv.Add(ObjType.PlasmaGuns);
+        inv.Add(ObjType.MicroMissile);
+        var ps = new PlayerShooter(inv);
+        ps.GrantWeapon(3);   // DumbMissile → owned in inv
+        ps.GrantWeapon(5);   // Turret → owned in inv
         Assert.NotEmpty(ps.OwnedSpecials);
+        // Fire to arm a cooldown, then Reset.
+        ps.Shoot(WeaponType.ForwardGuns, 160, 176, 3, new List<BulletLogic>());
+        Assert.True(ps.GetCooldown(WeaponType.ForwardGuns) > 0);
         ps.Reset();
-        Assert.Empty(ps.OwnedSpecials);
-        Assert.Null(ps.SpecialWeapon);
-        Assert.False(ps.HasPlasmaGuns);
-        Assert.False(ps.HasMicroMissile);
+        // Cooldowns cleared.
+        Assert.Equal(0, ps.GetCooldown(WeaponType.ForwardGuns));
+        // Inventory state preserved through reset (WaveController owns lifetime).
+        Assert.True(ps.HasPlasmaGuns);
+        Assert.True(ps.HasMicroMissile);
+        Assert.NotEmpty(ps.OwnedSpecials);
+        Assert.NotNull(ps.SpecialWeapon);
     }
 
     [Fact]

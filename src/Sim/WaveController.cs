@@ -174,13 +174,15 @@ public partial class WaveController : Node
 
     // ── Player ────────────────────────────────────────────────────────────────
     public  PlayerLogic    PlayerLogic   { get; } = new();
-    public  PlayerShooter  Shooter       { get; } = new();
-    public  uint           Score { get; private set; } = 0;
     /// <summary>
     /// Per-pilot inventory. Created once and reused across waves/loads.
+    /// Declared before Shooter so Shooter's constructor can receive it.
     /// Tasks 3.2 (load) and 3.3 (PlayerShooter wiring) read this same instance.
     /// </summary>
     public  Inventory      Inventory     { get; } = new();
+    // Shooter is initialized in the WaveController constructor body (after Inventory).
+    public  PlayerShooter  Shooter       { get; }
+    public  uint           Score { get; private set; } = 0;
 
     /// <summary>Forcibly set the score (e.g. when loading a saved pilot).
     /// Bypasses the normal incremental score-from-enemy-kills path.</summary>
@@ -362,6 +364,11 @@ public partial class WaveController : Node
 
     public WaveController()
     {
+        // Shooter must be wired to this.Inventory (Task 3.3).
+        // Initialised here (not in a property initialiser) because Inventory
+        // must be constructed first, and C# property-init order follows
+        // declaration order within the same class body.
+        Shooter = new PlayerShooter(Inventory);
         _scheduler = new GamePhaseScheduler(this);
     }
 

@@ -27,125 +27,165 @@ public sealed class PlayerShooter
         DeterministicRandom.Enabled ||
         Environment.GetEnvironmentVariable("RAPTOR_DETERMINISTIC_MINIGUN") == "1";
 
-    /// <summary>Standing inventory. ForwardGuns is always owned (lib->forever=TRUE).</summary>
-    public bool HasPlasmaGuns   { get; set; } = false;
-    public bool HasMicroMissile { get; set; } = false;
-    public int MegaBombCount { get; private set; } = 0;
+    // Injected inventory — owns all standing-weapon state (Task 3.3).
+    // WaveController passes its canonical Inventory; tests pass new Inventory()
+    // or a pre-seeded one. An empty Inventory produces the default loadout:
+    //   IsEquip(PlasmaGuns)=false, IsEquip(MicroMissile)=false,
+    //   GetAmt(MegaBomb)=0, EquippedSpecial=null
+    // which is identical to the old default field values.
+    private readonly Inventory _inv;
 
     /// <summary>
-    /// Special-weapon types the player currently owns. Picking up a special
-    /// (S_DUMB_MISSLE..S_DEATH_RAY) adds the type here AND sets it as the
-    /// active special. The SC_1..SC_MINUS numeric keys switch the active
-    /// SpecialWeapon between owned types — that mirrors OBJS_MakeSpecial's
-    /// `if (p_objs[type] == NULL) return FALSE` guard.
+    /// Construct with an explicit inventory. WaveController passes its canonical
+    /// <see cref="Inventory"/> instance so state persists across per-wave resets.
+    /// Pass <c>new Inventory()</c> (or omit) for tests that use the default loadout.
     /// </summary>
-    private readonly HashSet<WeaponType> _ownedSpecials = new();
-    public IReadOnlyCollection<WeaponType> OwnedSpecials => _ownedSpecials;
+    public PlayerShooter(Inventory? inv = null)
+    {
+        _inv = inv ?? new Inventory();
+    }
+
+    // ── Standing-inventory accessors (delegated to _inv) ───────────────────
+
+    /// <summary>True iff PlasmaGuns are owned. Delegates to _inv.IsEquip.</summary>
+    public bool HasPlasmaGuns   => _inv.IsEquip(ObjType.PlasmaGuns);
+
+    /// <summary>True iff MicroMissile is owned. Delegates to _inv.IsEquip.</summary>
+    public bool HasMicroMissile => _inv.IsEquip(ObjType.MicroMissile);
+
+    /// <summary>MegaBomb count. Delegates to _inv.GetAmt.</summary>
+    public int MegaBombCount => _inv.GetAmt(ObjType.MegaBomb);
 
     /// <summary>
-    /// The active special weapon (DUMB_MISSLE / MINI_GUN / TURRET / etc.).
+    /// The active special weapon, mapped from _inv.EquippedSpecial (ObjType?→WeaponType?).
     /// Null = no special equipped. Mirrors C plr.sweapon (RAP.C:1006).
+    /// Read-only accessor; set via SelectSpecial / CycleSpecial / GrantWeapon.
     /// </summary>
-    public WeaponType? SpecialWeapon { get; set; } = null;
+    public WeaponType? SpecialWeapon =>
+        _inv.EquippedSpecial is ObjType t ? (WeaponType)(int)t : (WeaponType?)null;
+
+    /// <summary>
+    /// Owned special weapons — types that are equipped (IsEquip) and flagged SpecialW.
+    /// Computed from the inventory; preserved for callers that enumerate specials.
+    /// </summary>
+    public IReadOnlyCollection<WeaponType> OwnedSpecials
+    {
+        get
+        {
+            var result = new List<WeaponType>();
+            foreach (var (type, _, inuse) in _inv.Slots())
+            {
+                if (inuse && ObjLib.Of(type).SpecialW)
+                    result.Add((WeaponType)(int)type);
+            }
+            return result;
+        }
+    }
 
     /// <summary>
     /// Set the active special to <paramref name="w"/> iff the player owns it.
-    /// Mirrors OBJS_MakeSpecial (OBJECTS.C:1315). Returns true on success.
+    /// Delegates to Inventory.MakeSpecial (mirrors OBJS_MakeSpecial, OBJECTS.C:1315).
+    /// Returns true on success.
     /// </summary>
-    public bool SelectSpecial(WeaponType w)
-    {
-        if (!_ownedSpecials.Contains(w)) return false;
-        SpecialWeapon = w;
-        return true;
-    }
+    public bool SelectSpecial(WeaponType w) => _inv.MakeSpecial((ObjType)(int)w);
 
-    /// <summary>Cycle to the next owned special, matching C OBJS_GetNext.</summary>
+    /// <summary>Cycle to the next owned special. Delegates to Inventory.GetNext (verified C OBJS_GetNext equivalent).</summary>
     public void CycleSpecial()
     {
-        for (int i = 0; i <= (int)WeaponType.DeathRay - (int)WeaponType.DumbMissile; i++)
-        {
-            int next = SpecialWeapon is WeaponType current && current >= WeaponType.DumbMissile
-                ? (int)current + 1 + i
-                : (int)WeaponType.DumbMissile + i;
-            if (next > (int)WeaponType.DeathRay)
-                next = (int)WeaponType.DumbMissile + (next - (int)WeaponType.DeathRay - 1);
-
-            var candidate = (WeaponType)next;
-            if (_ownedSpecials.Contains(candidate))
-            {
-                SpecialWeapon = candidate;
-                TraceSpecial("next", (int)candidate);
-                return;
-            }
-        }
-
-        SpecialWeapon = null;
-        TraceSpecial("next", -1);
-    }
-
-    /// <summary>Resets cooldowns. Mirrors SHOTS_Init clearing shot_lib.cur_shoot.</summary>
-    public void Reset()
-    {
-        for (int i = 0; i < _curShoot.Length; i++) _curShoot[i] = 0;
-        _ownedSpecials.Clear();
-        SpecialWeapon = null;
-        HasPlasmaGuns = false;
-        HasMicroMissile = false;
-        MegaBombCount = 0;
+        _inv.GetNext();
+        TraceSpecial("next", _inv.EquippedSpecial.HasValue ? (int)_inv.EquippedSpecial.Value : -1);
     }
 
     /// <summary>
-    /// Apply the weapon-grant side of a bonus pickup. Mirrors C OBJS_Add for
-    /// weapon-type OBJ_TYPE values (SOURCE/OBJECTS.C). Returns true iff this
-    /// type was a weapon and the inventory changed. Non-weapon bonus types
-    /// (S_ENERGY, S_SUPER_SHIELD, S_ITEMBUY*) are out of scope here — those
-    /// affect player shield/score and the caller handles them.
+    /// Resets per-weapon cooldown timers. Mirrors SHOTS_Init clearing shot_lib.cur_shoot.
+    ///
+    /// Does NOT clear the Inventory: Inventory lifetime is owned by WaveController
+    /// (seeded on pilot-create, loaded on pilot-load, cleared only on pilot-create/load).
+    /// Reset() is called per-wave (LoadWave) and must not disturb cross-wave weapon ownership.
+    /// Verified call sites: WaveController.LoadWave (line ~570) — per-wave only.
+    /// </summary>
+    public void Reset()
+    {
+        for (int i = 0; i < _curShoot.Length; i++) _curShoot[i] = 0;
+        // Inventory intentionally NOT cleared here — WaveController owns that lifetime.
+    }
+
+    /// <summary>
+    /// Apply the weapon-grant side of a bonus pickup. Delegates to Inventory.Add.
+    /// Returns true iff this type was a weapon and the inventory changed.
+    /// Non-weapon bonus types (S_ENERGY, S_SUPER_SHIELD, S_ITEMBUY*) are out of
+    /// scope here — those affect player shield/score and the caller handles them.
+    ///
+    /// Behavior preserved vs old GrantWeapon:
+    ///   ForwardGuns (0) → Inventory.Add is a no-op for always-owned; return false.
+    ///   PlasmaGuns  (1) → Add → InUse=true; HasPlasmaGuns now true.
+    ///   MicroMissile(2) → Add → InUse=true; HasMicroMissile now true.
+    ///   MegaBomb   (11) → Add (OnlyFlag) → Num increments; MegaBombCount increases.
+    ///   Specials  (3-14 except 11) → Add → InUse=true; EquippedSpecial set if null.
+    ///   Non-weapons (>=15) → return false (Inventory.Add returns GotIt for money/
+    ///     non-reg items but the caller treats those separately; we return false here
+    ///     exactly as the old switch default did, so callers handle energy/shield).
     /// </summary>
     public bool GrantWeapon(int objType)
     {
-        switch (objType)
+        if (objType < 0 || objType > (int)WeaponType.DeathRay)
+            return false;
+
+        var type = (ObjType)objType;
+        if (type == ObjType.ForwardGuns)
+            return false;  // always owned; no-op (lib->forever)
+
+        int countBefore = CountSlots();
+        bool equippedBefore = _inv.IsEquip(type);
+        int amtBefore = _inv.GetAmt(type);
+        ObjType? specialBefore = _inv.EquippedSpecial;
+
+        var result = _inv.Add(type);
+
+        // Trace auto-equip of a new special (mirrors old TraceSpecial("auto"/"add") calls).
+        if (ObjLib.Of(type).SpecialW)
         {
-            case 0:   // S_FORWARD_GUNS — always owned; no-op.
-                return false;
-            case 1:   // S_PLASMA_GUNS
-                HasPlasmaGuns = true;
-                return true;
-            case 2:   // S_MICRO_MISSLE
-                HasMicroMissile = true;
-                return true;
-            case 11:  // S_MEGA_BOMB — weapon inventory, but not a selectable special.
-                MegaBombCount++;
-                return true;
-            case >= 3 and <= 14:   // selectable specials (OBJECTS.C specialw=TRUE)
-                {
-                    var w = (WeaponType)objType;
-                    _ownedSpecials.Add(w);
-                    if (SpecialWeapon == null)
-                    {
-                        SpecialWeapon = w;
-                        TraceSpecial("auto", objType);
-                    }
-                    TraceSpecial("add", objType);
-                    return true;
-                }
-            default:
-                return false;
+            bool wasAutoSet = specialBefore == null && _inv.EquippedSpecial == type;
+            if (wasAutoSet) TraceSpecial("auto", objType);
+            if (_inv.IsEquip(type)) TraceSpecial("add", objType);
         }
+
+        // Return true iff the inventory actually changed (weapon became owned or count grew).
+        return result == BuyStuff.GotIt && (_inv.IsEquip(type) != equippedBefore
+            || _inv.GetAmt(type) != amtBefore
+            || CountSlots() != countBefore);
     }
 
+    /// <summary>
+    /// Consume one mega-bomb from the inventory. Returns false if count was 0.
+    /// Delegates to Inventory.DecrementMegaBomb — does NOT cycle on zero
+    /// (that C-faithful behaviour is Task 5.1's Inventory.Use, parity-gated separately).
+    /// </summary>
     public bool ConsumeMegaBomb()
     {
-        if (MegaBombCount <= 0) return false;
-        MegaBombCount--;
+        return _inv.DecrementMegaBomb();
+    }
+
+    /// <summary>
+    /// Remove the currently equipped special from ownership and cycle to the next.
+    /// Minimal behavior-preserving routing: removes the slot then calls GetNext.
+    /// NOTE: Task 5.3 replaces this with the C-faithful deterministic Inventory.LoseObj.
+    /// </summary>
+    public bool LoseCurrentSpecialForShieldLow()
+    {
+        if (_inv.EquippedSpecial is not ObjType current) return false;
+        // Remove the slot (mirrors old _ownedSpecials.Remove), then advance to next.
+        _inv.RemoveSlot(current);
+        _inv.GetNext();
+        TraceSpecial("next", _inv.EquippedSpecial.HasValue ? (int)_inv.EquippedSpecial.Value : -1);
         return true;
     }
 
-    public bool LoseCurrentSpecialForShieldLow()
+    private int CountSlots()
     {
-        if (SpecialWeapon is not WeaponType current) return false;
-        _ownedSpecials.Remove(current);
-        CycleSpecial();
-        return true;
+        int n = 0;
+        foreach (var _ in _inv.Slots()) n++;
+        return n;
     }
 
     /// <summary>Per-tick cooldown decrement (SHOTS.C:1035-1040).</summary>
