@@ -1690,6 +1690,18 @@ public partial class WaveController : Node
         if (_skipInitialPaletteStuff)
         {
             _skipInitialPaletteStuff = false;
+            // The skip mirrors C NOT drawing RAP_PaletteStuff's RNG on the
+            // wave's first HUD pass — but C's OBJS_Think still runs that frame,
+            // advancing think_cnt (the shield-recharge counter) every game loop
+            // (OBJECTS.C:1361; skipped only on OBJS_Use). Dropping it here left
+            // Godot's recharge 1 tick behind C, surfacing as a 1-bucket shield
+            // transient (death_wave2 @ iter 1260). Advance it here too.
+            var (skipTc, skipHeal) = ShieldRechargeStep(
+                _thinkCnt, _curPlayerDiff, ChargeShield,
+                deathActive: _playerDeathCountdown >= 0,
+                endWaveActive: _endWaveCountdown >= 0);
+            _thinkCnt = skipTc;
+            if (skipHeal) PlayerLogic.Heal(1);
             return;
         }
 
