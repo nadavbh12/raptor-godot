@@ -422,6 +422,10 @@ public sealed class Inventory
     /// that cycle-on-zero behaviour belongs to Task 5.1's Inventory.Use and is
     /// parity-gated separately. This minimal decrement preserves today's exact
     /// ConsumeMegaBomb semantics.
+    ///
+    /// SUPERSEDED by <see cref="Use"/> (Task 5.1): the megabomb consume path now routes
+    /// through the C-faithful OBJS_Use port. Kept (unused) until Phase 6 removes the
+    /// dead Task-3.3 seams; left in place to keep the Task 5.1 diff focused.
     /// </summary>
     public bool DecrementMegaBomb()
     {
@@ -431,6 +435,43 @@ public sealed class Inventory
         if (slot.Num == 0)
             _slots.Remove(ObjType.MegaBomb);
         return true;
+    }
+
+    // -----------------------------------------------------------------------
+    // OBJS_Use — OBJECTS.C:868-901 (INVENTORY part only)
+    // -----------------------------------------------------------------------
+    /// <summary>
+    /// Consumes one unit of <paramref name="type"/>, mirroring the inventory side of
+    /// OBJS_Use. For a non-Forever weapon, decrements Num; when Num reaches 0 the slot
+    /// is removed (OBJS_Remove + p_objs[type]=NUL) and, if THIS type was the equipped
+    /// special (plr.sweapon == type), cycles to the next owned special via
+    /// <see cref="GetNext"/>. Forever weapons are never consumed.
+    ///
+    /// DELIBERATELY OMITTED (out of scope):
+    ///   • objuse_flag = TRUE; think_cnt = 0 — game-state side effects (shield-recharge
+    ///     timing), NOT inventory, and not in today's path. Adding them would change timing.
+    ///   • lib->actf(type) — the firing/detonation EFFECT is Task 5.4. Here we decrement
+    ///     unconditionally on use (the actf-gating of the decrement is deferred to 5.4).
+    ///   • OBJS_Equip(type) re-equip — a no-op in our one-slot model: we remove the whole
+    ///     slot at 0 (no second node to re-equip), so it is correctly omitted.
+    ///
+    /// PARITY NOTE: MegaBomb (the only shipped non-Forever weapon) has SpecialW=false, so
+    /// EquippedSpecial is never MegaBomb and the cycle-on-zero branch never fires for it —
+    /// making Use(MegaBomb) identical to the legacy <see cref="DecrementMegaBomb"/>.
+    /// </summary>
+    public void Use(ObjType type)
+    {
+        if (!IsEquip(type)) return;                       // mirror !cur (p_objs[type]==NULL)
+        var lib = ObjLib.Of(type);
+        var slot = _slots[type];
+        if (!lib.Forever)
+            slot.Num--;                                   // (actf gating is Task 5.4; here we decrement on use)
+        if (slot.Num <= 0 && !lib.Forever)
+        {
+            _slots.Remove(type);                          // OBJS_Remove + p_objs[type]=NUL
+            if (EquippedSpecial == type)                  // if plr.sweapon == type
+                GetNext();                                // cycle to next owned special
+        }
     }
 
     // -----------------------------------------------------------------------

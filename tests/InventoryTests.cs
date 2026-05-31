@@ -400,3 +400,60 @@ public class InventoryGetNextTests
         Assert.Equal(ObjType.MiniGun, inv.EquippedSpecial);
     }
 }
+
+// ── Inventory.Use — OBJS_Use port (Task 5.1) ─────────────────────────────────
+public class InventoryUseTests
+{
+    [Fact]
+    public void Use_decrements_non_forever_weapon()
+    {
+        // MegaBomb is non-Forever (Forever=false): Use decrements its count.
+        var inv = new Inventory();
+        inv.Load(ObjType.MegaBomb, num: 2, inuse: true);
+        inv.Use(ObjType.MegaBomb);
+        Assert.Equal(1, inv.GetAmt(ObjType.MegaBomb));
+        Assert.True(inv.IsEquip(ObjType.MegaBomb));
+    }
+
+    [Fact]
+    public void Use_removes_slot_at_zero()
+    {
+        // At Num=1, Use drops to 0 → slot removed (OBJS_Remove + p_objs[type]=NUL).
+        var inv = new Inventory();
+        inv.Load(ObjType.MegaBomb, num: 1, inuse: true);
+        inv.Use(ObjType.MegaBomb);
+        Assert.False(inv.IsEquip(ObjType.MegaBomb));
+        Assert.Equal(0, inv.GetAmt(ObjType.MegaBomb));
+    }
+
+    [Fact]
+    public void Use_does_not_decrement_forever_weapon()
+    {
+        // DumbMissile has Forever=true: Use never consumes it (lib->forever guard).
+        var inv = new Inventory();
+        inv.Load(ObjType.DumbMissile, num: 1, inuse: true);
+        inv.Use(ObjType.DumbMissile);
+        Assert.True(inv.IsEquip(ObjType.DumbMissile));
+        Assert.Equal(1, inv.GetAmt(ObjType.DumbMissile));
+    }
+
+    [Fact]
+    public void Use_on_unowned_type_is_noop()
+    {
+        // Empty inventory: Use mirrors C's `if (!cur) return` — no throw, no change.
+        var inv = new Inventory();
+        inv.Use(ObjType.MegaBomb);
+        Assert.Equal(0, inv.GetAmt(ObjType.MegaBomb));
+        Assert.False(inv.IsEquip(ObjType.MegaBomb));
+    }
+
+    // CYCLE-ON-ZERO branch (`EquippedSpecial == type → GetNext()`):
+    // UNREACHABLE with shipped flags via the legitimate path. EquippedSpecial is only
+    // ever set to a SpecialW type (Add auto-equips only SpecialW; MakeSpecial requires
+    // SpecialW; GetNext only selects SpecialW). MegaBomb — the ONLY non-Forever weapon —
+    // has SpecialW=false, so a non-Forever slot reaching 0 can never also be the equipped
+    // special. The branch is therefore dead under shipped data. It is nonetheless verified
+    // C-faithful by inspection of the OBJS_Use port, and GetNext's own cycling behaviour
+    // is covered by InventoryGetNextTests above. We deliberately do NOT force an
+    // unreachable scenario by hand-corrupting EquippedSpecial — honesty over a hollow test.
+}

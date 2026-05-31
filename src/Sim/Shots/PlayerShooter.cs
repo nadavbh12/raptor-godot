@@ -157,13 +157,20 @@ public sealed class PlayerShooter
     }
 
     /// <summary>
-    /// Consume one mega-bomb from the inventory. Returns false if count was 0.
-    /// Delegates to Inventory.DecrementMegaBomb — does NOT cycle on zero
-    /// (that C-faithful behaviour is Task 5.1's Inventory.Use, parity-gated separately).
+    /// Consume one mega-bomb from the inventory. Returns false if count was 0,
+    /// true iff a bomb was consumed.
+    ///
+    /// Routes through the C-faithful <see cref="Inventory.Use"/> (Task 5.1, OBJS_Use).
+    /// The explicit count-0 guard preserves the tested bool semantics (Use is a
+    /// no-op when nothing is owned). Parity-neutral: MegaBomb is SpecialW=false, so
+    /// Use's cycle-on-zero branch never fires for it — behaviour matches the legacy
+    /// DecrementMegaBomb seam this replaces.
     /// </summary>
     public bool ConsumeMegaBomb()
     {
-        return _inv.DecrementMegaBomb();
+        if (_inv.GetAmt(ObjType.MegaBomb) <= 0) return false;
+        _inv.Use(ObjType.MegaBomb);
+        return true;
     }
 
     /// <summary>
