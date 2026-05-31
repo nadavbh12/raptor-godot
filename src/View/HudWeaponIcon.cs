@@ -21,6 +21,8 @@ internal static class HudWeaponIcon
         ObjType.PulseCannon  => "BONUS11_PIC",
         ObjType.ForwardLaser => "BONUS12_PIC",
         ObjType.DeathRay     => "BONUS13_PIC",
+        // Non-weapon ObjTypes (15-24: SuperShield, Energy, Detect, ItemBuy1-6)
+        // have no HUD weapon icon.
         _ => string.Empty,
     };
 }
