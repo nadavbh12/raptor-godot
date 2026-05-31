@@ -73,4 +73,13 @@ public class InventoryCoreTests
         inv.Clear();
         Assert.False(inv.IsEquip(ObjType.MiniGun));
     }
+
+    [Fact]
+    public void GetTotal_equals_count_under_one_slot_model()
+    {
+        var inv = new Inventory();
+        for (int i = 0; i < 4; i++) inv.Add(ObjType.MegaBomb);
+        Assert.Equal(4, inv.GetAmt(ObjType.MegaBomb));
+        Assert.Equal(4, inv.GetTotal(ObjType.MegaBomb));   // NOT 1
+    }
 }

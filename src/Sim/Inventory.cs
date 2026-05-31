@@ -152,15 +152,19 @@ public sealed class Inventory
     // OBJS_GetTotal — OBJECTS.C:1023-1043
     // -----------------------------------------------------------------------
     /// <summary>
-    /// In C, GetTotal counts the NUMBER OF OBJ ENTRIES (slots) for a type across
-    /// the entire linked list — not the sum of Num fields. Under this single-slot
-    /// model a type can appear at most once, so the result is 1 if the slot exists
-    /// (regardless of InUse) or 0 if it does not. This is intentionally different
-    /// from GetAmt, which returns Num only for the equipped slot.
+    /// In C, GetTotal counts the NUMBER OF OBJ ENTRIES for a type across the linked
+    /// list (each unit is a separate OBJ node). In THIS port a type occupies exactly
+    /// ONE slot whose Num field holds the count, so the node-count is folded into Num
+    /// and GetTotal == GetAmt under the one-slot model.
+    ///
+    /// This equivalence is load-bearing: the SuperShield purchase cap (Task 5.2,
+    /// Phase-0 finding 0.2) is `GetTotal(SuperShield) >= 5 → ShipFull`. In C that
+    /// counts 5 separate nodes; here it must read the single slot's Num. Returning a
+    /// slot-count (0/1) would make `>= 5` unreachable and silently break the cap.
     /// </summary>
     public int GetTotal(ObjType type)
     {
-        return _slots.ContainsKey(type) ? 1 : 0;
+        return GetAmt(type);
     }
 
     // -----------------------------------------------------------------------
