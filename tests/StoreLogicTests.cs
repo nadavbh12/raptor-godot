@@ -292,4 +292,53 @@ public class StoreLogicTransactTests
         Assert.Equal(ObjType.Energy, store.CurrentObject);
         Assert.Contains(ObjType.Energy, store.SellItems);
     }
+
+    // FIX 1: ToggleMode must recompute the now-active list (STORE.C:548-555), so a
+    // weapon bought in Buy mode appears in SellItems after switching to Sell mode.
+    // Without the recompute, SellItems stays the (empty) construction-time snapshot.
+    [Fact]
+    public void Buy_then_toggle_to_sell_shows_bought_item_in_sell_list()
+    {
+        var inv = new Inventory();                           // starts empty → SellItems empty
+        var (store, _) = NewStore(inv, 5_000_000);
+        NavigateTo(store, ObjType.MiniGun);
+        Assert.Equal(BuyStuff.GotIt, store.Buy());           // now own MiniGun
+        Assert.DoesNotContain(ObjType.MiniGun, store.SellItems);  // stale snapshot pre-toggle
+
+        EnterSellMode(store);                                // ToggleMode → recompute SellItems
+        Assert.Contains(ObjType.MiniGun, store.SellItems);   // freshly bought item now sellable
+    }
+
+    // FIX 4: first Buy()/Sell() press while the greeting is up only dismisses it —
+    // no transaction (matches the sibling NextItem/PrevItem/ToggleMode guards).
+    [Fact]
+    public void Buy_while_greeting_only_dismisses_greeting_no_transaction()
+    {
+        var inv = new Inventory();
+        var (store, score) = NewStore(inv, 1_000_000);
+        Assert.True(store.ShowingGreeting);
+
+        var rval = store.Buy();                              // first press: dismiss only
+        Assert.Equal(BuyStuff.Error, rval);
+        Assert.False(store.ShowingGreeting);
+        Assert.Equal(1_000_000u, score[0]);                  // score untouched
+        // No item bought (CurItem=0 → whatever the first buyable is) — confirm by
+        // checking the live inventory has nothing equipped from a transaction.
+        Assert.False(inv.IsEquip(store.CurrentObject!.Value));
+    }
+
+    [Fact]
+    public void Sell_while_greeting_only_dismisses_greeting_no_transaction()
+    {
+        var inv = new Inventory();
+        inv.Load(ObjType.MiniGun, 1, inuse: true);           // owned + sellable
+        var (store, score) = NewStore(inv, 0);
+        Assert.True(store.ShowingGreeting);
+
+        int left = store.Sell();                             // first press: dismiss only
+        Assert.Equal(0, left);
+        Assert.False(store.ShowingGreeting);
+        Assert.Equal(0u, score[0]);                          // no resale credited
+        Assert.True(inv.IsEquip(ObjType.MiniGun));           // still owned (not sold)
+    }
 }

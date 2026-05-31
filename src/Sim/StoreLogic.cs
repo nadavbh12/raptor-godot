@@ -8,9 +8,11 @@ namespace Raptor.Sim;
 // SellItems lists produced by MakeBuyItems / MakeSellItems (sorted by cost
 // ascending), and the item catalog populated by OBJECTS.C OBJS_Init.
 //
-// Scope: enough to render the supply screen and step through items.
-// Transactions (OBJS_Buy / OBJS_Sell, money math, ship-inventory updates)
-// are out of scope here — call sites that depend on them stay stubbed.
+// Transactions (OBJS_Buy / OBJS_Sell) are implemented here (Task 5.2): Buy() /
+// Sell() transact against the live player score (the injected accessors) and the
+// live Inventory, then recompute the active list and reposition the cursor —
+// mirroring STORE.C's STOR_BUYIT handling. ToggleMode recomputes the now-active
+// list (STORE.C:548-555), matching C's MakeBuyItems/MakeSellItems on mode switch.
 internal sealed class StoreLogic
 {
     public enum Mode { Buy, Sell }
@@ -61,9 +63,8 @@ internal sealed class StoreLogic
         };
 
     // Live player inventory — the same canonical instance gameplay and pilot
-    // load mutate (WaveController.Inventory). Read-only here: this task only
-    // queries ownership for browse/render via GetAmt / IsEquip. Buy/Sell
-    // mutations land in Phase 5.2.
+    // load mutate (WaveController.Inventory). Queried for browse/render via
+    // GetAmt / IsEquip, and mutated by Buy() / Sell() (Inventory.Buy/Sell).
     private readonly Inventory _inventory;
 
     // Live player-score accessors — the canonical WaveController.Score (C's
@@ -140,6 +141,15 @@ internal sealed class StoreLogic
     {
         if (ShowingGreeting) { ShowingGreeting = false; return; }
         CurrentMode = CurrentMode == Mode.Buy ? Mode.Sell : Mode.Buy;
+        // STORE.C:548-555 recomputes the now-active list on a mode switch
+        // (STOR_BUY → MakeBuyItems; STOR_SELL → MakeSellItems), then cur_item=0.
+        // Without this the opposite-mode list stays a construction-time snapshot
+        // and misses items bought/sold since (e.g. a just-bought weapon would be
+        // absent from SellItems).
+        if (CurrentMode == Mode.Sell)
+            SellItems = MakeSellItems();
+        else
+            BuyItems = MakeBuyItems();
         CurItem = 0;
     }
 
@@ -149,6 +159,12 @@ internal sealed class StoreLogic
     // the live player score (read/written via the injected accessors).
     public BuyStuff Buy()
     {
+        // First press while the Harrold greeting is up only dismisses it — mirrors
+        // the sibling NextItem/PrevItem/ToggleMode guards. C drops keystrokes during
+        // STORE_Enter's IMS_WaitTimed greeting before the buy/sell button is live, so
+        // we never transact through the greeting (avoids acting on CurItem=0 blindly).
+        if (ShowingGreeting) { ShowingGreeting = false; return BuyStuff.Error; }
+
         var obj = CurrentObject;
         if (obj == null) return BuyStuff.Error;
 
@@ -164,6 +180,9 @@ internal sealed class StoreLogic
 
     public int Sell()
     {
+        // First press while the greeting is up only dismisses it (see Buy()).
+        if (ShowingGreeting) { ShowingGreeting = false; return 0; }
+
         var obj = CurrentObject;
         if (obj == null) return 0;
 
