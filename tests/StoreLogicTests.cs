@@ -46,6 +46,19 @@ public class StoreLogicTests
     }
 
     [Fact]
+    public void OwnedCount_reports_count_for_owned_but_unequipped_item()
+    {
+        var inv = new Inventory();
+        // Owned slot but not equipped (inuse=false). Pins the load-bearing
+        // GetAmt deviation (Inventory.cs): GetAmt returns Num regardless of
+        // InUse so save/load round-trips report purchased-but-unequipped
+        // quantities. OwnedCount flows straight through GetAmt.
+        inv.Load(ObjType.Energy, 50, inuse: false);
+
+        Assert.Equal(50, OwnedCountFor(inv, ObjType.Energy));
+    }
+
+    [Fact]
     public void SellList_includes_owned_equipped_weapon_with_enough_count()
     {
         var inv = new Inventory();
