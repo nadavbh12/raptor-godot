@@ -16,7 +16,7 @@ namespace Raptor.Test;
 ///   i=&lt;iter&gt; eb idx=&lt;idx&gt; type=&lt;T&gt; x=&lt;X&gt; y=&lt;Y&gt; mx=&lt;MX&gt; my=&lt;MY&gt; speed=&lt;S&gt; curframe=&lt;CF&gt; cnt=&lt;CNT&gt;
 ///   i=&lt;iter&gt; pb idx=&lt;idx&gt; wpn=&lt;W&gt; x=&lt;X&gt; y=&lt;Y&gt; mx=&lt;MX&gt; my=&lt;MY&gt; speed=&lt;S&gt; cnt=&lt;CNT&gt; beam=&lt;B&gt; reached=&lt;R&gt; doneflag=&lt;D&gt;
 ///
-/// `wpn` is the WeaponType integer (S_FORWARD_GUNS=0..S_DEATH_RAY=14, or
+/// `wpn` is the ObjType integer (S_FORWARD_GUNS=0..S_DEATH_RAY=14, or
 /// -1 for ad-hoc test bullets without a weapon tag). `beam` is 1 if
 /// the bullet is a stationary line/vertical beam, else 0. `reached` is 1
 /// after the Bresenham loop completes (mirrors C `shot->move.done`).

@@ -57,26 +57,26 @@ public sealed class PlayerShooter
     public int MegaBombCount => _inv.GetAmt(ObjType.MegaBomb);
 
     /// <summary>
-    /// The active special weapon, mapped from _inv.EquippedSpecial (ObjType?→WeaponType?).
+    /// The active special weapon, mapped from _inv.EquippedSpecial (ObjType?→ObjType?).
     /// Null = no special equipped. Mirrors C plr.sweapon (RAP.C:1006).
     /// Read-only accessor; set via SelectSpecial / CycleSpecial / GrantWeapon.
     /// </summary>
-    public WeaponType? SpecialWeapon =>
-        _inv.EquippedSpecial is ObjType t ? (WeaponType)(int)t : (WeaponType?)null;
+    public ObjType? SpecialWeapon =>
+        _inv.EquippedSpecial is ObjType t ? (ObjType)(int)t : (ObjType?)null;
 
     /// <summary>
     /// Owned special weapons — types that are equipped (IsEquip) and flagged SpecialW.
     /// Computed from the inventory; preserved for callers that enumerate specials.
     /// </summary>
-    public IReadOnlyCollection<WeaponType> OwnedSpecials
+    public IReadOnlyCollection<ObjType> OwnedSpecials
     {
         get
         {
-            var result = new List<WeaponType>();
+            var result = new List<ObjType>();
             foreach (var (type, _, inuse) in _inv.Slots())
             {
                 if (inuse && ObjLib.Of(type).SpecialW)
-                    result.Add((WeaponType)(int)type);
+                    result.Add((ObjType)(int)type);
             }
             return result;
         }
@@ -87,7 +87,7 @@ public sealed class PlayerShooter
     /// Delegates to Inventory.MakeSpecial (mirrors OBJS_MakeSpecial, OBJECTS.C:1315).
     /// Returns true on success.
     /// </summary>
-    public bool SelectSpecial(WeaponType w) => _inv.MakeSpecial((ObjType)(int)w);
+    public bool SelectSpecial(ObjType w) => _inv.MakeSpecial((ObjType)(int)w);
 
     /// <summary>Cycle to the next owned special. Delegates to Inventory.GetNext (verified C OBJS_GetNext equivalent).</summary>
     public void CycleSpecial()
@@ -128,7 +128,7 @@ public sealed class PlayerShooter
     /// </summary>
     public bool GrantWeapon(int objType)
     {
-        if (objType < 0 || objType > (int)WeaponType.DeathRay)
+        if (objType < 0 || objType > (int)ObjType.DeathRay)
             return false;
 
         var type = (ObjType)objType;
@@ -207,7 +207,7 @@ public sealed class PlayerShooter
     }
 
     /// <summary>Cooldown remaining for a given weapon (test introspection).</summary>
-    public int GetCooldown(WeaponType w) => _curShoot[(int)w];
+    public int GetCooldown(ObjType w) => _curShoot[(int)w];
 
     /// <summary>
     /// RAP.C:1000-1008 BUT_1 cascade. Returns the list of newly-spawned bullets
@@ -219,12 +219,12 @@ public sealed class PlayerShooter
                                           Random? rng = null)
     {
         var bullets = new List<BulletLogic>(4);
-        Shoot(WeaponType.ForwardGuns, playerCx, playerCy, playerPic, bullets, enemies, rng);
+        Shoot(ObjType.ForwardGuns, playerCx, playerCy, playerPic, bullets, enemies, rng);
         if (HasPlasmaGuns)
-            Shoot(WeaponType.PlasmaGuns, playerCx, playerCy, playerPic, bullets, enemies, rng);
+            Shoot(ObjType.PlasmaGuns, playerCx, playerCy, playerPic, bullets, enemies, rng);
         if (HasMicroMissile)
-            Shoot(WeaponType.MicroMissile, playerCx, playerCy, playerPic, bullets, enemies, rng);
-        if (SpecialWeapon is WeaponType sw)
+            Shoot(ObjType.MicroMissile, playerCx, playerCy, playerPic, bullets, enemies, rng);
+        if (SpecialWeapon is ObjType sw)
             Shoot(sw, playerCx, playerCy, playerPic, bullets, enemies, rng);
         return bullets;
     }
@@ -236,7 +236,7 @@ public sealed class PlayerShooter
     /// have their HitType set from the weapon's ShotLib entry (used by
     /// WaveController collision to filter air/ground enemies per SHOTS.C ht).
     /// </summary>
-    public bool Shoot(WeaponType type, int playerCx, int playerCy, int playerPic,
+    public bool Shoot(ObjType type, int playerCx, int playerCy, int playerPic,
                       List<BulletLogic> sink,
                       IReadOnlyList<EnemyLogic>? enemies = null,
                       Random? rng = null)
@@ -261,7 +261,7 @@ public sealed class PlayerShooter
 
         switch (type)
         {
-            case WeaponType.ForwardGuns:
+            case ObjType.ForwardGuns:
                 // SHOTS.C:650-684. Two bullets: gun1 right and gun1 left (minus 1).
                 ConsumeRandomPitchSound(rng, "sound.fx_gun");
                 NextRandom(rng, lib.NumFrames, "forward.frame.r");  // cur->curframe = random(lib->numframes)
@@ -276,7 +276,7 @@ public sealed class PlayerShooter
                     hlx: lib.Hlx, hly: lib.Hly, damage: lib.Hits));
                 break;
 
-            case WeaponType.PlasmaGuns:
+            case ObjType.PlasmaGuns:
                 // SHOTS.C:686-701. One bullet centered.
                 ConsumeRandomPitchSound(rng, "sound.fx_gun");
                 NextRandom(rng, lib.NumFrames, "plasma.frame");
@@ -286,7 +286,7 @@ public sealed class PlayerShooter
                     hlx: lib.Hlx, hly: lib.Hly, damage: lib.Hits));
                 break;
 
-            case WeaponType.MicroMissile:
+            case ObjType.MicroMissile:
                 // SHOTS.C:703-733. Two bullets at gun3 ± offset.
                 ConsumeRandomPitchSound(rng, "sound.fx_gun");
                 sink.Add(BulletLogic.PlayerStraight(
@@ -299,7 +299,7 @@ public sealed class PlayerShooter
                     hlx: lib.Hlx, hly: lib.Hly, damage: lib.Hits));
                 break;
 
-            case WeaponType.MissilePods:
+            case ObjType.MissilePods:
                 // SHOTS.C:818-848. Two bullets at gun2 ± offset, with smoke.
                 ConsumeRandomPitchSound(rng, "sound.fx_gun");
                 sink.Add(BulletLogic.PlayerStraight(
@@ -312,9 +312,9 @@ public sealed class PlayerShooter
                     hlx: lib.Hlx, hly: lib.Hly, damage: lib.Hits, smoke: lib.Smoke));
                 break;
 
-            case WeaponType.AirMissile:
+            case ObjType.AirMissile:
                 // SHOTS.C:850-878. Two bullets at gun2 ± offset, S_AIR hit.
-            case WeaponType.GrdMissile:
+            case ObjType.GrdMissile:
                 // SHOTS.C:880-908. Two bullets at gun2 ± offset, S_GROUND hit.
                 ConsumeRandomPitchSound(rng, "sound.fx_missle");
                 sink.Add(BulletLogic.PlayerStraight(
@@ -327,7 +327,7 @@ public sealed class PlayerShooter
                     hlx: lib.Hlx, hly: lib.Hly, damage: lib.Hits, smoke: lib.Smoke));
                 break;
 
-            case WeaponType.Bomb:
+            case ObjType.Bomb:
                 // SHOTS.C:910-923. One bullet center.
                 ConsumeRandomPitchSound(rng, "sound.fx_missle");
                 sink.Add(BulletLogic.PlayerStraight(
@@ -336,7 +336,7 @@ public sealed class PlayerShooter
                     hlx: lib.Hlx, hly: lib.Hly, damage: lib.Hits));
                 break;
 
-            case WeaponType.EnergyGrab:
+            case ObjType.EnergyGrab:
                 // SHOTS.C:925-938. One bullet at center-4.
                 ConsumeRandomPitchSound(rng, "sound.fx_gun");
                 sink.Add(BulletLogic.PlayerStraight(
@@ -345,7 +345,7 @@ public sealed class PlayerShooter
                     hlx: lib.Hlx, hly: lib.Hly, damage: lib.Hits));
                 break;
 
-            case WeaponType.PulseCannon:
+            case ObjType.PulseCannon:
                 // SHOTS.C:956-969. One bullet center.
                 ConsumeRandomPitchSound(rng, "sound.fx_pulse");
                 sink.Add(BulletLogic.PlayerStraight(
@@ -354,7 +354,7 @@ public sealed class PlayerShooter
                     hlx: lib.Hlx, hly: lib.Hly, damage: lib.Hits));
                 break;
 
-            case WeaponType.DumbMissile:
+            case ObjType.DumbMissile:
                 // SHOTS.C:735-766. Two Bresenham bullets, randomized scatter.
                 // C's `cur->move.x2 = cur->x + random(16) + 10` etc; we mirror
                 // that with the provided RNG. Falls back to deterministic
@@ -380,13 +380,13 @@ public sealed class PlayerShooter
                         x2: playerCx - r2x, y2: playerCy + 5,
                         initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed,
                         hlx: lib.Hlx, hly: lib.Hly, damage: lib.Hits);
-                    b1.PlayerWeapon = WeaponType.DumbMissile; b1.Delayed = true;
-                    b2.PlayerWeapon = WeaponType.DumbMissile; b2.Delayed = true;
+                    b1.PlayerWeapon = ObjType.DumbMissile; b1.Delayed = true;
+                    b2.PlayerWeapon = ObjType.DumbMissile; b2.Delayed = true;
                     sink.Add(b1); sink.Add(b2);
                 }
                 break;
 
-            case WeaponType.MiniGun:
+            case ObjType.MiniGun:
                 // SHOTS.C:768-790. One Bresenham bullet toward a random enemy.
                 // If no enemy is on-screen, C returns FALSE (no shot fired) —
                 // we mirror that by un-doing the cooldown and returning false.
@@ -419,12 +419,12 @@ public sealed class PlayerShooter
                         x: playerCx, y: playerCy, x2: aimX, y2: aimY,
                         initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed,
                         hlx: lib.Hlx, hly: lib.Hly, damage: lib.Hits);
-                    mg.PlayerWeapon = WeaponType.MiniGun;
+                    mg.PlayerWeapon = ObjType.MiniGun;
                     sink.Add(mg);
                 }
                 break;
 
-            case WeaponType.MegaBomb:
+            case ObjType.MegaBomb:
                 // SHOTS.C:940-954. Bresenham to (160, 75). Tagged with
                 // PlayerWeapon=MegaBomb so WaveController.HandleShotDone
                 // can fire the detonation effect (SHOTS.C:1232-1241:
@@ -434,12 +434,12 @@ public sealed class PlayerShooter
                         x: playerCx, y: playerCy, x2: 160, y2: 75,
                         initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed,
                         hlx: lib.Hlx, hly: lib.Hly, damage: lib.Hits);
-                    mb.PlayerWeapon = WeaponType.MegaBomb;
+                    mb.PlayerWeapon = ObjType.MegaBomb;
                     sink.Add(mb);
                 }
                 break;
 
-            case WeaponType.Turret:
+            case ObjType.Turret:
                 // SHOTS.C:792-816. Pick a random AIR enemy; if none, no shot.
                 // C damages the enemy immediately (enemy->hits -= lib->hits)
                 // and creates a 1-tick S_LINE bullet for the visual.
@@ -461,7 +461,7 @@ public sealed class PlayerShooter
                 }
                 break;
 
-            case WeaponType.ForwardLaser:
+            case ObjType.ForwardLaser:
                 // SHOTS.C:971-999. Two S_BEAM bullets at gun3 ± offset.
                 // FX_LASER has rpflag=FALSE, so it does not consume RNG.
                 // lib->fplrx = fplry = TRUE — beams track player_cx/cy each
@@ -477,7 +477,7 @@ public sealed class PlayerShooter
                     startPlayerX: playerCx, startPlayerY: playerCy));
                 break;
 
-            case WeaponType.DeathRay:
+            case ObjType.DeathRay:
                 // SHOTS.C:1001-1014. Single S_BEAM bullet, center above player.
                 // FX_LASER has rpflag=FALSE, so it does not consume RNG.
                 // Same fplr-tracking semantics as FORWARD_LASER.
@@ -505,7 +505,7 @@ public sealed class PlayerShooter
     /// each call retags only the bullets it pushed.
     /// </summary>
     private static void TagShotMetadata(List<BulletLogic> sink, int from,
-                                        WeaponType type, HitType ht)
+                                        ObjType type, HitType ht)
     {
         for (int i = from; i < sink.Count; i++)
         {
@@ -515,8 +515,8 @@ public sealed class PlayerShooter
         }
     }
 
-    private static WeaponType CShotLibType(WeaponType type) =>
-        type == WeaponType.AirMissile ? WeaponType.MissilePods : type;
+    private static ObjType CShotLibType(ObjType type) =>
+        type == ObjType.AirMissile ? ObjType.MissilePods : type;
 
     private static EnemyLogic? PickRandomEnemy(IReadOnlyList<EnemyLogic>? enemies, Random? rng)
     {

@@ -613,7 +613,7 @@ public partial class DebugRenderer : Node2D
         foreach (var b in _wave.GetPlayerBullets())
         {
             if (!b.Alive) continue;
-            Texture2D? tex = b.PlayerWeapon is WeaponType weapon
+            Texture2D? tex = b.PlayerWeapon is ObjType weapon
                 ? LoadPlayerBulletTexture(weapon, b.FrameCounter)
                 : _playerBulletTex;
             if (tex != null)
@@ -1658,7 +1658,7 @@ public partial class DebugRenderer : Node2D
         return new Color(rgb.R / 255f, rgb.G / 255f, rgb.B / 255f, 1);
     }
 
-    private Texture2D? LoadPlayerBulletTexture(WeaponType weapon, int frameCounter)
+    private Texture2D? LoadPlayerBulletTexture(ObjType weapon, int frameCounter)
     {
         var (family, frame) = PlayerBulletSprite.FrameFor(weapon, frameCounter);
         var key = (family, frame);

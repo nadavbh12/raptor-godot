@@ -136,7 +136,7 @@ public partial class WaveController : Node
     private bool _inputB2Latch = false;
     private bool _inputB3Latch = false;
     private InputState? _testInteractiveInput;
-    private readonly Queue<WeaponType> _testSpecialSelects = new();
+    private readonly Queue<ObjType> _testSpecialSelects = new();
     private bool _debugDemoReplay = false;
     private int _paletteStuffCnt = 0;
     private bool _skipInitialPaletteStuff = false;
@@ -797,7 +797,7 @@ public partial class WaveController : Node
                 var fired = new List<BulletLogic>(1);
                 if (_waveActive
                     && Shooter.MegaBombCount > 0
-                    && Shooter.Shoot(WeaponType.MegaBomb, cx, cy, PlayerLogic.Pic, fired, _enemies, _shooterRng))
+                    && Shooter.Shoot(ObjType.MegaBomb, cx, cy, PlayerLogic.Pic, fired, _enemies, _shooterRng))
                 {
                     Shooter.ConsumeMegaBomb();
                     foreach (var b in fired) _playerBullets.Add(b);
@@ -841,7 +841,7 @@ public partial class WaveController : Node
                 _demoB3Latch = true;
                 var fired = new List<BulletLogic>(1);
                 if (Shooter.MegaBombCount > 0
-                    && Shooter.Shoot(WeaponType.MegaBomb, cx, cy, PlayerLogic.Pic, fired, _enemies, _shooterRng))
+                    && Shooter.Shoot(ObjType.MegaBomb, cx, cy, PlayerLogic.Pic, fired, _enemies, _shooterRng))
                 {
                     Shooter.ConsumeMegaBomb();
                     foreach (var b in fired) _playerBullets.Add(b);
@@ -859,7 +859,7 @@ public partial class WaveController : Node
         _testInteractiveInput = input;
     }
 
-    internal void QueueSpecialSelectForTest(WeaponType weapon)
+    internal void QueueSpecialSelectForTest(ObjType weapon)
     {
         _testSpecialSelects.Enqueue(weapon);
     }

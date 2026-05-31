@@ -49,13 +49,13 @@ internal static class ShotDoneDispatcher
         }
         switch (b.PlayerWeapon)
         {
-            case WeaponType.MegaBomb:
+            case ObjType.MegaBomb:
                 foreach (var eb in enemyBullets) eb.Kill();
                 foreach (var e in enemies) if (e.Alive) e.TakeDamage(b.Damage, deferRemovalForDump: true);
                 int bounty = tiles == null ? 0 : DamageAllTiles(tiles, damage: 20);
                 b.Kill();
                 return new DispatchResult(bounty);
-            case WeaponType.Turret:
+            case ObjType.Turret:
                 return new DispatchResult(0);
             default:
                 b.Kill();

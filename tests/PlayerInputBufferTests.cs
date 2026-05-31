@@ -116,15 +116,15 @@ public class InputStateTests
     public void Live_input_special_cycle_is_edge_triggered()
     {
         var shooter = new Raptor.Sim.Shots.PlayerShooter();
-        shooter.GrantWeapon((int)Raptor.Sim.Shots.WeaponType.DumbMissile);
-        shooter.GrantWeapon((int)Raptor.Sim.Shots.WeaponType.MiniGun);
-        shooter.SelectSpecial(Raptor.Sim.Shots.WeaponType.DumbMissile);
+        shooter.GrantWeapon((int)Raptor.Sim.ObjType.DumbMissile);
+        shooter.GrantWeapon((int)Raptor.Sim.ObjType.MiniGun);
+        shooter.SelectSpecial(Raptor.Sim.ObjType.DumbMissile);
         bool latch = false;
 
         LiveInputLogic.ApplySpecialCycle(shooter, held: true, ref latch);
         LiveInputLogic.ApplySpecialCycle(shooter, held: true, ref latch);
 
-        Assert.Equal(Raptor.Sim.Shots.WeaponType.MiniGun, shooter.SpecialWeapon);
+        Assert.Equal(Raptor.Sim.ObjType.MiniGun, shooter.SpecialWeapon);
     }
 
     [Fact]

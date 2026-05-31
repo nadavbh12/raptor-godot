@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Godot;
+using Raptor.Sim;
 using Raptor.Sim.Shots;
 
 namespace Raptor.Test;
@@ -70,26 +71,26 @@ public partial class PlaythroughDriver : Node
     // One-shot special-weapon selections queued by SC_1..SC_MINUS keystrokes.
     // RAP.C:955-996 maps each numeric scancode to OBJS_MakeSpecial(type);
     // WaveController.PhaseInput drains this queue each tick.
-    private readonly Queue<WeaponType> _specialSelects = new();
+    private readonly Queue<ObjType> _specialSelects = new();
 
     /// <summary>
     /// Mirrors C RAP.C SC_1..SC_MINUS → OBJS_MakeSpecial mapping. Returns
     /// null for any key name not in the special-select set (e.g. "Up", "1"
     /// in menu state); the caller then treats the key as a menu key.
     /// </summary>
-    public static WeaponType? KeyToSpecial(string key) => key switch
+    public static ObjType? KeyToSpecial(string key) => key switch
     {
-        "1"     => WeaponType.DumbMissile,
-        "2"     => WeaponType.MiniGun,
-        "3"     => WeaponType.Turret,
-        "4"     => WeaponType.MissilePods,
-        "5"     => WeaponType.AirMissile,
-        "6"     => WeaponType.GrdMissile,
-        "7"     => WeaponType.Bomb,
-        "8"     => WeaponType.EnergyGrab,
-        "9"     => WeaponType.PulseCannon,
-        "0"     => WeaponType.DeathRay,
-        "Minus" => WeaponType.ForwardLaser,
+        "1"     => ObjType.DumbMissile,
+        "2"     => ObjType.MiniGun,
+        "3"     => ObjType.Turret,
+        "4"     => ObjType.MissilePods,
+        "5"     => ObjType.AirMissile,
+        "6"     => ObjType.GrdMissile,
+        "7"     => ObjType.Bomb,
+        "8"     => ObjType.EnergyGrab,
+        "9"     => ObjType.PulseCannon,
+        "0"     => ObjType.DeathRay,
+        "Minus" => ObjType.ForwardLaser,
         _       => null,
     };
 
@@ -100,7 +101,7 @@ public partial class PlaythroughDriver : Node
     /// Dequeue the next pending special-select keystroke. Returns false when
     /// the queue is empty. WaveController.PhaseInput drains this each tick.
     /// </summary>
-    public bool TryDequeueSpecialSelect(out WeaponType w)
+    public bool TryDequeueSpecialSelect(out ObjType w)
     {
         if (_specialSelects.Count == 0) { w = default; return false; }
         w = _specialSelects.Dequeue();

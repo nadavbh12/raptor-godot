@@ -24,9 +24,9 @@ public class PlayerShooterTests
         var ps = new PlayerShooter();
         var sink = new List<BulletLogic>();
         var actual = new Random(4242);
-        ps.Shoot(WeaponType.ForwardGuns, 160, 176, 3, sink, enemies: null, rng: actual);
+        ps.Shoot(ObjType.ForwardGuns, 160, 176, 3, sink, enemies: null, rng: actual);
 
-        int numFrames = ShotLib.Get(WeaponType.ForwardGuns).NumFrames;
+        int numFrames = ShotLib.Get(ObjType.ForwardGuns).NumFrames;
         var expected = new Random(4242);
         PlayerShooter.NextRandom(expected, numFrames, "expected.frame.r");
         PlayerShooter.NextRandom(expected, numFrames, "expected.frame.l");
@@ -39,7 +39,7 @@ public class PlayerShooterTests
     public void ShotLib_FORWARD_GUNS_matches_C()
     {
         // SOURCE/SHOTS.C:137-165 sets these exact values.
-        var lib = ShotLib.Get(WeaponType.ForwardGuns);
+        var lib = ShotLib.Get(ObjType.ForwardGuns);
         Assert.Equal(1, lib.Hits);
         Assert.Equal(8, lib.Speed);
         Assert.Equal(16, lib.MaxSpeed);
@@ -56,7 +56,7 @@ public class PlayerShooterTests
     public void ShotLib_PLASMA_GUNS_matches_C()
     {
         // SHOTS.C:167-196: hits=2, speed=4, maxspeed=8, shoot_rate=10, ht=S_AIR.
-        var lib = ShotLib.Get(WeaponType.PlasmaGuns);
+        var lib = ShotLib.Get(ObjType.PlasmaGuns);
         Assert.Equal(2, lib.Hits);
         Assert.Equal(4, lib.Speed);
         Assert.Equal(8, lib.MaxSpeed);
@@ -71,7 +71,7 @@ public class PlayerShooterTests
         Assert.Equal(15, ShotLib.Count);
         // Each entry's Type matches its position.
         for (int i = 0; i < ShotLib.Count; i++)
-            Assert.Equal((WeaponType)i, ShotLib.Table[i].Type);
+            Assert.Equal((ObjType)i, ShotLib.Table[i].Type);
     }
 
     // ── Gun offsets ──────────────────────────────────────────────────────────
@@ -96,7 +96,7 @@ public class PlayerShooterTests
         // (= our Tick) snapshots display = move - hl on the spawn iter.
         var ps = new PlayerShooter();
         var sink = new List<BulletLogic>();
-        bool fired = ps.Shoot(WeaponType.ForwardGuns, playerCx: 160, playerCy: 176,
+        bool fired = ps.Shoot(ObjType.ForwardGuns, playerCx: 160, playerCy: 176,
                               playerPic: 3, sink);
         Assert.True(fired);
         Assert.Equal(2, sink.Count);
@@ -105,7 +105,7 @@ public class PlayerShooterTests
         Assert.Equal(176, sink[0].My);
         Assert.Equal(153, sink[1].Mx);  // player_cx - o_gun1[3] - 1
         Assert.Equal(176, sink[1].My);
-        Assert.All(sink, b => Assert.Equal(WeaponType.ForwardGuns, b.PlayerWeapon));
+        Assert.All(sink, b => Assert.Equal(ObjType.ForwardGuns, b.PlayerWeapon));
         // After one Tick (=one SHOTS_Think iter) the bullet enters displayed
         // state: shot->x = move.x - hlx, shot->y = move.y - hly. hlx=hly=4.
         sink[0].Tick();
@@ -123,15 +123,15 @@ public class PlayerShooterTests
         // FORWARD_GUNS shoot_rate=2 → fire, [cd=2], TickCooldowns ×2, fire again.
         var ps = new PlayerShooter();
         var sink = new List<BulletLogic>();
-        Assert.True (ps.Shoot(WeaponType.ForwardGuns, 160, 176, 3, sink));   // fired
-        Assert.Equal(2, ps.GetCooldown(WeaponType.ForwardGuns));
-        Assert.False(ps.Shoot(WeaponType.ForwardGuns, 160, 176, 3, sink));   // cd=2 → blocked
+        Assert.True (ps.Shoot(ObjType.ForwardGuns, 160, 176, 3, sink));   // fired
+        Assert.Equal(2, ps.GetCooldown(ObjType.ForwardGuns));
+        Assert.False(ps.Shoot(ObjType.ForwardGuns, 160, 176, 3, sink));   // cd=2 → blocked
         ps.TickCooldowns();
-        Assert.Equal(1, ps.GetCooldown(WeaponType.ForwardGuns));
-        Assert.False(ps.Shoot(WeaponType.ForwardGuns, 160, 176, 3, sink));   // cd=1 → blocked
+        Assert.Equal(1, ps.GetCooldown(ObjType.ForwardGuns));
+        Assert.False(ps.Shoot(ObjType.ForwardGuns, 160, 176, 3, sink));   // cd=1 → blocked
         ps.TickCooldowns();
-        Assert.Equal(0, ps.GetCooldown(WeaponType.ForwardGuns));
-        Assert.True (ps.Shoot(WeaponType.ForwardGuns, 160, 176, 3, sink));   // cd=0 → fired
+        Assert.Equal(0, ps.GetCooldown(ObjType.ForwardGuns));
+        Assert.True (ps.Shoot(ObjType.ForwardGuns, 160, 176, 3, sink));   // cd=0 → fired
     }
 
     [Fact]
@@ -183,10 +183,10 @@ public class PlayerShooterTests
     public void Reset_clears_all_cooldowns()
     {
         var ps = new PlayerShooter();
-        ps.Shoot(WeaponType.ForwardGuns, 160, 176, 3, new List<BulletLogic>());
-        Assert.True(ps.GetCooldown(WeaponType.ForwardGuns) > 0);
+        ps.Shoot(ObjType.ForwardGuns, 160, 176, 3, new List<BulletLogic>());
+        Assert.True(ps.GetCooldown(ObjType.ForwardGuns) > 0);
         ps.Reset();
-        Assert.Equal(0, ps.GetCooldown(WeaponType.ForwardGuns));
+        Assert.Equal(0, ps.GetCooldown(ObjType.ForwardGuns));
     }
 
     [Fact]
@@ -194,7 +194,7 @@ public class PlayerShooterTests
     {
         var ps = new PlayerShooter();
         var sink = new List<BulletLogic>();
-        ps.Shoot(WeaponType.PlasmaGuns, 160, 176, 3, sink);
+        ps.Shoot(ObjType.PlasmaGuns, 160, 176, 3, sink);
         Assert.Single(sink);
         // Raw spawn at center.
         Assert.Equal(160, sink[0].Mx);
@@ -217,9 +217,9 @@ public class PlayerShooterTests
         // (each turret fire consumes turret.aim.x/y).
         var ps = new PlayerShooter();
         var sink = new List<BulletLogic>();
-        Assert.False(ps.Shoot(WeaponType.Turret, 160, 176, 3, sink, enemies: null));
+        Assert.False(ps.Shoot(ObjType.Turret, 160, 176, 3, sink, enemies: null));
         Assert.Empty(sink);
-        Assert.Equal(ShotLib.Get(WeaponType.Turret).ShootRate, ps.GetCooldown(WeaponType.Turret));
+        Assert.Equal(ShotLib.Get(ObjType.Turret).ShootRate, ps.GetCooldown(ObjType.Turret));
     }
 
     [Fact]
@@ -231,10 +231,10 @@ public class PlayerShooterTests
         var ps = new PlayerShooter();
         var sink = new List<BulletLogic>();
 
-        Assert.False(ps.Shoot(WeaponType.MiniGun, 160, 176, 3, sink, enemies: null));
+        Assert.False(ps.Shoot(ObjType.MiniGun, 160, 176, 3, sink, enemies: null));
 
         Assert.Empty(sink);
-        Assert.Equal(ShotLib.Get(WeaponType.MiniGun).ShootRate, ps.GetCooldown(WeaponType.MiniGun));
+        Assert.Equal(ShotLib.Get(ObjType.MiniGun).ShootRate, ps.GetCooldown(ObjType.MiniGun));
     }
 
     [Fact]
@@ -247,9 +247,9 @@ public class PlayerShooterTests
         var sink = new List<BulletLogic>();
         var ps = new PlayerShooter();
 
-        Assert.False(ps.Shoot(WeaponType.MiniGun, 160, 176, 3, sink, new[] { flushEnemy }, new System.Random(1)));
+        Assert.False(ps.Shoot(ObjType.MiniGun, 160, 176, 3, sink, new[] { flushEnemy }, new System.Random(1)));
         Assert.Empty(sink);
-        Assert.Equal(ShotLib.Get(WeaponType.MiniGun).ShootRate, ps.GetCooldown(WeaponType.MiniGun));
+        Assert.Equal(ShotLib.Get(ObjType.MiniGun).ShootRate, ps.GetCooldown(ObjType.MiniGun));
     }
 
     [Fact]
@@ -264,7 +264,7 @@ public class PlayerShooterTests
         var sink = new List<BulletLogic>();
         var ps = new PlayerShooter();
 
-        Assert.True(ps.Shoot(WeaponType.MiniGun, 160, 176, 3, sink, new[] { pending }, new System.Random(1)));
+        Assert.True(ps.Shoot(ObjType.MiniGun, 160, 176, 3, sink, new[] { pending }, new System.Random(1)));
         Assert.Single(sink);
     }
 
@@ -287,7 +287,7 @@ public class PlayerShooterTests
             var ps = new PlayerShooter();
             var rng = new System.Random(1234);
 
-            Assert.True(ps.Shoot(WeaponType.MiniGun, 160, 176, 3, sink, enemies, rng));
+            Assert.True(ps.Shoot(ObjType.MiniGun, 160, 176, 3, sink, enemies, rng));
 
             Assert.Equal(new System.Random(1234).Next(), rng.Next());
             Assert.Single(sink);
@@ -296,11 +296,11 @@ public class PlayerShooterTests
                 x: 160, y: 176,
                 x2: 100 + 16 - 1,
                 y2: 20 + 12 + 12 - 1,
-                initSpeed: ShotLib.Get(WeaponType.MiniGun).Speed,
-                maxSpeed: ShotLib.Get(WeaponType.MiniGun).MaxSpeed,
-                hlx: ShotLib.Get(WeaponType.MiniGun).Hlx,
-                hly: ShotLib.Get(WeaponType.MiniGun).Hly,
-                damage: ShotLib.Get(WeaponType.MiniGun).Hits);
+                initSpeed: ShotLib.Get(ObjType.MiniGun).Speed,
+                maxSpeed: ShotLib.Get(ObjType.MiniGun).MaxSpeed,
+                hlx: ShotLib.Get(ObjType.MiniGun).Hlx,
+                hly: ShotLib.Get(ObjType.MiniGun).Hly,
+                damage: ShotLib.Get(ObjType.MiniGun).Hits);
 
             sink[0].Tick();
             expected.Tick();
@@ -334,7 +334,7 @@ public class PlayerShooterTests
             var ps = new PlayerShooter();
             var rng = new System.Random(1234);
 
-            Assert.True(ps.Shoot(WeaponType.MiniGun, 160, 176, 3, sink, enemies, rng));
+            Assert.True(ps.Shoot(ObjType.MiniGun, 160, 176, 3, sink, enemies, rng));
 
             Assert.Equal(new System.Random(1234).Next(), rng.Next());
             Assert.Single(sink);
@@ -343,11 +343,11 @@ public class PlayerShooterTests
                 x: 160, y: 176,
                 x2: 100 + 16 - 1,
                 y2: 20 + 12 + 12 - 1,
-                initSpeed: ShotLib.Get(WeaponType.MiniGun).Speed,
-                maxSpeed: ShotLib.Get(WeaponType.MiniGun).MaxSpeed,
-                hlx: ShotLib.Get(WeaponType.MiniGun).Hlx,
-                hly: ShotLib.Get(WeaponType.MiniGun).Hly,
-                damage: ShotLib.Get(WeaponType.MiniGun).Hits);
+                initSpeed: ShotLib.Get(ObjType.MiniGun).Speed,
+                maxSpeed: ShotLib.Get(ObjType.MiniGun).MaxSpeed,
+                hlx: ShotLib.Get(ObjType.MiniGun).Hlx,
+                hly: ShotLib.Get(ObjType.MiniGun).Hly,
+                damage: ShotLib.Get(ObjType.MiniGun).Hits);
 
             sink[0].Tick();
             expected.Tick();
@@ -380,7 +380,7 @@ public class PlayerShooterTests
             var sink = new List<BulletLogic>();
             var ps = new PlayerShooter();
 
-            Assert.True(ps.Shoot(WeaponType.MiniGun, 156, 157, 3, sink, enemies, new System.Random(1234)));
+            Assert.True(ps.Shoot(ObjType.MiniGun, 156, 157, 3, sink, enemies, new System.Random(1234)));
             Assert.Single(sink);
 
             sink[0].Tick();
@@ -399,7 +399,7 @@ public class PlayerShooterTests
     {
         var ps = new PlayerShooter();
         var sink = new List<BulletLogic>();
-        Assert.True(ps.Shoot(WeaponType.ForwardLaser, 160, 176, 3, sink));
+        Assert.True(ps.Shoot(ObjType.ForwardLaser, 160, 176, 3, sink));
         Assert.Equal(2, sink.Count);
         Assert.All(sink, b => Assert.True(b.IsBeam));
         Assert.All(sink, b => Assert.True(b.BeamDamages));
@@ -410,7 +410,7 @@ public class PlayerShooterTests
     {
         var ps = new PlayerShooter();
         var sink = new List<BulletLogic>();
-        Assert.True(ps.Shoot(WeaponType.DeathRay, 160, 176, 3, sink));
+        Assert.True(ps.Shoot(ObjType.DeathRay, 160, 176, 3, sink));
         Assert.Single(sink);
         Assert.True(sink[0].IsBeam);
         Assert.True(sink[0].BeamDamages);
@@ -422,7 +422,7 @@ public class PlayerShooterTests
         // FORWARD_LASER lib.NumFrames = 4 → beam ticks 4 times before despawn.
         var ps = new PlayerShooter();
         var sink = new List<BulletLogic>();
-        ps.Shoot(WeaponType.ForwardLaser, 160, 176, 3, sink);
+        ps.Shoot(ObjType.ForwardLaser, 160, 176, 3, sink);
         var beam = sink[0];
         beam.Tick(); Assert.True(beam.Alive);
         beam.Tick(); Assert.True(beam.Alive);
@@ -448,7 +448,7 @@ public class PlayerShooterTests
     {
         var ps = new PlayerShooter();
         var sink = new List<BulletLogic>();
-        ps.Shoot(WeaponType.ForwardGuns, 160, 176, 3, sink);
+        ps.Shoot(ObjType.ForwardGuns, 160, 176, 3, sink);
         Assert.All(sink, b => Assert.Equal(HitType.All, b.HitType));
     }
 
@@ -458,7 +458,7 @@ public class PlayerShooterTests
         // SHOTS.C lib->ht for PLASMA_GUNS = S_AIR — must NOT hit ground enemies.
         var ps = new PlayerShooter();
         var sink = new List<BulletLogic>();
-        ps.Shoot(WeaponType.PlasmaGuns, 160, 176, 3, sink);
+        ps.Shoot(ObjType.PlasmaGuns, 160, 176, 3, sink);
         Assert.All(sink, b => Assert.Equal(HitType.Air, b.HitType));
     }
 
@@ -467,7 +467,7 @@ public class PlayerShooterTests
     {
         var ps = new PlayerShooter();
         var sink = new List<BulletLogic>();
-        ps.Shoot(WeaponType.GrdMissile, 160, 176, 3, sink);
+        ps.Shoot(ObjType.GrdMissile, 160, 176, 3, sink);
         Assert.All(sink, b => Assert.Equal(HitType.Ground, b.HitType));
     }
 
@@ -476,7 +476,7 @@ public class PlayerShooterTests
     {
         var ps = new PlayerShooter();
         var sink = new List<BulletLogic>();
-        ps.Shoot(WeaponType.MicroMissile, 160, 176, 3, sink);
+        ps.Shoot(ObjType.MicroMissile, 160, 176, 3, sink);
         Assert.All(sink, b => Assert.Equal(HitType.GrAll, b.HitType));
     }
 
@@ -485,7 +485,7 @@ public class PlayerShooterTests
     {
         var ps = new PlayerShooter();
         var sink = new List<BulletLogic>();
-        ps.Shoot(WeaponType.Bomb, 160, 176, 3, sink);
+        ps.Shoot(ObjType.Bomb, 160, 176, 3, sink);
         Assert.All(sink, b => Assert.Equal(HitType.GTile, b.HitType));
     }
 
@@ -544,13 +544,13 @@ public class PlayerShooterTests
     {
         var ps = new PlayerShooter();
         Assert.True(ps.GrantWeapon(3 /* S_DUMB_MISSLE */));
-        Assert.Equal(WeaponType.DumbMissile, ps.SpecialWeapon);
+        Assert.Equal(ObjType.DumbMissile, ps.SpecialWeapon);
         // C OBJS_Add only selects a special if plr.sweapon is EMPTY.
         // S_MEGA_BOMB is not selectable (`specialw=FALSE`), so it does not
         // replace the active special.
         Assert.True(ps.GrantWeapon(11 /* S_MEGA_BOMB */));
         Assert.Equal(1, ps.MegaBombCount);
-        Assert.Equal(WeaponType.DumbMissile, ps.SpecialWeapon);
+        Assert.Equal(ObjType.DumbMissile, ps.SpecialWeapon);
     }
 
     [Fact]
@@ -577,14 +577,14 @@ public class PlayerShooterTests
     {
         var ps = new PlayerShooter();
         Assert.True(ps.GrantWeapon(3));  // DumbMissile
-        Assert.Contains(WeaponType.DumbMissile, ps.OwnedSpecials);
-        Assert.Equal(WeaponType.DumbMissile, ps.SpecialWeapon);
+        Assert.Contains(ObjType.DumbMissile, ps.OwnedSpecials);
+        Assert.Equal(ObjType.DumbMissile, ps.SpecialWeapon);
 
         Assert.True(ps.GrantWeapon(11));  // MegaBomb
         Assert.Equal(1, ps.MegaBombCount);
-        Assert.DoesNotContain(WeaponType.MegaBomb, ps.OwnedSpecials);
-        Assert.Contains(WeaponType.DumbMissile, ps.OwnedSpecials);
-        Assert.Equal(WeaponType.DumbMissile, ps.SpecialWeapon);       // first active sticks
+        Assert.DoesNotContain(ObjType.MegaBomb, ps.OwnedSpecials);
+        Assert.Contains(ObjType.DumbMissile, ps.OwnedSpecials);
+        Assert.Equal(ObjType.DumbMissile, ps.SpecialWeapon);       // first active sticks
     }
 
     [Fact]
@@ -594,29 +594,29 @@ public class PlayerShooterTests
         ps.GrantWeapon(3);   // DumbMissile
         ps.GrantWeapon(4);   // MiniGun
         // Active is MiniGun (last granted). Switching to owned DumbMissile works.
-        Assert.True(ps.SelectSpecial(WeaponType.DumbMissile));
-        Assert.Equal(WeaponType.DumbMissile, ps.SpecialWeapon);
+        Assert.True(ps.SelectSpecial(ObjType.DumbMissile));
+        Assert.Equal(ObjType.DumbMissile, ps.SpecialWeapon);
         // Switching to a non-owned special fails and leaves SpecialWeapon alone.
-        Assert.False(ps.SelectSpecial(WeaponType.MegaBomb));
-        Assert.Equal(WeaponType.DumbMissile, ps.SpecialWeapon);
+        Assert.False(ps.SelectSpecial(ObjType.MegaBomb));
+        Assert.Equal(ObjType.DumbMissile, ps.SpecialWeapon);
     }
 
     [Fact]
     public void CycleSpecial_advances_through_owned_specials_and_wraps()
     {
         var ps = new PlayerShooter();
-        ps.GrantWeapon((int)WeaponType.MiniGun);
-        ps.GrantWeapon((int)WeaponType.GrdMissile);
-        ps.GrantWeapon((int)WeaponType.DeathRay);
+        ps.GrantWeapon((int)ObjType.MiniGun);
+        ps.GrantWeapon((int)ObjType.GrdMissile);
+        ps.GrantWeapon((int)ObjType.DeathRay);
 
         ps.CycleSpecial();
-        Assert.Equal(WeaponType.GrdMissile, ps.SpecialWeapon);
+        Assert.Equal(ObjType.GrdMissile, ps.SpecialWeapon);
 
         ps.CycleSpecial();
-        Assert.Equal(WeaponType.DeathRay, ps.SpecialWeapon);
+        Assert.Equal(ObjType.DeathRay, ps.SpecialWeapon);
 
         ps.CycleSpecial();
-        Assert.Equal(WeaponType.MiniGun, ps.SpecialWeapon);
+        Assert.Equal(ObjType.MiniGun, ps.SpecialWeapon);
     }
 
     [Fact]
@@ -626,17 +626,17 @@ public class PlayerShooterTests
 
         DemoLoadout.Apply(ps, game: 0, registered: false);
 
-        Assert.Contains(WeaponType.MiniGun, ps.OwnedSpecials);
-        Assert.Contains(WeaponType.AirMissile, ps.OwnedSpecials);
-        Assert.DoesNotContain(WeaponType.Turret, ps.OwnedSpecials);
-        Assert.DoesNotContain(WeaponType.DeathRay, ps.OwnedSpecials);
-        Assert.Equal(WeaponType.AirMissile, ps.SpecialWeapon);
+        Assert.Contains(ObjType.MiniGun, ps.OwnedSpecials);
+        Assert.Contains(ObjType.AirMissile, ps.OwnedSpecials);
+        Assert.DoesNotContain(ObjType.Turret, ps.OwnedSpecials);
+        Assert.DoesNotContain(ObjType.DeathRay, ps.OwnedSpecials);
+        Assert.Equal(ObjType.AirMissile, ps.SpecialWeapon);
 
         ps.CycleSpecial();
-        Assert.Equal(WeaponType.MiniGun, ps.SpecialWeapon);
+        Assert.Equal(ObjType.MiniGun, ps.SpecialWeapon);
 
         ps.CycleSpecial();
-        Assert.Equal(WeaponType.AirMissile, ps.SpecialWeapon);
+        Assert.Equal(ObjType.AirMissile, ps.SpecialWeapon);
     }
 
     [Fact]
@@ -648,12 +648,12 @@ public class PlayerShooterTests
         var ps = new PlayerShooter();
         var sink = new List<BulletLogic>();
 
-        Assert.True(ps.Shoot(WeaponType.AirMissile, 100, 120, playerPic: 3, sink));
+        Assert.True(ps.Shoot(ObjType.AirMissile, 100, 120, playerPic: 3, sink));
 
         Assert.All(sink, b =>
         {
-            Assert.Equal(WeaponType.AirMissile, b.PlayerWeapon);
-            Assert.Equal(WeaponType.MissilePods, b.CWeaponTypeForDump);
+            Assert.Equal(ObjType.AirMissile, b.PlayerWeapon);
+            Assert.Equal(ObjType.MissilePods, b.CWeaponTypeForDump);
         });
     }
 
@@ -661,15 +661,15 @@ public class PlayerShooterTests
     public void Shield_low_loss_deletes_current_special_and_cycles_to_next_owned()
     {
         var ps = new PlayerShooter();
-        ps.GrantWeapon((int)WeaponType.MiniGun);
-        ps.GrantWeapon((int)WeaponType.AirMissile);
-        ps.GrantWeapon((int)WeaponType.GrdMissile);
-        Assert.True(ps.SelectSpecial(WeaponType.AirMissile));
+        ps.GrantWeapon((int)ObjType.MiniGun);
+        ps.GrantWeapon((int)ObjType.AirMissile);
+        ps.GrantWeapon((int)ObjType.GrdMissile);
+        Assert.True(ps.SelectSpecial(ObjType.AirMissile));
 
         Assert.True(ps.LoseCurrentSpecialForShieldLow());
 
-        Assert.DoesNotContain(WeaponType.AirMissile, ps.OwnedSpecials);
-        Assert.Equal(WeaponType.GrdMissile, ps.SpecialWeapon);
+        Assert.DoesNotContain(ObjType.AirMissile, ps.OwnedSpecials);
+        Assert.Equal(ObjType.GrdMissile, ps.SpecialWeapon);
     }
 
     [Fact]
@@ -686,11 +686,11 @@ public class PlayerShooterTests
         ps.GrantWeapon(5);   // Turret → owned in inv
         Assert.NotEmpty(ps.OwnedSpecials);
         // Fire to arm a cooldown, then Reset.
-        ps.Shoot(WeaponType.ForwardGuns, 160, 176, 3, new List<BulletLogic>());
-        Assert.True(ps.GetCooldown(WeaponType.ForwardGuns) > 0);
+        ps.Shoot(ObjType.ForwardGuns, 160, 176, 3, new List<BulletLogic>());
+        Assert.True(ps.GetCooldown(ObjType.ForwardGuns) > 0);
         ps.Reset();
         // Cooldowns cleared.
-        Assert.Equal(0, ps.GetCooldown(WeaponType.ForwardGuns));
+        Assert.Equal(0, ps.GetCooldown(ObjType.ForwardGuns));
         // Inventory state preserved through reset (WaveController owns lifetime).
         Assert.True(ps.HasPlasmaGuns);
         Assert.True(ps.HasMicroMissile);
@@ -702,17 +702,17 @@ public class PlayerShooterTests
     public void PlaythroughDriver_KeyToSpecial_maps_RAP_C_SC_keys()
     {
         // RAP.C:955-996. Cross-check the full SC_1..SC_MINUS table.
-        Assert.Equal(WeaponType.DumbMissile,  Raptor.Test.PlaythroughDriver.KeyToSpecial("1"));
-        Assert.Equal(WeaponType.MiniGun,      Raptor.Test.PlaythroughDriver.KeyToSpecial("2"));
-        Assert.Equal(WeaponType.Turret,       Raptor.Test.PlaythroughDriver.KeyToSpecial("3"));
-        Assert.Equal(WeaponType.MissilePods,  Raptor.Test.PlaythroughDriver.KeyToSpecial("4"));
-        Assert.Equal(WeaponType.AirMissile,   Raptor.Test.PlaythroughDriver.KeyToSpecial("5"));
-        Assert.Equal(WeaponType.GrdMissile,   Raptor.Test.PlaythroughDriver.KeyToSpecial("6"));
-        Assert.Equal(WeaponType.Bomb,         Raptor.Test.PlaythroughDriver.KeyToSpecial("7"));
-        Assert.Equal(WeaponType.EnergyGrab,   Raptor.Test.PlaythroughDriver.KeyToSpecial("8"));
-        Assert.Equal(WeaponType.PulseCannon,  Raptor.Test.PlaythroughDriver.KeyToSpecial("9"));
-        Assert.Equal(WeaponType.DeathRay,     Raptor.Test.PlaythroughDriver.KeyToSpecial("0"));
-        Assert.Equal(WeaponType.ForwardLaser, Raptor.Test.PlaythroughDriver.KeyToSpecial("Minus"));
+        Assert.Equal(ObjType.DumbMissile,  Raptor.Test.PlaythroughDriver.KeyToSpecial("1"));
+        Assert.Equal(ObjType.MiniGun,      Raptor.Test.PlaythroughDriver.KeyToSpecial("2"));
+        Assert.Equal(ObjType.Turret,       Raptor.Test.PlaythroughDriver.KeyToSpecial("3"));
+        Assert.Equal(ObjType.MissilePods,  Raptor.Test.PlaythroughDriver.KeyToSpecial("4"));
+        Assert.Equal(ObjType.AirMissile,   Raptor.Test.PlaythroughDriver.KeyToSpecial("5"));
+        Assert.Equal(ObjType.GrdMissile,   Raptor.Test.PlaythroughDriver.KeyToSpecial("6"));
+        Assert.Equal(ObjType.Bomb,         Raptor.Test.PlaythroughDriver.KeyToSpecial("7"));
+        Assert.Equal(ObjType.EnergyGrab,   Raptor.Test.PlaythroughDriver.KeyToSpecial("8"));
+        Assert.Equal(ObjType.PulseCannon,  Raptor.Test.PlaythroughDriver.KeyToSpecial("9"));
+        Assert.Equal(ObjType.DeathRay,     Raptor.Test.PlaythroughDriver.KeyToSpecial("0"));
+        Assert.Equal(ObjType.ForwardLaser, Raptor.Test.PlaythroughDriver.KeyToSpecial("Minus"));
         // Non-numeric / unsupported keys → null.
         Assert.Null(Raptor.Test.PlaythroughDriver.KeyToSpecial("Up"));
         Assert.Null(Raptor.Test.PlaythroughDriver.KeyToSpecial("Return"));
@@ -756,10 +756,10 @@ public class PlayerShooterTests
         var ps = new PlayerShooter();
         var sink = new List<BulletLogic>();
         var rng = new System.Random(42);
-        Assert.True(ps.Shoot(WeaponType.DumbMissile, 160, 176, 3, sink, rng: rng));
+        Assert.True(ps.Shoot(ObjType.DumbMissile, 160, 176, 3, sink, rng: rng));
         Assert.Equal(2, sink.Count);
         Assert.All(sink, b => Assert.True(b.Delayed));
-        Assert.All(sink, b => Assert.Equal(WeaponType.DumbMissile, b.PlayerWeapon));
+        Assert.All(sink, b => Assert.Equal(ObjType.DumbMissile, b.PlayerWeapon));
     }
 
     [Fact]
@@ -769,10 +769,10 @@ public class PlayerShooterTests
         // detonation effect on PlayerWeapon==MegaBomb after reaching target.
         var ps = new PlayerShooter();
         var sink = new List<BulletLogic>();
-        Assert.True(ps.Shoot(WeaponType.MegaBomb, 160, 176, 3, sink));
+        Assert.True(ps.Shoot(ObjType.MegaBomb, 160, 176, 3, sink));
         Assert.Single(sink);
         Assert.False(sink[0].Delayed);
-        Assert.Equal(WeaponType.MegaBomb, sink[0].PlayerWeapon);
+        Assert.Equal(ObjType.MegaBomb, sink[0].PlayerWeapon);
     }
 
     [Fact]
@@ -841,7 +841,7 @@ public class PlayerShooterTests
     {
         var ps = new PlayerShooter();
         var sink = new List<BulletLogic>();
-        ps.Shoot(WeaponType.ForwardLaser, playerCx: 160, playerCy: 176, playerPic: 3, sink);
+        ps.Shoot(ObjType.ForwardLaser, playerCx: 160, playerCy: 176, playerPic: 3, sink);
         Assert.Equal(2, sink.Count);
         Assert.All(sink, b => Assert.True(b.TracksPlayer));
         // Player moves +5 right; both beams should shift by 5.

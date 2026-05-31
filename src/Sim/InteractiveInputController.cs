@@ -12,7 +12,7 @@ namespace Raptor.Sim;
 public partial class InteractiveInputController : Node
 {
     private MenuController? _menuController;
-    private readonly Queue<WeaponType> _specialSelects = new();
+    private readonly Queue<ObjType> _specialSelects = new();
 
     public bool Active { get; private set; }
     public InputState Current { get; private set; } = InputState.Idle;
@@ -63,7 +63,7 @@ public partial class InteractiveInputController : Node
         }
     }
 
-    public bool TryDequeueSpecialSelect(out WeaponType weapon)
+    public bool TryDequeueSpecialSelect(out ObjType weapon)
     {
         if (_specialSelects.Count == 0)
         {
@@ -115,19 +115,19 @@ public partial class InteractiveInputController : Node
         return null;
     }
 
-    private static WeaponType? ActionToSpecial(string action) => action switch
+    private static ObjType? ActionToSpecial(string action) => action switch
     {
-        "special_1" => WeaponType.DumbMissile,
-        "special_2" => WeaponType.MiniGun,
-        "special_3" => WeaponType.Turret,
-        "special_4" => WeaponType.MissilePods,
-        "special_5" => WeaponType.AirMissile,
-        "special_6" => WeaponType.GrdMissile,
-        "special_7" => WeaponType.Bomb,
-        "special_8" => WeaponType.EnergyGrab,
-        "special_9" => WeaponType.PulseCannon,
-        "special_0" => WeaponType.DeathRay,
-        "special_minus" => WeaponType.ForwardLaser,
+        "special_1" => ObjType.DumbMissile,
+        "special_2" => ObjType.MiniGun,
+        "special_3" => ObjType.Turret,
+        "special_4" => ObjType.MissilePods,
+        "special_5" => ObjType.AirMissile,
+        "special_6" => ObjType.GrdMissile,
+        "special_7" => ObjType.Bomb,
+        "special_8" => ObjType.EnergyGrab,
+        "special_9" => ObjType.PulseCannon,
+        "special_0" => ObjType.DeathRay,
+        "special_minus" => ObjType.ForwardLaser,
         _ => null,
     };
 

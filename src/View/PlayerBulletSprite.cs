@@ -1,10 +1,11 @@
+using Raptor.Sim;
 using Raptor.Sim.Shots;
 
 namespace Raptor.View;
 
 internal static class PlayerBulletSprite
 {
-    public static (string Family, int Frame) FrameFor(WeaponType weapon, int frameCounter)
+    public static (string Family, int Frame) FrameFor(ObjType weapon, int frameCounter)
     {
         var lib = ShotLib.Get(weapon);
         string family = FamilyFor(weapon);
@@ -13,22 +14,22 @@ internal static class PlayerBulletSprite
         return (family, frame);
     }
 
-    private static string FamilyFor(WeaponType weapon) => weapon switch
+    private static string FamilyFor(ObjType weapon) => weapon switch
     {
-        WeaponType.ForwardGuns  => "NMSHOT_BLK",
-        WeaponType.PlasmaGuns   => "PLASMA_BLK",
-        WeaponType.MicroMissile => "MICROM_BLK",
-        WeaponType.DumbMissile  => "MISDUM_BLK",
-        WeaponType.MiniGun      => "NMSHOT_BLK",
-        WeaponType.MissilePods  => "MISRAT_BLK",
-        WeaponType.AirMissile   => "MISRAT_BLK",
-        WeaponType.GrdMissile   => "MISGRD_BLK",
-        WeaponType.Bomb         => "BLDGBOMB_PIC",
-        WeaponType.EnergyGrab   => "POWDIS_BLK",
-        WeaponType.MegaBomb     => "MEGABM_BLK",
-        WeaponType.PulseCannon  => "SHOKWV_BLK",
-        WeaponType.ForwardLaser => "FRNTLAS_BLK",
-        WeaponType.DeathRay     => "DETHRY_BLK",
+        ObjType.ForwardGuns  => "NMSHOT_BLK",
+        ObjType.PlasmaGuns   => "PLASMA_BLK",
+        ObjType.MicroMissile => "MICROM_BLK",
+        ObjType.DumbMissile  => "MISDUM_BLK",
+        ObjType.MiniGun      => "NMSHOT_BLK",
+        ObjType.MissilePods  => "MISRAT_BLK",
+        ObjType.AirMissile   => "MISRAT_BLK",
+        ObjType.GrdMissile   => "MISGRD_BLK",
+        ObjType.Bomb         => "BLDGBOMB_PIC",
+        ObjType.EnergyGrab   => "POWDIS_BLK",
+        ObjType.MegaBomb     => "MEGABM_BLK",
+        ObjType.PulseCannon  => "SHOKWV_BLK",
+        ObjType.ForwardLaser => "FRNTLAS_BLK",
+        ObjType.DeathRay     => "DETHRY_BLK",
         _ => "NMSHOT_BLK",
     };
 }

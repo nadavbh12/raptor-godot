@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using Raptor.Sim.Bullet;
 using Raptor.Sim.Enemy;
 using Raptor.Sim.MazeLevel;
+using Raptor.Sim;
 using Raptor.Sim.Shots;
 using Xunit;
 
@@ -45,7 +46,7 @@ public class ShotDoneDispatcherTests
         // SHOTS.C:1220-1227: delayflag → InitMobj(move.x2 = move.x + random(32) - 16, move.y2 = 0).
         var b = BulletLogic.AimedAt(BulletKind.Player, x: 160, y: 100,
             x2: 175, y2: 105, initSpeed: 1, maxSpeed: 1, damage: 1);
-        b.PlayerWeapon = WeaponType.DumbMissile;
+        b.PlayerWeapon = ObjType.DumbMissile;
         b.Delayed = true;
         // Run Tick until ReachedTarget.
         for (int i = 0; i < 50 && !b.ReachedTarget; i++) b.Tick();
@@ -73,7 +74,7 @@ public class ShotDoneDispatcherTests
         // SHOTS.C:1232-1241 detonation effect.
         var b = BulletLogic.AimedAt(BulletKind.Player, x: 160, y: 176,
             x2: 160, y2: 75, initSpeed: 1, maxSpeed: 1, damage: 8);
-        b.PlayerWeapon = WeaponType.MegaBomb;
+        b.PlayerWeapon = ObjType.MegaBomb;
 
         var eb1 = new BulletLogic(BulletKind.Enemy, 100, 100, 0, 3);
         var eb2 = new BulletLogic(BulletKind.Enemy, 200, 100, 0, 3);
@@ -100,7 +101,7 @@ public class ShotDoneDispatcherTests
         // bounty only for tiles whose hits fall below zero.
         var b = BulletLogic.AimedAt(BulletKind.Player, x: 160, y: 176,
             x2: 160, y2: 75, initSpeed: 1, maxSpeed: 1, damage: 8);
-        b.PlayerWeapon = WeaponType.MegaBomb;
+        b.PlayerWeapon = ObjType.MegaBomb;
 
         var tiles = MakeTiles();
 
@@ -122,7 +123,7 @@ public class ShotDoneDispatcherTests
     {
         var b = BulletLogic.AimedAt(BulletKind.Player, 160, 176, 160, 75,
             initSpeed: 1, maxSpeed: 1, damage: 8);
-        b.PlayerWeapon = WeaponType.MegaBomb;
+        b.PlayerWeapon = ObjType.MegaBomb;
 
         var dead = MakeEnemy(hits: 0);
         dead.TakeDamage(99);  // ensure Alive=false
@@ -146,7 +147,7 @@ public class ShotDoneDispatcherTests
         // SHOTS.C:1247-1249 default — SHOTS_Remove (e.g. MiniGun bullet).
         var b = BulletLogic.AimedAt(BulletKind.Player, 100, 100, 150, 100,
             initSpeed: 1, maxSpeed: 1, damage: 1);
-        b.PlayerWeapon = WeaponType.MiniGun;
+        b.PlayerWeapon = ObjType.MiniGun;
         Assert.True(b.Alive);
 
         ShotDoneDispatcher.Dispatch(b,
@@ -166,7 +167,7 @@ public class ShotDoneDispatcherTests
         // parity with the C switch.
         var b = BulletLogic.AimedAt(BulletKind.Player, 100, 100, 150, 100,
             initSpeed: 1, maxSpeed: 1, damage: 1);
-        b.PlayerWeapon = WeaponType.Turret;
+        b.PlayerWeapon = ObjType.Turret;
 
         ShotDoneDispatcher.Dispatch(b,
             enemyBullets: new List<BulletLogic>(),
@@ -183,7 +184,7 @@ public class ShotDoneDispatcherTests
         // re-init, b.Delayed is false and a second Dispatch goes to default.
         var b = BulletLogic.AimedAt(BulletKind.Player, 160, 100, 175, 105,
             initSpeed: 1, maxSpeed: 1, damage: 1);
-        b.PlayerWeapon = WeaponType.DumbMissile;
+        b.PlayerWeapon = ObjType.DumbMissile;
         b.Delayed = true;
         for (int i = 0; i < 50 && !b.ReachedTarget; i++) b.Tick();
 
@@ -208,7 +209,7 @@ public class ShotDoneDispatcherTests
         {
             var b = BulletLogic.AimedAt(BulletKind.Player, 160, 100, 175, 105,
                 initSpeed: 1, maxSpeed: 1, damage: 1);
-            b.PlayerWeapon = WeaponType.DumbMissile;
+            b.PlayerWeapon = ObjType.DumbMissile;
             b.Delayed = true;
             for (int i = 0; i < 50 && !b.ReachedTarget; i++) b.Tick();
 

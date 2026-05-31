@@ -34,7 +34,7 @@ public class BonusEffectDispatcherTests
         var ps = new PlayerShooter(inv);
         var r = BonusEffectDispatcher.Apply(objType: 3 /* DumbMissile */, ps, inv, MaxShield);
         Assert.True(r.GrantedWeapon);
-        Assert.Equal(WeaponType.DumbMissile, ps.SpecialWeapon);
+        Assert.Equal(ObjType.DumbMissile, ps.SpecialWeapon);
     }
 
     [Fact]

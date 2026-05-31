@@ -124,13 +124,13 @@ public sealed class BulletLogic
     /// step to dispatch MegaBomb detonation (SHOTS.C:1232-1241) and DumbMissile
     /// scatter, mirroring the C `switch (lib->type)` branch.
     /// </summary>
-    public Shots.WeaponType? PlayerWeapon { get; set; }
+    public ObjType? PlayerWeapon { get; set; }
     /// <summary>
     /// Mirrors C SHOT_LIB.type for dump comparison. This normally matches
     /// PlayerWeapon, except the original C table stores S_MISSLE_PODS in the
     /// S_AIR_MISSLE entry.
     /// </summary>
-    public Shots.WeaponType? CWeaponTypeForDump { get; set; }
+    public ObjType? CWeaponTypeForDump { get; set; }
     /// <summary>Clears the ReachedTarget flag after the controller dispatched its event.</summary>
     public void ClearReachedTarget()
     {

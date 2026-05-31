@@ -4,35 +4,35 @@ internal static class DemoLoadout
 {
     public static void Apply(PlayerShooter shooter, int game, bool registered)
     {
-        shooter.GrantWeapon((int)WeaponType.MicroMissile);
+        shooter.GrantWeapon((int)ObjType.MicroMissile);
         switch (game)
         {
             case 1:
                 GrantMegaBombs(shooter, 4);
-                shooter.GrantWeapon((int)WeaponType.PlasmaGuns);
+                shooter.GrantWeapon((int)ObjType.PlasmaGuns);
                 if (registered)
-                    shooter.GrantWeapon((int)WeaponType.Turret);
-                shooter.GrantWeapon((int)WeaponType.GrdMissile);
+                    shooter.GrantWeapon((int)ObjType.Turret);
+                shooter.GrantWeapon((int)ObjType.GrdMissile);
                 shooter.CycleSpecial();
                 break;
 
             case 2:
                 GrantMegaBombs(shooter, 4);
-                shooter.GrantWeapon((int)WeaponType.PlasmaGuns);
+                shooter.GrantWeapon((int)ObjType.PlasmaGuns);
                 if (registered)
-                    shooter.GrantWeapon((int)WeaponType.ForwardLaser);
-                shooter.GrantWeapon((int)WeaponType.GrdMissile);
+                    shooter.GrantWeapon((int)ObjType.ForwardLaser);
+                shooter.GrantWeapon((int)ObjType.GrdMissile);
                 shooter.CycleSpecial();
                 break;
 
             default:
-                shooter.GrantWeapon((int)WeaponType.MegaBomb);
-                shooter.GrantWeapon((int)WeaponType.MiniGun);
-                shooter.GrantWeapon((int)WeaponType.AirMissile);
+                shooter.GrantWeapon((int)ObjType.MegaBomb);
+                shooter.GrantWeapon((int)ObjType.MiniGun);
+                shooter.GrantWeapon((int)ObjType.AirMissile);
                 if (registered)
                 {
-                    shooter.GrantWeapon((int)WeaponType.Turret);
-                    shooter.GrantWeapon((int)WeaponType.DeathRay);
+                    shooter.GrantWeapon((int)ObjType.Turret);
+                    shooter.GrantWeapon((int)ObjType.DeathRay);
                 }
                 shooter.CycleSpecial();
                 break;
@@ -42,6 +42,6 @@ internal static class DemoLoadout
     private static void GrantMegaBombs(PlayerShooter shooter, int count)
     {
         for (int i = 0; i < count; i++)
-            shooter.GrantWeapon((int)WeaponType.MegaBomb);
+            shooter.GrantWeapon((int)ObjType.MegaBomb);
     }
 }
