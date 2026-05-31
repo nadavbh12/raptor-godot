@@ -170,9 +170,12 @@ public class PilotSaveStoreTests
         foreach (var (type, num, inuse) in objs)
         {
             byte[] rec = new byte[40];
+            // OBJ record layout: num@16, type@20, inuse@32 (int32 LE); other bytes 0.
             BitConverter.GetBytes(num).CopyTo(rec, 16);
             BitConverter.GetBytes((int)type).CopyTo(rec, 20);
             BitConverter.GetBytes(inuse ? 1 : 0).CopyTo(rec, 32);
+            // Encrypt is called per-record (seed/key reset each call). Task 2.2's decrypt MUST also
+            // decrypt each 40-byte record independently — NOT all OBJ bytes in one pass.
             Encrypt(rec);
             fs.Write(rec, 0, rec.Length);
         }
