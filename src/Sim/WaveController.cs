@@ -173,7 +173,9 @@ public partial class WaveController : Node
     // resets the iter counter so the fast slot lands on the same iter index.
 
     // ── Player ────────────────────────────────────────────────────────────────
-    public  PlayerLogic    PlayerLogic   { get; } = new();
+    // PlayerLogic is constructed in the WaveController ctor body (after Inventory)
+    // so its Shield view shares the canonical Inventory (Task 4.2).
+    public  PlayerLogic    PlayerLogic   { get; }
     /// <summary>
     /// Per-pilot inventory. Created once and reused across waves/loads.
     /// Declared before Shooter so Shooter's constructor can receive it.
@@ -369,6 +371,7 @@ public partial class WaveController : Node
         // must be constructed first, and C# property-init order follows
         // declaration order within the same class body.
         Shooter = new PlayerShooter(Inventory);
+        PlayerLogic = new PlayerLogic(Inventory);   // shares the canonical Inventory (Task 4.2).
         _scheduler = new GamePhaseScheduler(this);
     }
 
@@ -524,8 +527,6 @@ public partial class WaveController : Node
             2 => NewPilotScore + 876543u,
             _ => NewPilotScore,
         };
-        PlayerLogic.SetShield(PlayerLogic.MaxShield);
-        _oldShieldForLowLoss = PlayerLogic.Shield;
         HasSecretsDetector = true;
 
         // DEMO_MakePlayer calls OBJS_Clear() before granting the demo loadout.
@@ -534,6 +535,11 @@ public partial class WaveController : Node
         // dirty inventory state.
         Inventory.Clear();
         DemoLoadout.Apply(Shooter, game, registered: false);
+        // Task 4.2: SetShield must run AFTER Clear()+loadout — Shield now lives in
+        // the Inventory energy slot, so setting it before Clear() would be wiped.
+        // The demo loadout grants no energy slot, so SetShield creates it (via Load).
+        PlayerLogic.SetShield(PlayerLogic.MaxShield);
+        _oldShieldForLowLoss = PlayerLogic.Shield;
     }
 
     /// <summary>

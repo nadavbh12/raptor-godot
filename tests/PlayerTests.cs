@@ -135,6 +135,22 @@ public class PlayerTests
         Assert.Equal(0, p.Shield);
     }
 
+    [Fact]
+    public void Shield_Is_Live_View_Over_Shared_Inventory_Energy_Slot()
+    {
+        // Task 4.2: PlayerLogic.Shield is a view over the unified Inventory Energy slot.
+        var inv = new Raptor.Sim.Inventory();
+        var p = new PlayerLogic(inv);
+        p.Reset();
+
+        Assert.Equal(75, p.Shield);
+        Assert.Equal(75, inv.GetAmt(Raptor.Sim.ObjType.Energy));
+
+        // Draining the shared inventory directly is reflected in Shield (live view).
+        inv.SubEnergy(10);
+        Assert.Equal(65, p.Shield);
+    }
+
     // Spec §11 State bounds: Player position is always in [MinX, MaxX] x [MinY, MaxY].
     [Property(MaxTest = 50)]
     public Property Player_position_stays_in_bounds_under_arbitrary_input()

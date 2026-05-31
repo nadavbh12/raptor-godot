@@ -29,11 +29,26 @@ public sealed class PlayerLogic
     public const int InitShield = 75;
     public const int MaxShield = 100;
 
+    // Task 4.2: Shield is a *view* over the unified Inventory Energy slot.
+    // Damage/heal/recharge route through Inventory.SubEnergy/AddEnergy so the
+    // energy slot tracks exactly what the old standalone `int Shield` did.
+    private readonly Raptor.Sim.Inventory _inv;
+
+    /// <summary>
+    /// Constructs the player logic. When no inventory is supplied a private one
+    /// is created, keeping the parameterless <c>new PlayerLogic()</c> call usable
+    /// (e.g. in tests). Production code passes the canonical WaveController.Inventory.
+    /// </summary>
+    public PlayerLogic(Raptor.Sim.Inventory? inventory = null)
+    {
+        _inv = inventory ?? new Raptor.Sim.Inventory();
+    }
+
     public int X { get; private set; } = InitX;
     public int Y { get; private set; } = InitY;
-    // Shield starts at 0 (no pilot); Reset() sets it to InitShield when pilot is created.
-    public int Shield { get; private set; } = 0;
-    public bool Alive => Shield > 0;
+    // Shield starts at 0 (no pilot / no energy slot); Reset() sets it to InitShield.
+    public int Shield => _inv.GetAmt(Raptor.Sim.ObjType.Energy);
+    public bool Alive => _inv.GetAmt(Raptor.Sim.ObjType.Energy) > 0;
     // Banking frame index — mirrors C SOURCE/RAP.C playerpic / playerbasepic.
     // 0..6 spans 7 LPLAYER_PIC frames (0058..0064); 3 is neutral (playerbasepic).
     // Initial value 4 matches C's RAP.C:81 — it recenters to 3 on tick 1 with no input.
@@ -49,7 +64,9 @@ public sealed class PlayerLogic
     {
         X = InitX;
         Y = InitY;
-        Shield = InitShield;
+        // Create-or-overwrite the energy slot to InitShield (per-wave "shield → 75").
+        // Only the energy slot is touched; other inventory slots are left intact.
+        _inv.Load(Raptor.Sim.ObjType.Energy, InitShield, inuse: true);
         Pic = 4;
         _oldX = InitX;
         _gAddX = 0;
@@ -84,28 +101,29 @@ public sealed class PlayerLogic
 
     public void SetShield(int shield)
     {
-        Shield = System.Math.Clamp(shield, 0, MaxShield);
+        // Load creates-or-overwrites the energy slot (needed when the slot is
+        // absent, e.g. the demo loadout grants no energy). Mirrors today's clamp.
+        _inv.Load(Raptor.Sim.ObjType.Energy, System.Math.Clamp(shield, 0, MaxShield), inuse: true);
     }
 
     /// <summary>
-    /// Apply shield damage. Shield is clamped to [0, MaxShield].
-    /// Returns true if the player died (shield reached 0).
+    /// Apply shield damage by draining the Energy slot (via Inventory.SubEnergy).
+    /// Returns true if the player died (energy reached 0).
     /// </summary>
     public bool TakeDamage(int dmg)
     {
-        if (dmg <= 0) return false;
-        Shield -= dmg;
-        if (Shield < 0) Shield = 0;
-        return Shield == 0;
+        if (dmg <= 0) return false;                 // KEEP — SubEnergy(-5) would otherwise ADD energy.
+        _inv.SubEnergy(dmg);
+        return _inv.GetAmt(Raptor.Sim.ObjType.Energy) == 0;   // died when energy hits 0.
     }
 
     /// <summary>
-    /// Heal shield. Clamped to MaxShield.
+    /// Heal shield via Inventory.AddEnergy, which clamps to max and no-ops at
+    /// energy==max (the &gt;&gt;2 spill) and does not recharge a dead (num==0) slot.
     /// </summary>
     public void Heal(int amount)
     {
-        Shield += amount;
-        if (Shield > MaxShield) Shield = MaxShield;
+        _inv.AddEnergy(amount);
     }
 
     /// <summary>
