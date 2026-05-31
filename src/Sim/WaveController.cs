@@ -1362,7 +1362,7 @@ public partial class WaveController : Node
 
     private void ApplyBonusEffect(int objType)
     {
-        var r = Bonus.BonusEffectDispatcher.Apply(objType, Shooter, PlayerLogic.MaxShield);
+        var r = Bonus.BonusEffectDispatcher.Apply(objType, Shooter, Inventory, PlayerLogic.MaxShield);
         if (r.HealAmount > 0)       PlayerLogic.Heal(r.HealAmount);
         if (r.ScoreAdd > 0)         Score += r.ScoreAdd;
         if (r.DetectorActivated)    HasSecretsDetector = true;

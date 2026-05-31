@@ -1,3 +1,4 @@
+using Raptor.Sim;
 using Raptor.Sim.Bonus;
 using Raptor.Sim.Shots;
 using Xunit;
@@ -16,8 +17,9 @@ public class BonusEffectDispatcherTests
     [Fact]
     public void Weapon_pickup_returns_GrantedWeapon_no_other_effects()
     {
-        var ps = new PlayerShooter();
-        var r = BonusEffectDispatcher.Apply(objType: 1 /* PlasmaGuns */, ps, MaxShield);
+        var inv = new Inventory();
+        var ps = new PlayerShooter(inv);
+        var r = BonusEffectDispatcher.Apply(objType: 1 /* PlasmaGuns */, ps, inv, MaxShield);
         Assert.True(r.GrantedWeapon);
         Assert.Equal(0, r.HealAmount);
         Assert.Equal(0u, r.ScoreAdd);
@@ -28,17 +30,33 @@ public class BonusEffectDispatcherTests
     [Fact]
     public void Special_weapon_pickup_returns_GrantedWeapon_and_sets_active()
     {
-        var ps = new PlayerShooter();
-        var r = BonusEffectDispatcher.Apply(objType: 3 /* DumbMissile */, ps, MaxShield);
+        var inv = new Inventory();
+        var ps = new PlayerShooter(inv);
+        var r = BonusEffectDispatcher.Apply(objType: 3 /* DumbMissile */, ps, inv, MaxShield);
         Assert.True(r.GrantedWeapon);
         Assert.Equal(WeaponType.DumbMissile, ps.SpecialWeapon);
     }
 
     [Fact]
+    public void Special_weapon_pickup_lands_as_equipped_slot_in_shared_inventory()
+    {
+        // The weapon path must route through shooter.GrantWeapon → the SAME
+        // Inventory instance the dispatcher is handed. A first special pickup
+        // creates an equipped slot AND auto-sets EquippedSpecial.
+        var inv = new Inventory();
+        var ps = new PlayerShooter(inv);
+        var r = BonusEffectDispatcher.Apply(objType: 3 /* DumbMissile */, ps, inv, MaxShield);
+        Assert.True(r.GrantedWeapon);
+        Assert.True(inv.IsEquip(ObjType.DumbMissile));
+        Assert.Equal(ObjType.DumbMissile, inv.EquippedSpecial);
+    }
+
+    [Fact]
     public void Super_shield_heals_to_full()
     {
-        var ps = new PlayerShooter();
-        var r = BonusEffectDispatcher.Apply(objType: 15 /* SuperShield */, ps, MaxShield);
+        var inv = new Inventory();
+        var ps = new PlayerShooter(inv);
+        var r = BonusEffectDispatcher.Apply(objType: 15 /* SuperShield */, ps, inv, MaxShield);
         Assert.False(r.GrantedWeapon);
         Assert.Equal(MaxShield, r.HealAmount);
         Assert.Equal(0u, r.ScoreAdd);
@@ -48,19 +66,33 @@ public class BonusEffectDispatcherTests
     public void Energy_heals_by_quarter_max()
     {
         // BONUS.C:214 — MAX_SHIELD/4. MaxShield=100 → +25.
-        var ps = new PlayerShooter();
-        var r = BonusEffectDispatcher.Apply(objType: 16 /* Energy */, ps, MaxShield);
+        var inv = new Inventory();
+        var ps = new PlayerShooter(inv);
+        var r = BonusEffectDispatcher.Apply(objType: 16 /* Energy */, ps, inv, MaxShield);
         Assert.Equal(25, r.HealAmount);
     }
 
     [Fact]
     public void Detect_activates_detector_no_score()
     {
-        var ps = new PlayerShooter();
-        var r = BonusEffectDispatcher.Apply(objType: 17 /* DETECT */, ps, MaxShield);
+        var inv = new Inventory();
+        var ps = new PlayerShooter(inv);
+        var r = BonusEffectDispatcher.Apply(objType: 17 /* DETECT */, ps, inv, MaxShield);
         Assert.True(r.DetectorActivated);
         Assert.Equal(0u, r.ScoreAdd);   // moneyflag=FALSE for S_DETECT
         Assert.Equal(0, r.HealAmount);
+    }
+
+    [Fact]
+    public void Detect_creates_equipped_inventory_slot_and_keeps_detector_flag()
+    {
+        // Task 3.4: detector is a real obj slot in C (p_objs[S_DETECT]).
+        // Pickup routes through Inventory.Add AND still flags DetectorActivated.
+        var inv = new Inventory();
+        var ps = new PlayerShooter(inv);
+        var r = BonusEffectDispatcher.Apply(objType: 17 /* DETECT */, ps, inv, MaxShield);
+        Assert.True(r.DetectorActivated);
+        Assert.True(inv.IsEquip(ObjType.Detect));
     }
 
     [Theory]
@@ -73,8 +105,9 @@ public class BonusEffectDispatcherTests
     [InlineData(24, 50u)]
     public void ItemBuy_adds_cost_to_score(int objType, uint expectedCost)
     {
-        var ps = new PlayerShooter();
-        var r = BonusEffectDispatcher.Apply(objType, ps, MaxShield);
+        var inv = new Inventory();
+        var ps = new PlayerShooter(inv);
+        var r = BonusEffectDispatcher.Apply(objType, ps, inv, MaxShield);
         Assert.Equal(expectedCost, r.ScoreAdd);
         Assert.Equal(0, r.HealAmount);
         Assert.False(r.DetectorActivated);
@@ -93,8 +126,9 @@ public class BonusEffectDispatcherTests
     [Fact]
     public void Unknown_objType_is_safe_noop()
     {
-        var ps = new PlayerShooter();
-        var r = BonusEffectDispatcher.Apply(objType: 999, ps, MaxShield);
+        var inv = new Inventory();
+        var ps = new PlayerShooter(inv);
+        var r = BonusEffectDispatcher.Apply(objType: 999, ps, inv, MaxShield);
         Assert.False(r.GrantedWeapon);
         Assert.Equal(0, r.HealAmount);
         Assert.Equal(0u, r.ScoreAdd);

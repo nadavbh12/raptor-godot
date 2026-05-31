@@ -40,7 +40,7 @@ public static class BonusEffectDispatcher
         public bool DetectorActivated;
     }
 
-    public static Result Apply(int objType, PlayerShooter shooter, int maxShield)
+    public static Result Apply(int objType, PlayerShooter shooter, Inventory inventory, int maxShield)
     {
         var r = new Result();
         if (shooter.GrantWeapon(objType))
@@ -57,6 +57,11 @@ public static class BonusEffectDispatcher
                 r.HealAmount = maxShield / 4;
                 break;
             case 17:                    // S_DETECT
+                // Task 3.4: the detector is a real obj slot in C (p_objs[S_DETECT]),
+                // added via OBJS_Add. Record it in the unified Inventory in addition
+                // to the DetectorActivated flag (HasSecretsDetector still gates gameplay
+                // until Phase 6 derives it from Inventory.IsEquip(Detect)).
+                inventory.Add(ObjType.Detect);
                 r.DetectorActivated = true;
                 break;
             case >= 18 and <= 23:       // S_ITEMBUY1..6
