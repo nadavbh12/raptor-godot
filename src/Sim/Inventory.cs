@@ -14,16 +14,6 @@ public enum BuyStuff
 }
 
 /// <summary>
-/// Single inventory slot — mirrors the fields of C's OBJ struct that matter for
-/// ownership/quantity tracking: num (count) and inuse (equipped flag).
-/// </summary>
-public sealed class ObjSlot
-{
-    public int  Num;
-    public bool InUse;
-}
-
-/// <summary>
 /// Per-pilot inventory. Mirrors the C p_objs[] pointer array and the linked-list
 /// of OBJ nodes. Because each type can appear at most once in our single-slot
 /// model, Dictionary&lt;ObjType, ObjSlot&gt; replaces both.
@@ -32,6 +22,18 @@ public sealed class ObjSlot
 /// </summary>
 public sealed class Inventory
 {
+    /// <summary>
+    /// Single inventory slot — mirrors the fields of C's OBJ struct that matter for
+    /// ownership/quantity tracking: num (count) and inuse (equipped flag).
+    /// Nested + private: nothing outside Inventory should touch a slot directly.
+    /// Fields stay mutable — Inventory mutates Num/InUse in later tasks.
+    /// </summary>
+    private sealed class ObjSlot
+    {
+        public int  Num;
+        public bool InUse;
+    }
+
     // p_objs[] equivalent: slot present + InUse == equipped.
     private readonly Dictionary<ObjType, ObjSlot> _slots = new();
 

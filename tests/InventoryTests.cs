@@ -61,7 +61,7 @@ public class InventoryCoreTests
     public void Add_moneyflag_returns_gotit_without_slot()
     {
         var inv = new Inventory();
-        inv.Add(ObjType.ItemBuy1);
+        Assert.Equal(BuyStuff.GotIt, inv.Add(ObjType.ItemBuy1));
         Assert.False(inv.IsEquip(ObjType.ItemBuy1));   // money bonus: no slot
     }
 
@@ -81,5 +81,38 @@ public class InventoryCoreTests
         for (int i = 0; i < 4; i++) inv.Add(ObjType.MegaBomb);
         Assert.Equal(4, inv.GetAmt(ObjType.MegaBomb));
         Assert.Equal(4, inv.GetTotal(ObjType.MegaBomb));   // NOT 1
+    }
+
+    // NOTE: In Task 1.3's public surface, Add always auto-equips, so there is no
+    // way to construct an owned-but-unequipped slot (no Unequip/Del/Load yet).
+    // We therefore lock the two reachable Equip outcomes:
+    //   (a) Equip on an unowned type returns false (mirrors OBJS_Equip: no match).
+    //   (b) Equip on an already-equipped owned slot returns false (C: p_objs!=NUL).
+    [Fact]
+    public void Equip_unowned_type_returns_false()
+    {
+        var inv = new Inventory();
+        Assert.False(inv.Equip(ObjType.MiniGun));
+        Assert.False(inv.IsEquip(ObjType.MiniGun));
+    }
+
+    [Fact]
+    public void Equip_already_equipped_slot_returns_false_and_stays_equipped()
+    {
+        var inv = new Inventory();
+        inv.Add(ObjType.MiniGun);                       // owned + auto-equipped
+        Assert.False(inv.Equip(ObjType.MiniGun));       // already in use → no-op
+        Assert.True(inv.IsEquip(ObjType.MiniGun));
+    }
+
+    // Add's guard mirrors C `type >= S_LAST_OBJECT`; LastObject (25) is that
+    // sentinel and is the true out-of-range boundary.
+    [Fact]
+    public void Add_out_of_range_type_returns_error_and_creates_no_slot()
+    {
+        var inv = new Inventory();
+        Assert.Equal(BuyStuff.Error, inv.Add(ObjType.LastObject));
+        Assert.False(inv.IsEquip(ObjType.LastObject));
+        Assert.Equal(0, inv.GetAmt(ObjType.LastObject));
     }
 }
