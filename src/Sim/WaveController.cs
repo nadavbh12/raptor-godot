@@ -176,6 +176,11 @@ public partial class WaveController : Node
     public  PlayerLogic    PlayerLogic   { get; } = new();
     public  PlayerShooter  Shooter       { get; } = new();
     public  uint           Score { get; private set; } = 0;
+    /// <summary>
+    /// Per-pilot inventory. Created once and reused across waves/loads.
+    /// Tasks 3.2 (load) and 3.3 (PlayerShooter wiring) read this same instance.
+    /// </summary>
+    public  Inventory      Inventory     { get; } = new();
 
     /// <summary>Forcibly set the score (e.g. when loading a saved pilot).
     /// Bypasses the normal incremental score-from-enemy-kills path.</summary>
@@ -419,6 +424,10 @@ public partial class WaveController : Node
         // New pilot starts with 10000 score and 75 shield (from C golden).
         Score = NewPilotScore;
         PlayerLogic.Reset();  // Reset sets Shield = InitShield = 75.
+        // Seed inventory to match WINDOWS.C:989-1007:
+        //   ForwardGuns + 3×Energy (→75) + GetNext() (→EquippedSpecial=null).
+        Inventory.Clear();
+        Inventory.SeedNewPilot();
         GD.Print($"WaveController: pilot created, score={Score}, shield={PlayerLogic.Shield}");
     }
 

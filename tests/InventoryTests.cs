@@ -118,6 +118,43 @@ public class InventoryCoreTests
     }
 }
 
+public class InventorySeedTests
+{
+    [Fact]
+    public void New_pilot_seed_matches_C()
+    {
+        var inv = new Inventory();
+        inv.SeedNewPilot();
+        Assert.True(inv.IsEquip(ObjType.ForwardGuns));
+        Assert.Equal(75, inv.GetAmt(ObjType.Energy));
+        Assert.Null(inv.EquippedSpecial);   // GetNext with no specials → none
+    }
+
+    [Fact]
+    public void New_pilot_seed_full_slot_set()
+    {
+        // Exactly ForwardGuns + Energy owned after seed; nothing else.
+        var inv = new Inventory();
+        inv.SeedNewPilot();
+
+        // Owned
+        Assert.True(inv.IsEquip(ObjType.ForwardGuns));
+        Assert.Equal(1, inv.GetAmt(ObjType.ForwardGuns));
+        Assert.True(inv.IsEquip(ObjType.Energy));
+        Assert.Equal(75, inv.GetAmt(ObjType.Energy));
+
+        // Not owned
+        Assert.False(inv.IsEquip(ObjType.PlasmaGuns));
+        Assert.False(inv.IsEquip(ObjType.DumbMissile));
+        Assert.False(inv.IsEquip(ObjType.MegaBomb));
+        Assert.False(inv.IsEquip(ObjType.SuperShield));
+        Assert.False(inv.IsEquip(ObjType.Detect));
+        Assert.False(inv.IsEquip(ObjType.MiniGun));
+        Assert.Equal(0, inv.GetAmt(ObjType.PlasmaGuns));
+        Assert.Equal(0, inv.GetAmt(ObjType.MegaBomb));
+    }
+}
+
 public class InventoryGetNextTests
 {
     [Fact]

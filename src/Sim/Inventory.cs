@@ -251,6 +251,27 @@ public sealed class Inventory
     }
 
     // -----------------------------------------------------------------------
+    // New-pilot seed — mirrors WINDOWS.C:989-1007
+    // -----------------------------------------------------------------------
+    /// <summary>
+    /// Seeds the inventory for a freshly created pilot, mirroring the C
+    /// new-pilot creation sequence in WINDOWS.C:989-1007:
+    ///   OBJS_Add(S_FORWARD_GUNS)
+    ///   OBJS_Add(S_ENERGY) × 3   → 75 energy (start_cnt=25, onlyflag; max=100)
+    ///   OBJS_GetNext()            → no specials owned → EquippedSpecial stays null
+    ///
+    /// Score (10000) is NOT set here; the caller retains that responsibility.
+    /// </summary>
+    public void SeedNewPilot()
+    {
+        Add(ObjType.ForwardGuns);
+        Add(ObjType.Energy);
+        Add(ObjType.Energy);
+        Add(ObjType.Energy);
+        GetNext();
+    }
+
+    // -----------------------------------------------------------------------
     // OBJS_Clear — OBJECTS.C:77-99
     // -----------------------------------------------------------------------
     /// <summary>
