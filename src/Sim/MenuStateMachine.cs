@@ -115,6 +115,12 @@ public sealed class MenuStateMachine
     private string _helpTextName = "HELP1_TXT";
     private int _helpPageIndex = 0;
 
+    // Live player inventory the supply-room store reads for ownership (Task 3.5).
+    // Defaults to a fresh empty Inventory so headless / no-WaveController paths
+    // are safe; MenuController._Ready replaces this with wave.Inventory (the
+    // canonical instance gameplay and pilot load mutate).
+    public Inventory Inventory { get; set; } = new();
+
     public WinState State { get; private set; } = WinState.Unknown;
 
     /// <summary>
@@ -875,7 +881,7 @@ public sealed class MenuStateMachine
             }
             if (_hangarPos == 1)  // SUPPLIES → STORE_Enter
             {
-                Store = new StoreLogic();
+                Store = new StoreLogic(Inventory);
                 EnterState(WinState.Store, currentFrame, reAnchor: true);
                 return true;
             }

@@ -31,6 +31,11 @@ public partial class MenuController : Node
         var wave = GetNodeOrNull<WaveController>("../WaveController");
         if (wave != null)
         {
+            // Point the store at the same canonical inventory gameplay and
+            // pilot load mutate (wave.Inventory.CopyFrom on load), so a loaded
+            // pilot's inventory shows correctly in the supply room (Task 3.5).
+            Menu.Inventory = wave.Inventory;
+
             Menu.OnPilotLoaded += pilot =>
             {
                 wave.SetScore(pilot.Score);

@@ -60,30 +60,18 @@ internal sealed class StoreLogic
             [ObjType.Detect]        = new(10000,   true,  true,  1),
         };
 
-    // Default demo / new-pilot inventory + per-type starter counts. C's
-    // OBJS_Reset on a fresh pilot equips ForwardGuns and seeds the
-    // shareware loadout; the energy count of 75 matches what the C build
-    // shows on first store entry (3 OBJS_Add calls of S_ENERGY at 25 each,
-    // see RAP.C:1143-1145). Quantities for the other starter items default
-    // to 1.
-    private static readonly Dictionary<ObjType, int> StarterInventory = new()
-    {
-        [ObjType.ForwardGuns] = 1,
-        [ObjType.MicroMissile] = 1,
-        [ObjType.MegaBomb]    = 1,
-        [ObjType.MiniGun]     = 1,
-        [ObjType.AirMissile]  = 1,
-        [ObjType.Turret]      = 1,
-        [ObjType.DeathRay]    = 1,
-        [ObjType.Detect]      = 1,
-        [ObjType.Energy]      = 75,
-    };
+    // Live player inventory — the same canonical instance gameplay and pilot
+    // load mutate (WaveController.Inventory). Read-only here: this task only
+    // queries ownership for browse/render via GetAmt / IsEquip. Buy/Sell
+    // mutations land in Phase 5.2.
+    private readonly Inventory _inventory;
 
     public IReadOnlyList<ObjType> BuyItems  { get; private set; }
     public IReadOnlyList<ObjType> SellItems { get; private set; }
 
-    public StoreLogic()
+    public StoreLogic(Inventory inventory)
     {
+        _inventory = inventory;
         BuyItems  = MakeBuyItems();
         SellItems = MakeSellItems();
     }
@@ -109,13 +97,15 @@ internal sealed class StoreLogic
         }
     }
 
+    // Mirror of C STORE.C's OBJS_GetAmt(cur_obj) display (STORE.C:342/355):
+    // how many of the current item the player owns.
     public int OwnedCount
     {
         get
         {
             var obj = CurrentObject;
             if (obj == null) return 0;
-            return StarterInventory.TryGetValue(obj.Value, out var n) ? n : 0;
+            return _inventory.GetAmt(obj.Value);
         }
     }
 
@@ -184,15 +174,21 @@ internal sealed class StoreLogic
         return list.ConvertAll(p => p.type);
     }
 
-    private static List<ObjType> MakeSellItems()
+    // STORE.C MakeSellItems — collect every type that OBJS_CanSell passes,
+    // then bubble-sort by OBJS_GetCost. Reads the live inventory (no longer the
+    // old hardcoded StarterInventory). C's sell loop runs `for (loop = 0;
+    // loop < S_LAST_OBJECT; loop++)`, so we walk 0..(LastObject-1) — wider than
+    // the buy range. CanSell already rejects the un-slotted items 18..23 (they
+    // are never equipped), so the practical sellable set is still 0..17, but we
+    // match C's bound exactly to keep the seam faithful.
+    private List<ObjType> MakeSellItems()
     {
         var list = new List<(ObjType type, int cost)>();
-        for (int t = 0; t <= LastBuyableType; t++)
+        for (int t = 0; t < (int)ObjType.LastObject; t++)
         {
             var type = (ObjType)t;
-            if (!StarterInventory.ContainsKey(type)) continue;
+            if (!CanSell(type)) continue;
             if (!Catalog.TryGetValue(type, out var entry)) continue;
-            if (entry.Cost == 0) continue;
             list.Add((type, EffectiveCost(entry)));
         }
         list.Sort((a, b) =>
@@ -201,6 +197,28 @@ internal sealed class StoreLogic
             return c != 0 ? c : ((int)a.type).CompareTo((int)b.type);
         });
         return list.ConvertAll(p => p.type);
+    }
+
+    // Mirror of OBJS_CanSell (OBJECTS.C:1150) exactly:
+    //   type >= S_LAST_OBJECT           → false
+    //   p_objs[type] == NULL            → false  (not owned/equipped)
+    //   onlyflag && type == S_ENERGY:
+    //       num <= start_cnt            → false  (can't sell below starter energy)
+    //   num < start_cnt                 → false  (need at least start_cnt to sell one)
+    //   else                            → true
+    private bool CanSell(ObjType type)
+    {
+        if ((int)type >= (int)ObjType.LastObject) return false;
+        if (!_inventory.IsEquip(type)) return false;             // p_objs[type] == NULL
+        if (!Catalog.TryGetValue(type, out var entry)) return false;
+
+        int num = _inventory.GetAmt(type);
+        if (entry.OnlyFlag && type == ObjType.Energy)
+        {
+            if (num <= entry.StartCnt) return false;
+        }
+        if (num < entry.StartCnt) return false;
+        return true;
     }
 }
 
