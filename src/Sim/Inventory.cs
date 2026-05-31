@@ -303,6 +303,114 @@ public sealed class Inventory
     }
 
     // -----------------------------------------------------------------------
+    // OBJS_AddEnergy — OBJECTS.C:1272-1308
+    // -----------------------------------------------------------------------
+    /// <summary>
+    /// Adds energy, mirroring OBJS_AddEnergy. PURE inventory math; no game-state
+    /// gates. "Owned" == IsEquip (p_objs[type] != NULL in C).
+    ///
+    /// If energy is owned and below max: add the FULL <paramref name="amt"/>, clamp
+    /// to MaxCnt. A dead (Num==0) energy slot is NOT revived. If energy is already at
+    /// max, spill a QUARTER (amt &gt;&gt; 2) into an EXISTING super-shield (never creates
+    /// one, never revives a 0-num super-shield), clamped to MaxCnt.
+    /// Returns the resulting Num of the slot it touched, or 0 on the C early-returns.
+    /// </summary>
+    public int AddEnergy(int amt)
+    {
+        // C:1282-1283  if (!cur) return 0  — no energy slot owned → no-op.
+        if (!IsEquip(ObjType.Energy))
+            return 0;
+
+        var energy = _slots[ObjType.Energy];
+        int energyMax = ObjLib.Of(ObjType.Energy).MaxCnt;
+
+        // C:1285  energy NOT full.
+        if (energy.Num < energyMax)
+        {
+            // C:1289-1290  if (num == 0) return 0 — DEAD player is not revived.
+            if (energy.Num == 0)
+                return 0;
+
+            // C:1292  add the FULL amt, clamp to max.
+            energy.Num += amt;
+            if (energy.Num > energyMax)
+                energy.Num = energyMax;
+
+            return energy.Num;
+        }
+
+        // C:1296-1305  energy AT max → spill a quarter into an existing super-shield.
+        // C:1298-1299  if (!cur) return 0 — does NOT create a super-shield.
+        if (!IsEquip(ObjType.SuperShield))
+            return 0;
+
+        var shield = _slots[ObjType.SuperShield];
+
+        // C:1301-1302  if (num == 0) return 0 — does NOT revive a dead super-shield.
+        if (shield.Num == 0)
+            return 0;
+
+        // C:1304  spill a QUARTER, clamp to super-shield's max.
+        int shieldMax = ObjLib.Of(ObjType.SuperShield).MaxCnt;
+        shield.Num += amt >> 2;
+        if (shield.Num > shieldMax)
+            shield.Num = shieldMax;
+
+        return shield.Num;
+    }
+
+    // -----------------------------------------------------------------------
+    // OBJS_SubEnergy — OBJECTS.C:1220-1266
+    // -----------------------------------------------------------------------
+    /// <summary>
+    /// Subtracts energy, mirroring OBJS_SubEnergy's damage routing. PURE inventory
+    /// math; "owned" == IsEquip (p_objs[type] != NULL in C).
+    ///
+    /// If a super-shield is owned, drain it; when it goes negative the slot is DELETED
+    /// (via <see cref="RemoveSlot"/>) with NO spill-back to energy — exactly like
+    /// C's OBJS_Del(S_SUPER_SHIELD). Otherwise drain energy, clamping at 0.
+    /// Returns the resulting Num (0 once the super-shield slot is deleted, or on the
+    /// no-slot early-return).
+    ///
+    /// DELIBERATELY OMITTED (out of scope, see Task 4.1): the C game-state gates
+    /// `if (godmode) return 0`, `if (startendwave != EMPTY) return 0`, and the
+    /// `curplr_diff == DIFF_0 && amt &gt; 1 → amt &gt;&gt;= 1` difficulty halving.
+    /// These depend on game state the pure Inventory model has no access to and are
+    /// not present in today's damage path; adding them would regress parity.
+    /// </summary>
+    public int SubEnergy(int amt)
+    {
+        // C:1238  if (cur)  — super-shield owned → drain it (no spill-back to energy).
+        if (IsEquip(ObjType.SuperShield))
+        {
+            var shield = _slots[ObjType.SuperShield];
+            shield.Num -= amt;
+
+            // C:1248-1249  if (num < 0) OBJS_Del(S_SUPER_SHIELD).
+            if (shield.Num < 0)
+            {
+                RemoveSlot(ObjType.SuperShield);
+                return 0;
+            }
+
+            return shield.Num;
+        }
+
+        // C:1255-1256  else: no super-shield. if (!cur) return 0 — no energy → no-op.
+        if (!IsEquip(ObjType.Energy))
+            return 0;
+
+        var energy = _slots[ObjType.Energy];
+        energy.Num -= amt;
+
+        // C:1263-1264  if (num < 0) num = 0 — clamp to 0.
+        if (energy.Num < 0)
+            energy.Num = 0;
+
+        return energy.Num;
+    }
+
+    // -----------------------------------------------------------------------
     // DecrementMegaBomb — Task 3.3 minimal seam (Task 5.1 replaces with Use)
     // -----------------------------------------------------------------------
     /// <summary>

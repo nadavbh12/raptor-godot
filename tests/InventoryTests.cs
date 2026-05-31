@@ -241,6 +241,129 @@ public class InventoryCopyFromTests
     }
 }
 
+public class InventoryEnergyTests
+{
+    // OBJS_SubEnergy — super-shield drains first, no spill-back to energy.
+    [Fact]
+    public void SubEnergy_drains_super_shield_first_no_spill_back()
+    {
+        var inv = new Inventory();
+        inv.Load(ObjType.Energy, 100, inuse: true);
+        inv.Load(ObjType.SuperShield, 20, inuse: true);
+        inv.SubEnergy(15);
+        Assert.Equal(5, inv.GetAmt(ObjType.SuperShield));   // 20-15
+        Assert.Equal(100, inv.GetAmt(ObjType.Energy));      // untouched
+    }
+
+    // OBJS_SubEnergy — super-shield goes negative → deleted, energy untouched.
+    [Fact]
+    public void SubEnergy_deletes_super_shield_when_negative_no_spill_back()
+    {
+        var inv = new Inventory();
+        inv.Load(ObjType.Energy, 100, inuse: true);
+        inv.Load(ObjType.SuperShield, 10, inuse: true);
+        inv.SubEnergy(15);   // 10-15 = -5 → delete super-shield; energy UNTOUCHED
+        Assert.False(inv.IsEquip(ObjType.SuperShield));
+        Assert.Equal(0, inv.GetAmt(ObjType.SuperShield));
+        Assert.Equal(100, inv.GetAmt(ObjType.Energy));
+    }
+
+    // OBJS_SubEnergy — no super-shield → drain energy, clamp at 0.
+    [Fact]
+    public void SubEnergy_clamps_energy_at_zero_when_no_super_shield()
+    {
+        var inv = new Inventory();
+        inv.Load(ObjType.Energy, 10, inuse: true);
+        inv.SubEnergy(15);
+        Assert.Equal(0, inv.GetAmt(ObjType.Energy));
+    }
+
+    // OBJS_AddEnergy — full amt to energy when below max (NOT fill-then-spill).
+    [Fact]
+    public void AddEnergy_adds_full_amt_when_below_max_no_spill()
+    {
+        var inv = new Inventory();
+        inv.Load(ObjType.Energy, 95, inuse: true);
+        inv.AddEnergy(10);
+        Assert.Equal(100, inv.GetAmt(ObjType.Energy));            // 95+10=105 clamp 100
+        Assert.Equal(0, inv.GetAmt(ObjType.SuperShield));         // NO super-shield created
+        Assert.False(inv.IsEquip(ObjType.SuperShield));
+    }
+
+    // OBJS_AddEnergy — dead (num==0) player is not revived.
+    [Fact]
+    public void AddEnergy_does_not_recharge_dead_player()
+    {
+        var inv = new Inventory();
+        inv.Load(ObjType.Energy, 0, inuse: true);
+        inv.AddEnergy(50);
+        Assert.Equal(0, inv.GetAmt(ObjType.Energy));
+    }
+
+    // OBJS_AddEnergy — spill quarter to existing super-shield only when energy at max.
+    [Fact]
+    public void AddEnergy_spills_quarter_to_super_shield_when_energy_at_max()
+    {
+        var inv = new Inventory();
+        inv.Load(ObjType.Energy, 100, inuse: true);
+        inv.Load(ObjType.SuperShield, 10, inuse: true);
+        inv.AddEnergy(8);   // energy at max → super-shield += 8>>2 = 2
+        Assert.Equal(100, inv.GetAmt(ObjType.Energy));
+        Assert.Equal(12, inv.GetAmt(ObjType.SuperShield));
+    }
+
+    // OBJS_AddEnergy — energy at max but no super-shield → no-op, does not create one.
+    [Fact]
+    public void AddEnergy_at_max_with_no_super_shield_is_noop()
+    {
+        var inv = new Inventory();
+        inv.Load(ObjType.Energy, 100, inuse: true);
+        inv.AddEnergy(8);
+        Assert.False(inv.IsEquip(ObjType.SuperShield));
+    }
+
+    // No energy slot owned → AddEnergy is a no-op (mirrors `if (!cur) return 0`).
+    [Fact]
+    public void AddEnergy_with_no_energy_slot_is_noop()
+    {
+        var inv = new Inventory();
+        inv.AddEnergy(50);
+        Assert.False(inv.IsEquip(ObjType.Energy));
+        Assert.Equal(0, inv.GetAmt(ObjType.Energy));
+    }
+
+    // No super-shield AND no energy → SubEnergy is a no-op.
+    [Fact]
+    public void SubEnergy_with_no_slots_is_noop()
+    {
+        var inv = new Inventory();
+        inv.SubEnergy(50);
+        Assert.Equal(0, inv.GetAmt(ObjType.Energy));
+        Assert.Equal(0, inv.GetAmt(ObjType.SuperShield));
+    }
+
+    // Property: arbitrary Add/SubEnergy sequences keep energy in [0,100].
+    [Theory]
+    [InlineData(new[] { 10, -20, 50, -5, 30, -100, 60, 9999, -1 })]
+    [InlineData(new[] { 25, 25, 25, 25, 25, -1, -1, -1 })]
+    [InlineData(new[] { -50, 100, -100, 100, -100, 1, 2, 3 })]
+    [InlineData(new[] { 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 })]
+    [InlineData(new[] { -1, -1, -1, 100, 100, -1, 100 })]
+    [InlineData(new[] { 7, -3, 11, -200, 42, -1, 99, -99, 100, 100 })]
+    public void Energy_stays_in_bounds_over_sequences(int[] amounts)
+    {
+        var inv = new Inventory();
+        inv.Load(ObjType.Energy, 50, inuse: true);
+        foreach (int amt in amounts)
+        {
+            if (amt >= 0) inv.AddEnergy(amt);
+            else inv.SubEnergy(-amt);
+            int e = inv.GetAmt(ObjType.Energy);
+            Assert.InRange(e, 0, 100);
+        }
+    }
+}
+
 public class InventoryGetNextTests
 {
     [Fact]
