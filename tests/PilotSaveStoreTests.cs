@@ -295,6 +295,11 @@ public class PilotSaveStoreTests
         var inv = PilotSaveStore.LoadInventory(path);
         Assert.Equal(0, inv.GetAmt(ObjType.ForwardGuns));
         Assert.False(inv.IsEquip(ObjType.ForwardGuns));
+
+        // Legacy byte layout: offset 40 (sweapon) stays zero-filled when no inventory
+        // is provided. Pin SWeapon == 0 so the null path can't silently regress to -1.
+        var summary = PilotSaveStore.LoadAll(tmp.Path)[0];
+        Assert.Equal(0, summary.SWeapon);
     }
 
     [Fact]

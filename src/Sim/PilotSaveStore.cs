@@ -42,7 +42,8 @@ public static class PilotSaveStore
     ///         encrypts it INDEPENDENTLY (Encrypt resets per call), appends it.</item>
     /// </list>
     /// When <paramref name="inventory"/> is null, writes only the 88-byte header with
-    /// numobjs=0 and sweapon=0 (legacy behaviour preserved for existing callers).
+    /// numobjs=0; offset 40 (sweapon) is left zero-filled, preserving the exact
+    /// legacy byte layout (sweapon=0) for existing inventory-less callers.
     /// </summary>
     public static int Save(string directory, string name, string callsign, int idPic, uint score,
         Inventory? inventory = null)
@@ -65,11 +66,16 @@ public static class PilotSaveStore
         BitConverter.GetBytes(idPic).CopyTo(header, 32);
         BitConverter.GetBytes(score).CopyTo(header, 36);
 
-        // sweapon @ offset 40: (int)EquippedSpecial, or -1 (C EMPTY) when null.
-        int sweapon = inventory?.EquippedSpecial.HasValue == true
-            ? (int)inventory.EquippedSpecial.Value
-            : -1;
-        BitConverter.GetBytes(sweapon).CopyTo(header, 40);
+        // sweapon @ offset 40: only written when an inventory is provided.
+        // (int)EquippedSpecial, or -1 (C EMPTY) when no special is equipped.
+        // For the null-inventory legacy path, offset 40 stays zero-filled (sweapon=0).
+        if (inventory != null)
+        {
+            int sweapon = inventory.EquippedSpecial.HasValue
+                ? (int)inventory.EquippedSpecial.Value
+                : -1;
+            BitConverter.GetBytes(sweapon).CopyTo(header, 40);
+        }
 
         // numobjs @ offset 60: count of OBJ records that follow the header.
         BitConverter.GetBytes(slots.Length).CopyTo(header, 60);
