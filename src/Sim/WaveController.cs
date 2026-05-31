@@ -433,9 +433,14 @@ public partial class WaveController : Node
     {
         // New pilot starts with 10000 score and 75 shield (from C golden).
         Score = NewPilotScore;
-        PlayerLogic.Reset();  // Reset sets Shield = InitShield = 75.
+        PlayerLogic.Reset();  // Resets position/pic; Shield is now the Energy slot (Task 4.2).
         // Seed inventory to match WINDOWS.C:989-1007:
         //   ForwardGuns + 3×Energy (→75) + GetNext() (→EquippedSpecial=null).
+        // NOTE (Task 4.2): Reset() above writes the shared Energy slot to 75, but
+        // Clear() immediately wipes it and SeedNewPilot() re-creates it (3×Energy=75).
+        // Shield ends at 75 only because SeedNewPilot lands on the same value — keep
+        // InitShield (75) and SeedNewPilot's energy seed in sync (cf. SetupDemoPlayer,
+        // where SetShield is deliberately ordered AFTER Clear()).
         Inventory.Clear();
         Inventory.SeedNewPilot();
         GD.Print($"WaveController: pilot created, score={Score}, shield={PlayerLogic.Shield}");
