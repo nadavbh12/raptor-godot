@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Raptor.Sim;
 using Xunit;
 
@@ -398,6 +399,251 @@ public class InventoryGetNextTests
         inv.EquippedSpecial = ObjType.MiniGun;
         inv.GetNext();
         Assert.Equal(ObjType.MiniGun, inv.EquippedSpecial);
+    }
+}
+
+// ── Inventory.GetCost / GetResale — OBJS_GetCost / OBJS_GetResale (Task 5.2) ──
+public class InventoryCostResaleTests
+{
+    [Fact]
+    public void GetCost_non_onlyflag_is_raw_cost()
+    {
+        var inv = new Inventory();
+        // MiniGun: onlyflag=false → cost as-is.
+        Assert.Equal(250650, inv.GetCost(ObjType.MiniGun));
+    }
+
+    [Fact]
+    public void GetCost_onlyflag_scales_by_start_cnt()
+    {
+        var inv = new Inventory();
+        // Energy: onlyflag, cost=400, start_cnt=25 → 10000.
+        Assert.Equal(10000, inv.GetCost(ObjType.Energy));
+        // MegaBomb: onlyflag, cost=32250, start_cnt=1 → 32250.
+        Assert.Equal(32250, inv.GetCost(ObjType.MegaBomb));
+    }
+
+    [Fact]
+    public void GetResale_zero_when_not_owned()
+    {
+        var inv = new Inventory();
+        Assert.Equal(0, inv.GetResale(ObjType.MiniGun));   // !IsEquip → 0
+    }
+
+    [Fact]
+    public void GetResale_is_half_cost_when_owned()
+    {
+        var inv = new Inventory();
+        inv.Load(ObjType.MiniGun, 1, inuse: true);
+        // 250650 >> 1 = 125325.
+        Assert.Equal(125325, inv.GetResale(ObjType.MiniGun));
+    }
+
+    [Fact]
+    public void GetResale_onlyflag_uses_scaled_cost_then_halves()
+    {
+        var inv = new Inventory();
+        inv.Load(ObjType.Energy, 50, inuse: true);
+        // (400*25) >> 1 = 5000.
+        Assert.Equal(5000, inv.GetResale(ObjType.Energy));
+    }
+}
+
+// ── Inventory.Buy / Sell — OBJS_Buy / OBJS_Sell (Task 5.2) ────────────────────
+public class InventoryBuySellTests
+{
+    // --- Buy ----------------------------------------------------------------
+
+    [Fact]
+    public void Buy_deducts_exactly_cost_and_adds_item()
+    {
+        var inv = new Inventory();
+        uint score = 300000;
+        var rval = inv.Buy(ObjType.MiniGun, ref score);   // cost 250650
+        Assert.Equal(BuyStuff.GotIt, rval);
+        Assert.Equal(300000u - 250650u, score);           // exact deduction
+        Assert.True(inv.IsEquip(ObjType.MiniGun));
+        Assert.Equal(1, inv.GetAmt(ObjType.MiniGun));
+    }
+
+    [Fact]
+    public void Buy_insufficient_funds_no_change()
+    {
+        var inv = new Inventory();
+        uint score = 100;                                  // < MiniGun cost
+        var rval = inv.Buy(ObjType.MiniGun, ref score);
+        Assert.Equal(BuyStuff.NoMoney, rval);
+        Assert.Equal(100u, score);                         // score untouched
+        Assert.False(inv.IsEquip(ObjType.MiniGun));        // inventory untouched
+        Assert.Equal(0, inv.GetAmt(ObjType.MiniGun));
+    }
+
+    [Fact]
+    public void Buy_exactly_affordable_succeeds_to_zero()
+    {
+        var inv = new Inventory();
+        uint score = 250650;                               // exactly MiniGun cost
+        var rval = inv.Buy(ObjType.MiniGun, ref score);
+        Assert.Equal(BuyStuff.GotIt, rval);
+        Assert.Equal(0u, score);
+    }
+
+    [Fact]
+    public void Buy_super_shield_cap_blocks_at_five_with_no_deduction()
+    {
+        var inv = new Inventory();
+        // GetTotal(SuperShield) == Num under the one-slot model; 5 hits the cap.
+        inv.Load(ObjType.SuperShield, 5, inuse: true);
+        uint score = 1_000_000;
+        var rval = inv.Buy(ObjType.SuperShield, ref score);
+        Assert.Equal(BuyStuff.ShipFull, rval);
+        Assert.Equal(1_000_000u, score);                   // no deduction
+        Assert.Equal(5, inv.GetAmt(ObjType.SuperShield));  // unchanged
+    }
+
+    [Fact]
+    public void Buy_super_shield_under_cap_succeeds()
+    {
+        var inv = new Inventory();
+        uint score = 1_000_000;
+        var rval = inv.Buy(ObjType.SuperShield, ref score);   // cost 78500
+        Assert.Equal(BuyStuff.GotIt, rval);
+        Assert.Equal(1_000_000u - 78_500u, score);
+        Assert.Equal(100, inv.GetAmt(ObjType.SuperShield));   // start_cnt=100
+    }
+
+    // --- Sell ---------------------------------------------------------------
+
+    [Fact]
+    public void Sell_unowned_returns_zero_no_score_change()
+    {
+        var inv = new Inventory();
+        uint score = 5000;
+        int left = inv.Sell(ObjType.MiniGun, ref score);
+        Assert.Equal(0, left);
+        Assert.Equal(5000u, score);                        // !IsEquip → no resale
+    }
+
+    [Fact]
+    public void Sell_non_onlyflag_weapon_removes_slot_and_refunds_resale()
+    {
+        var inv = new Inventory();
+        inv.Load(ObjType.MiniGun, 1, inuse: true);
+        uint score = 0;
+        int left = inv.Sell(ObjType.MiniGun, ref score);
+        Assert.Equal(0, left);                             // GetTotal after Del == 0
+        Assert.Equal(125325u, score);                      // 250650 >> 1
+        Assert.False(inv.IsEquip(ObjType.MiniGun));        // whole slot gone
+        Assert.Equal(0, inv.GetAmt(ObjType.MiniGun));
+    }
+
+    [Fact]
+    public void Sell_non_onlyflag_cycles_equipped_special()
+    {
+        // MiniGun + DumbMissile both specialw; selling the equipped one cycles
+        // EquippedSpecial to the other owned special (OBJS_Del → GetNext).
+        var inv = new Inventory();
+        inv.Add(ObjType.MiniGun);
+        inv.Add(ObjType.DumbMissile);
+        inv.EquippedSpecial = ObjType.MiniGun;
+        uint score = 0;
+        inv.Sell(ObjType.MiniGun, ref score);
+        Assert.Equal(ObjType.DumbMissile, inv.EquippedSpecial);
+        Assert.False(inv.IsEquip(ObjType.MiniGun));
+    }
+
+    [Fact]
+    public void Sell_energy_onlyflag_forever_decrements_by_start_cnt_keeps_slot()
+    {
+        var inv = new Inventory();
+        inv.Load(ObjType.Energy, 75, inuse: true);          // onlyflag + forever
+        uint score = 0;
+        int left = inv.Sell(ObjType.Energy, ref score);
+        Assert.Equal(50, left);                             // 75 - start_cnt(25)
+        Assert.Equal(50, inv.GetAmt(ObjType.Energy));
+        Assert.True(inv.IsEquip(ObjType.Energy));           // forever → never removed
+        Assert.Equal(5000u, score);                         // (400*25)>>1
+    }
+
+    [Fact]
+    public void Sell_megabomb_onlyflag_non_forever_decrements_then_removes_at_zero()
+    {
+        var inv = new Inventory();
+        inv.Load(ObjType.MegaBomb, 2, inuse: true);         // onlyflag, !forever, start_cnt=1
+        uint score = 0;
+        int left = inv.Sell(ObjType.MegaBomb, ref score);
+        Assert.Equal(1, left);                              // 2 - 1
+        Assert.Equal(1, inv.GetAmt(ObjType.MegaBomb));
+        Assert.True(inv.IsEquip(ObjType.MegaBomb));
+
+        int left2 = inv.Sell(ObjType.MegaBomb, ref score);
+        Assert.Equal(0, left2);                             // 1 - 1 = 0 → slot removed
+        Assert.False(inv.IsEquip(ObjType.MegaBomb));
+    }
+
+    [Fact]
+    public void Sell_detect_removes_slot_returns_zero_and_refunds()
+    {
+        var inv = new Inventory();
+        inv.Load(ObjType.Detect, 1, inuse: true);
+        uint score = 0;
+        int left = inv.Sell(ObjType.Detect, ref score);
+        Assert.Equal(0, left);
+        Assert.False(inv.IsEquip(ObjType.Detect));
+        Assert.Equal(5000u, score);                         // (10000)>>1
+    }
+
+    // Money-conservation property: over arbitrary buy-then-sell sequences the
+    // score never goes negative (it is uint, so any underflow would wrap huge)
+    // and a buy-then-immediate-sell round-trips to half-cost loss (resale = cost>>1).
+    [Theory]
+    [InlineData(ObjType.MiniGun)]
+    [InlineData(ObjType.PlasmaGuns)]
+    [InlineData(ObjType.SuperShield)]
+    [InlineData(ObjType.MegaBomb)]
+    public void Buy_then_sell_round_trips_to_half_cost_loss(ObjType type)
+    {
+        var inv = new Inventory();
+        uint score = 5_000_000;
+        uint start = score;
+
+        var bought = inv.Buy(type, ref score);
+        Assert.Equal(BuyStuff.GotIt, bought);
+        int cost = inv.GetCost(type);
+        Assert.Equal(start - (uint)cost, score);
+
+        // Resale is read from the post-buy (owned) state: cost >> 1.
+        int resale = inv.GetResale(type);
+        inv.Sell(type, ref score);
+
+        // Net loss == cost - resale == cost - (cost>>1).
+        Assert.Equal(start - (uint)cost + (uint)resale, score);
+        Assert.True(score <= start);            // never gained money on a round-trip
+    }
+
+    [Fact]
+    public void Repeated_buy_sell_sequence_keeps_score_sane()
+    {
+        var inv = new Inventory();
+        uint score = 2_000_000;
+        var ops = new (bool buy, ObjType t)[]
+        {
+            (true,  ObjType.MiniGun),
+            (true,  ObjType.MegaBomb),
+            (false, ObjType.MiniGun),
+            (true,  ObjType.PlasmaGuns),
+            (false, ObjType.MegaBomb),
+            (false, ObjType.PlasmaGuns),
+            (true,  ObjType.MiniGun),
+        };
+        foreach (var (buy, t) in ops)
+        {
+            if (buy) inv.Buy(t, ref score);
+            else inv.Sell(t, ref score);
+            // uint score that never underflows stays within the seeded ceiling+resales;
+            // the meaningful invariant is it never wraps to an absurd value.
+            Assert.True(score < 5_000_000u, $"score wrapped/ballooned to {score}");
+        }
     }
 }
 

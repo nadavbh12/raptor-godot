@@ -10,11 +10,20 @@ namespace Raptor.Tests;
 // OwnedCount and the OBJS_CanSell-mirroring MakeSellItems behaviour.
 public class StoreLogicTests
 {
+    // Helper: a StoreLogic over `inv` with a local mutable score (default 10000)
+    // exposed via get/set lambdas — mirrors the new live-score ctor without a
+    // WaveController. Returns the store plus a closure to read the live score.
+    private static StoreLogic NewStore(Inventory inv, uint startScore = 10000)
+    {
+        uint[] score = { startScore };   // boxed in an array so the lambdas share it
+        return new StoreLogic(inv, () => score[0], v => score[0] = v);
+    }
+
     // Helper: build a StoreLogic over a given inventory and navigate the SELL
     // list to the slot for `target`, returning the OwnedCount reported there.
     private static int OwnedCountFor(Inventory inv, ObjType target)
     {
-        var store = new StoreLogic(inv);
+        var store = NewStore(inv);
         // OwnedCount reads CurrentObject in the current mode. Walk BUY list
         // (every catalog buyable appears there) to land on `target`.
         // First NextItem dismisses the greeting; CurItem starts at 0.
@@ -65,7 +74,7 @@ public class StoreLogicTests
         // MiniGun: owned + equipped, num=1 >= start_cnt=1 → sellable.
         inv.Load(ObjType.MiniGun, 1, inuse: true);
 
-        var store = new StoreLogic(inv);
+        var store = NewStore(inv);
         Assert.Contains(ObjType.MiniGun, store.SellItems);
     }
 
@@ -77,7 +86,7 @@ public class StoreLogicTests
         // → OBJS_CanSell: p_objs[type]==NULL → not sellable.
         inv.Load(ObjType.MiniGun, 1, inuse: false);
 
-        var store = new StoreLogic(inv);
+        var store = NewStore(inv);
         Assert.DoesNotContain(ObjType.MiniGun, store.SellItems);
     }
 
@@ -85,7 +94,7 @@ public class StoreLogicTests
     public void SellList_excludes_unowned_item()
     {
         var inv = new Inventory();
-        var store = new StoreLogic(inv);
+        var store = NewStore(inv);
         Assert.DoesNotContain(ObjType.MiniGun, store.SellItems);
     }
 
@@ -93,7 +102,7 @@ public class StoreLogicTests
     public void SellList_empty_inventory_is_empty()
     {
         var inv = new Inventory();
-        var store = new StoreLogic(inv);
+        var store = NewStore(inv);
         Assert.Empty(store.SellItems);
     }
 
@@ -105,7 +114,7 @@ public class StoreLogicTests
         // starter energy (OBJS_CanSell: onlyflag && type==Energy && num<=start_cnt).
         inv.Load(ObjType.Energy, 25, inuse: true);
 
-        var store = new StoreLogic(inv);
+        var store = NewStore(inv);
         Assert.DoesNotContain(ObjType.Energy, store.SellItems);
     }
 
@@ -116,7 +125,7 @@ public class StoreLogicTests
         // num=50 > start_cnt=25 → sellable.
         inv.Load(ObjType.Energy, 50, inuse: true);
 
-        var store = new StoreLogic(inv);
+        var store = NewStore(inv);
         Assert.Contains(ObjType.Energy, store.SellItems);
     }
 
@@ -130,7 +139,7 @@ public class StoreLogicTests
         // Energy, so Detect with num>=start_cnt(1) is sellable.
         inv.Load(ObjType.Detect, 1, inuse: true);
 
-        var store = new StoreLogic(inv);
+        var store = NewStore(inv);
         Assert.Contains(ObjType.Detect, store.SellItems);
     }
 
@@ -142,12 +151,145 @@ public class StoreLogicTests
         inv.Load(ObjType.Detect, 1, inuse: true);     // effective cost 10000*1 = 10000
         inv.Load(ObjType.MiniGun, 1, inuse: true);    // cost 250650
 
-        var store = new StoreLogic(inv);
+        var store = NewStore(inv);
         var sell = store.SellItems.ToList();
         // Energy(16) and Detect(17) tie at 10000 → Energy first (lower type id);
         // MiniGun(250650) last.
         Assert.Equal(ObjType.Energy, sell[0]);
         Assert.Equal(ObjType.Detect, sell[1]);
         Assert.Equal(ObjType.MiniGun, sell[2]);
+    }
+}
+
+// Task 5.2: StoreLogic.Buy/Sell transact against the live player score and
+// recompute + reposition the active list onto the same object (STORE.C STOR_BUYIT).
+public class StoreLogicTransactTests
+{
+    private static (StoreLogic store, uint[] score) NewStore(Inventory inv, uint startScore)
+    {
+        uint[] score = { startScore };
+        return (new StoreLogic(inv, () => score[0], v => score[0] = v), score);
+    }
+
+    // Switch to Sell mode regardless of the greeting state: the first ToggleMode
+    // only dismisses the greeting (StoreLogic semantics), so toggle twice if so.
+    private static void EnterSellMode(StoreLogic store)
+    {
+        if (store.ShowingGreeting) store.NextItem();   // dismiss greeting first
+        store.ToggleMode();                            // Buy → Sell, CurItem=0
+        Assert.Equal(StoreLogic.Mode.Sell, store.CurrentMode);
+    }
+
+    // Navigate the current list onto `target`. Dismisses the greeting if showing,
+    // then steps from CurItem=0 to the target's index.
+    private static void NavigateTo(StoreLogic store, ObjType target)
+    {
+        if (store.ShowingGreeting) store.NextItem();   // dismiss greeting (CurItem stays 0)
+        var list = store.CurrentList.ToList();
+        int idx = list.IndexOf(target);
+        Assert.True(idx >= 0, $"{target} not in current list");
+        for (int i = 0; i < idx; i++) store.NextItem();
+        Assert.Equal(target, store.CurrentObject);
+    }
+
+    [Fact]
+    public void Money_reflects_live_score()
+    {
+        var inv = new Inventory();
+        var (store, _) = NewStore(inv, 42_000);
+        Assert.Equal(42_000, store.Money);
+    }
+
+    [Fact]
+    public void Buy_current_item_deducts_score_and_updates_owned_count()
+    {
+        var inv = new Inventory();
+        var (store, score) = NewStore(inv, 1_000_000);
+        NavigateTo(store, ObjType.MiniGun);   // cost 250650
+
+        var rval = store.Buy();
+        Assert.Equal(BuyStuff.GotIt, rval);
+        Assert.Equal(1_000_000u - 250_650u, score[0]);     // live score deducted
+        Assert.Equal(749_350, store.Money);                // same value, via the accessor
+        // After buy, MiniGun is owned; OwnedCount on the current item reflects it.
+        Assert.Equal(ObjType.MiniGun, store.CurrentObject); // repositioned onto same item
+        Assert.Equal(1, store.OwnedCount);
+    }
+
+    [Fact]
+    public void Buy_insufficient_funds_leaves_score_and_inventory_untouched()
+    {
+        var inv = new Inventory();
+        var (store, score) = NewStore(inv, 100);            // can't afford anything
+        NavigateTo(store, ObjType.MiniGun);
+
+        var rval = store.Buy();
+        Assert.Equal(BuyStuff.NoMoney, rval);
+        Assert.Equal(100u, score[0]);
+        Assert.False(inv.IsEquip(ObjType.MiniGun));
+    }
+
+    [Fact]
+    public void Buy_repositions_cursor_onto_same_item_after_recompute()
+    {
+        var inv = new Inventory();
+        var (store, _) = NewStore(inv, 5_000_000);
+        // ForwardGuns is excluded from BUY; cheapest buyables lead. Buying does not
+        // remove an item from the BUY list (you can re-buy), so the cursor must
+        // still point at the same object afterwards.
+        NavigateTo(store, ObjType.PlasmaGuns);
+        store.Buy();
+        Assert.Equal(ObjType.PlasmaGuns, store.CurrentObject);
+    }
+
+    [Fact]
+    public void Sell_current_item_adds_resale_to_score()
+    {
+        var inv = new Inventory();
+        inv.Load(ObjType.MiniGun, 1, inuse: true);          // owned + equipped
+        var (store, score) = NewStore(inv, 0);
+        EnterSellMode(store);
+        NavigateTo(store, ObjType.MiniGun);
+
+        int left = store.Sell();
+        Assert.Equal(0, left);                               // non-onlyflag → whole slot gone
+        Assert.Equal(125_325u, score[0]);                    // 250650 >> 1
+        Assert.False(inv.IsEquip(ObjType.MiniGun));
+    }
+
+    [Fact]
+    public void Sell_sold_out_item_clamps_cursor_to_valid_object()
+    {
+        var inv = new Inventory();
+        // Two sellable weapons; sell one → it leaves the SELL list, cursor clamps.
+        inv.Load(ObjType.MiniGun, 1, inuse: true);
+        inv.Load(ObjType.DeathRay, 1, inuse: true);
+        var (store, _) = NewStore(inv, 0);
+        EnterSellMode(store);
+        NavigateTo(store, ObjType.MiniGun);
+
+        store.Sell();
+        // MiniGun is gone from the SELL list now; cursor must point at a still-valid
+        // object (DeathRay) or null only if the list is empty (it isn't here).
+        Assert.NotNull(store.CurrentObject);
+        Assert.Equal(ObjType.DeathRay, store.CurrentObject);
+        Assert.DoesNotContain(ObjType.MiniGun, store.SellItems);
+    }
+
+    [Fact]
+    public void Sell_energy_decrements_and_keeps_item_in_list_repositioned()
+    {
+        var inv = new Inventory();
+        inv.Load(ObjType.Energy, 75, inuse: true);           // onlyflag+forever
+        var (store, score) = NewStore(inv, 0);
+        EnterSellMode(store);
+        NavigateTo(store, ObjType.Energy);
+
+        int left = store.Sell();
+        Assert.Equal(50, left);                              // 75 - 25
+        Assert.Equal(5_000u, score[0]);                      // (400*25)>>1
+        // 50 > start_cnt(25) → still sellable, still in list, cursor on Energy.
+        Assert.Equal(ObjType.Energy, store.CurrentObject);
+        Assert.Contains(ObjType.Energy, store.SellItems);
     }
 }

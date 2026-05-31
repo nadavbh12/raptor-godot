@@ -36,6 +36,12 @@ public partial class MenuController : Node
             // pilot's inventory shows correctly in the supply room (Task 3.5).
             Menu.Inventory = wave.Inventory;
 
+            // Store transactions (Buy/Sell) read and write the LIVE player score.
+            // These accessors only EXPOSE the existing WaveController.Score /
+            // SetScore — no change to any non-store score handling.
+            Menu.GetScore = () => wave.Score;
+            Menu.SetScore = wave.SetScore;
+
             Menu.OnPilotLoaded += pilot =>
             {
                 wave.SetScore(pilot.Score);

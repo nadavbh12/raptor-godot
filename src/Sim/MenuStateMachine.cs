@@ -121,6 +121,14 @@ public sealed class MenuStateMachine
     // canonical instance gameplay and pilot load mutate).
     public Inventory Inventory { get; set; } = new();
 
+    // Live player-score accessors for store transactions. MenuController._Ready
+    // wires these to WaveController.Score / SetScore. Left null on headless /
+    // no-WaveController paths, where the store falls back to a private score
+    // field (seeded to the new-pilot 10000) so Buy/Sell still function in tests.
+    public System.Func<uint>? GetScore { get; set; }
+    public System.Action<uint>? SetScore { get; set; }
+    private uint _fallbackScore = 10000;
+
     public WinState State { get; private set; } = WinState.Unknown;
 
     /// <summary>
@@ -881,7 +889,10 @@ public sealed class MenuStateMachine
             }
             if (_hangarPos == 1)  // SUPPLIES → STORE_Enter
             {
-                Store = new StoreLogic(Inventory);
+                Store = new StoreLogic(
+                    Inventory,
+                    GetScore ?? (() => _fallbackScore),
+                    SetScore ?? (v => _fallbackScore = v));
                 EnterState(WinState.Store, currentFrame, reAnchor: true);
                 return true;
             }
@@ -913,6 +924,14 @@ public sealed class MenuStateMachine
 
             case "Space":
                 Store.ToggleMode();
+                return false;
+
+            case "Return":
+                // C STORE.C:559 STOR_BUYIT — Return triggers the buy/sell action
+                // for the current item ("Return" is menu_accept; see
+                // InteractiveInputController). Stay in the store, re-render.
+                if (Store.CurrentMode == StoreLogic.Mode.Buy) Store.Buy();
+                else Store.Sell();
                 return false;
 
             case "F1":

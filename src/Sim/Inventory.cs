@@ -475,6 +475,161 @@ public sealed class Inventory
     }
 
     // -----------------------------------------------------------------------
+    // OBJS_GetCost — OBJECTS.C:1061-1078
+    // -----------------------------------------------------------------------
+    /// <summary>
+    /// Returns the game cost of an object. Mirrors OBJS_GetCost:
+    /// onlyflag items scale by start_cnt (cost * start_cnt); others use cost.
+    ///
+    /// Cost data lives in <see cref="ObjLib"/> (the model-side single source of
+    /// truth — it already carries Cost/StartCnt/OnlyFlag), so Buy/Sell stay with
+    /// the inventory model and no cost table is duplicated. (StoreLogic.Catalog is
+    /// a pre-existing parallel table used only for browse rendering; it is left
+    /// untouched and StoreLogic.Buy/Sell route cost math through here.)
+    /// </summary>
+    public int GetCost(ObjType type)
+    {
+        var lib = ObjLib.Of(type);
+        return lib.OnlyFlag ? lib.Cost * lib.StartCnt : lib.Cost;
+    }
+
+    // -----------------------------------------------------------------------
+    // OBJS_GetResale — OBJECTS.C:1084-1103
+    // -----------------------------------------------------------------------
+    /// <summary>
+    /// Returns the resale value of an object. Mirrors OBJS_GetResale:
+    /// 0 if not owned (p_objs[type]==NULL → !IsEquip); otherwise GetCost >> 1.
+    /// </summary>
+    public int GetResale(ObjType type)
+    {
+        if (!IsEquip(type)) return 0;     // C: if (!cur) return 0
+        return GetCost(type) >> 1;
+    }
+
+    // -----------------------------------------------------------------------
+    // OBJS_Buy — OBJECTS.C:959-983
+    // -----------------------------------------------------------------------
+    /// <summary>
+    /// Buys an object, mirroring OBJS_Buy. Transacts against the live player
+    /// <paramref name="score"/> (C's plr.score): the super-shield cap, the
+    /// affordability guard, and the deduction-only-on-GotIt all mirror C exactly.
+    ///
+    /// Returns the BUYSTUFF result. <paramref name="score"/> is decremented by
+    /// exactly GetCost(type) iff Add returned GotIt. The `score >= cost` guard
+    /// runs before the deduction, so the uint subtraction can never underflow
+    /// (costs fit in int and are non-negative).
+    /// </summary>
+    public BuyStuff Buy(ObjType type, ref uint score)
+    {
+        // C:967-972  super-shield cap: GetTotal(SuperShield) >= 5 → ShipFull.
+        if (type == ObjType.SuperShield && GetTotal(ObjType.SuperShield) >= 5)
+            return BuyStuff.ShipFull;
+
+        // C:974  if (plr.score >= OBJS_GetCost(type)) ...; else default NoMoney.
+        BuyStuff rval = BuyStuff.NoMoney;
+        int cost = GetCost(type);
+        if (score >= (uint)cost)
+        {
+            rval = Add(type);
+            // C:978-979  only deduct when Add reported GotIt.
+            if (rval == BuyStuff.GotIt)
+                score -= (uint)cost;
+        }
+        return rval;
+    }
+
+    // -----------------------------------------------------------------------
+    // OBJS_Sell — OBJECTS.C:906-954
+    // -----------------------------------------------------------------------
+    /// <summary>
+    /// Sells an object, mirroring OBJS_Sell. Returns the amount left of the type.
+    /// Adds GetResale (computed from the PRE-sell state, since resale is read
+    /// before any slot mutation) to the live player <paramref name="score"/>.
+    ///
+    /// Branches mirror C exactly:
+    ///   • not owned (!IsEquip)        → return 0, no score change.
+    ///   • Detect                      → remove slot, return 0.
+    ///   • onlyflag                    → num -= start_cnt; on &lt;= 0 clamp to 0 and,
+    ///                                    if !forever, remove slot + cycle the equipped
+    ///                                    special (OBJS_GetNext) when it was this type.
+    ///                                    (Energy is onlyflag+forever: never removed.)
+    ///   • non-onlyflag                → OBJS_Del (remove whole slot + GetNext if equipped),
+    ///                                    return GetTotal (0 in the one-slot model).
+    /// </summary>
+    public int Sell(ObjType type, ref uint score)
+    {
+        // C:915-916  if (!cur) return 0 — not owned.
+        if (!IsEquip(type))
+            return 0;
+
+        var lib = ObjLib.Of(type);
+        int rval = 0;
+
+        // C:918  resale added from PRE-sell state (slot still present here).
+        score += (uint)GetResale(type);
+
+        // C:920-924  Detect: drop the slot, return 0.
+        if (type == ObjType.Detect)
+        {
+            _slots.Remove(type);
+            return 0;
+        }
+
+        if (lib.OnlyFlag)
+        {
+            // C:928  cur->num -= lib->start_cnt.
+            var slot = _slots[type];
+            slot.Num -= lib.StartCnt;
+
+            if (slot.Num <= 0)
+            {
+                // C:930-942  clamp to 0; if !forever, remove + re-cycle special.
+                slot.Num = 0;
+                rval = 0;
+                if (!lib.Forever)
+                {
+                    _slots.Remove(type);                  // OBJS_Remove + p_objs[type]=NUL
+                    // OBJS_Equip(type) here is a no-op in the one-slot model (slot gone).
+                    if (EquippedSpecial == type)          // if (plr.sweapon == type)
+                        GetNext();
+                }
+            }
+            else
+            {
+                rval = slot.Num;
+            }
+        }
+        else
+        {
+            // C:948-950  OBJS_Del removes the whole slot, re-cycles the equipped
+            // special if it was this type, then return GetTotal (== 0 here).
+            Del(type);
+            rval = GetTotal(type);
+        }
+
+        return rval;
+    }
+
+    // -----------------------------------------------------------------------
+    // OBJS_Del — OBJECTS.C:811-826
+    // -----------------------------------------------------------------------
+    /// <summary>
+    /// Removes the slot for <paramref name="type"/> entirely, mirroring OBJS_Del:
+    /// OBJS_Remove + p_objs[type]=NUL, then OBJS_Equip(type) (a no-op here — the
+    /// slot is gone, so there is no second node to re-equip), then if this type
+    /// was the equipped special (plr.sweapon == type), OBJS_GetNext to cycle.
+    /// No-op when the type is not owned (C: cur == NUL).
+    /// </summary>
+    private void Del(ObjType type)
+    {
+        if (!IsEquip(type)) return;            // C: if (cur == NUL) return
+        _slots.Remove(type);                   // OBJS_Remove + p_objs[type]=NUL
+        // OBJS_Equip(type): no-op in one-slot model (no remaining node to equip).
+        if (EquippedSpecial == type)           // if (type == plr.sweapon)
+            GetNext();
+    }
+
+    // -----------------------------------------------------------------------
     // RemoveSlot — Task 3.3 narrow helper for LoseCurrentSpecialForShieldLow
     // -----------------------------------------------------------------------
     /// <summary>

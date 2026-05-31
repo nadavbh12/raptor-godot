@@ -17,9 +17,9 @@ internal sealed class StoreLogic
 
     public Mode CurrentMode { get; private set; } = Mode.Buy;
     public int  CurItem     { get; private set; } = 0;
-    public int  Money       { get; private set; } = 10000;   // matches the
-                                                              // demo pilot's
-                                                              // starting score
+    // Live player score (C's plr.score) — read through the injected accessor so
+    // Buy/Sell transact directly against the running game's WaveController.Score.
+    public int  Money       => (int)_getScore();
     public string Callsign  { get; private set; } = "T1";
 
     // STORE_Enter calls Harrold(HAR1_TXT) before the main loop. C's
@@ -66,12 +66,20 @@ internal sealed class StoreLogic
     // mutations land in Phase 5.2.
     private readonly Inventory _inventory;
 
+    // Live player-score accessors — the canonical WaveController.Score (C's
+    // plr.score). Buy/Sell read via _getScore and write the mutated value back
+    // via _setScore so transactions hit the running game's score directly.
+    private readonly System.Func<uint>   _getScore;
+    private readonly System.Action<uint> _setScore;
+
     public IReadOnlyList<ObjType> BuyItems  { get; private set; }
     public IReadOnlyList<ObjType> SellItems { get; private set; }
 
-    public StoreLogic(Inventory inventory)
+    public StoreLogic(Inventory inventory, System.Func<uint> getScore, System.Action<uint> setScore)
     {
         _inventory = inventory;
+        _getScore  = getScore;
+        _setScore  = setScore;
         BuyItems  = MakeBuyItems();
         SellItems = MakeSellItems();
     }
@@ -133,6 +141,60 @@ internal sealed class StoreLogic
         if (ShowingGreeting) { ShowingGreeting = false; return; }
         CurrentMode = CurrentMode == Mode.Buy ? Mode.Sell : Mode.Buy;
         CurItem = 0;
+    }
+
+    // STORE.C:559-608 STOR_BUYIT — buy/sell the current item, then recompute the
+    // active list and re-find the same object so the cursor follows it (clamped
+    // if it sold out of the list). Score math lives in Inventory.Buy/Sell against
+    // the live player score (read/written via the injected accessors).
+    public BuyStuff Buy()
+    {
+        var obj = CurrentObject;
+        if (obj == null) return BuyStuff.Error;
+
+        ObjType pos = obj.Value;
+        uint score = _getScore();
+        BuyStuff rval = _inventory.Buy(pos, ref score);
+        _setScore(score);
+
+        BuyItems = MakeBuyItems();
+        RepositionOnto(pos);
+        return rval;
+    }
+
+    public int Sell()
+    {
+        var obj = CurrentObject;
+        if (obj == null) return 0;
+
+        ObjType pos = obj.Value;
+        uint score = _getScore();
+        int left = _inventory.Sell(pos, ref score);
+        _setScore(score);
+
+        SellItems = MakeSellItems();
+        RepositionOnto(pos);
+        return left;
+    }
+
+    // Mirror of STORE.C:584-591 / 599-606: after MakeBuyItems/MakeSellItems,
+    // walk the recomputed list and set cur_item to the index of `pos`. If `pos`
+    // is no longer present (e.g. sold out), C leaves cur_item unchanged; we clamp
+    // it into the new list's range so CurrentObject stays valid.
+    private void RepositionOnto(ObjType pos)
+    {
+        var list = CurrentList;
+        int idx = -1;
+        for (int i = 0; i < list.Count; i++)
+        {
+            if (list[i] == pos) { idx = i; break; }
+        }
+        if (idx >= 0)
+            CurItem = idx;
+        else if (list.Count > 0)
+            CurItem = System.Math.Clamp(CurItem, 0, list.Count - 1);
+        else
+            CurItem = 0;
     }
 
     private static int EffectiveCost(Entry e) =>

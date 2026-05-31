@@ -586,6 +586,14 @@ public class MenuStateMachineTests
         Assert.Equal(20, m.HelpPageIndex);
     }
 
+    // IReadOnlyList<ObjType> has no IndexOf; small local helper for store tests.
+    private static int IndexOf(System.Collections.Generic.IReadOnlyList<ObjType> list, ObjType t)
+    {
+        for (int i = 0; i < list.Count; i++)
+            if (list[i] == t) return i;
+        return -1;
+    }
+
     // Helper: walk a fresh state machine through the pilot-creation flow
     // until it lands in WinState.Hangar. Used by the F1 entry-point tests.
     private static MenuStateMachine ReachHangar()
@@ -597,6 +605,55 @@ public class MenuStateMachineTests
         m.HandleInput("Return", 30);   // confirm callsign → step 3
         m.HandleInput("Return", 40);   // accept difficulty → Hangar
         return m;
+    }
+
+    // Task 5.2: Return inside the store triggers Buy (Buy mode) / Sell (Sell mode)
+    // against the live score wired via GetScore/SetScore. Drive the full state
+    // machine into the store and verify the Return-key buy path deducts the score.
+    [Fact]
+    public void Return_in_store_buy_mode_buys_current_item_and_deducts_live_score()
+    {
+        var m = ReachHangar();          // hangarPos == 1 (SUPPLIES)
+        uint score = 1_000_000;
+        m.GetScore = () => score;
+        m.SetScore = v => score = v;
+
+        m.HandleInput("Return", 50);    // SUPPLIES → STORE
+        Assert.Equal(WinState.Store, m.State);
+        Assert.NotNull(m.Store);
+
+        // Land the cursor on a concrete, affordable buyable.
+        var store = m.Store!;
+        int idx = IndexOf(store.BuyItems, ObjType.PlasmaGuns);
+        Assert.True(idx >= 0);
+        m.HandleInput("Right", 51);     // dismiss greeting (CurItem stays 0)
+        for (int i = 0; i < idx; i++) m.HandleInput("Right", 52 + i);
+        Assert.Equal(ObjType.PlasmaGuns, store.CurrentObject);
+
+        bool stayed = m.HandleInput("Return", 100);   // BUY
+        Assert.False(stayed);                          // stays in store, re-renders
+        Assert.Equal(WinState.Store, m.State);
+        Assert.Equal(1_000_000u - 78_800u, score);     // PlasmaGuns cost deducted
+        Assert.True(m.Inventory.IsEquip(ObjType.PlasmaGuns));
+    }
+
+    [Fact]
+    public void Return_in_store_uses_fallback_score_when_no_accessors_wired()
+    {
+        // Headless / no-WaveController: GetScore/SetScore null → fallback (10000).
+        var m = ReachHangar();
+        m.HandleInput("Return", 50);    // → STORE
+        var store = m.Store!;
+        // Cheapest catalog buyable affordable from 10000 is Energy (10000 exactly).
+        int idx = IndexOf(store.BuyItems, ObjType.Energy);
+        Assert.True(idx >= 0);
+        m.HandleInput("Right", 51);
+        for (int i = 0; i < idx; i++) m.HandleInput("Right", 52 + i);
+        Assert.Equal(ObjType.Energy, store.CurrentObject);
+
+        m.HandleInput("Return", 100);   // buy Energy for 10000 → fallback score 0
+        Assert.Equal(0, store.Money);   // Money reads the fallback via the accessor
+        Assert.True(m.Inventory.IsEquip(ObjType.Energy));
     }
 
     [Fact]
