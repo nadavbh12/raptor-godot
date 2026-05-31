@@ -1,26 +1,26 @@
-using Raptor.Sim.Shots;
+using Raptor.Sim;
 
 namespace Raptor.View;
 
 internal static class HudWeaponIcon
 {
-    public static string SpriteNameFor(WeaponType weapon) => weapon switch
+    public static string SpriteNameFor(ObjType weapon) => weapon switch
     {
-        WeaponType.ForwardGuns  => "BONUS00_PIC",
-        WeaponType.PlasmaGuns   => "BONUS01_PIC",
-        WeaponType.MicroMissile => "BONUS02_PIC",
-        WeaponType.DumbMissile  => "BONUS03_PIC",
-        WeaponType.MiniGun      => "BONUS04_PIC",
-        WeaponType.Turret       => "BONUS05_PIC",
-        WeaponType.MissilePods  => "BONUS06_PIC",
-        WeaponType.AirMissile   => "BONUS07_PIC",
-        WeaponType.GrdMissile   => "BONUS08_PIC",
-        WeaponType.Bomb         => "BONUS21_PIC",
-        WeaponType.EnergyGrab   => "BONUS09_PIC",
-        WeaponType.MegaBomb     => "BONUS10_PIC",
-        WeaponType.PulseCannon  => "BONUS11_PIC",
-        WeaponType.ForwardLaser => "BONUS12_PIC",
-        WeaponType.DeathRay     => "BONUS13_PIC",
+        ObjType.ForwardGuns  => "BONUS00_PIC",
+        ObjType.PlasmaGuns   => "BONUS01_PIC",
+        ObjType.MicroMissile => "BONUS02_PIC",
+        ObjType.DumbMissile  => "BONUS03_PIC",
+        ObjType.MiniGun      => "BONUS04_PIC",
+        ObjType.Turret       => "BONUS05_PIC",
+        ObjType.MissilePods  => "BONUS06_PIC",
+        ObjType.AirMissile   => "BONUS07_PIC",
+        ObjType.GrdMissile   => "BONUS08_PIC",
+        ObjType.Bomb         => "BONUS21_PIC",
+        ObjType.EnergyGrab   => "BONUS09_PIC",
+        ObjType.MegaBomb     => "BONUS10_PIC",
+        ObjType.PulseCannon  => "BONUS11_PIC",
+        ObjType.ForwardLaser => "BONUS12_PIC",
+        ObjType.DeathRay     => "BONUS13_PIC",
         _ => string.Empty,
     };
 }

@@ -1596,7 +1596,7 @@ public partial class DebugRenderer : Node2D
 
     private void DrawCurrentWeaponHud()
     {
-        if (_wave?.Shooter.SpecialWeapon is not WeaponType weapon) return;
+        if (_wave?.Inventory.EquippedSpecial is not ObjType weapon) return;
         const int MapTop = 2;           // SOURCE/MAP.H
         const int MapRight = 320 - 16;  // SOURCE/MAP.H
         string spriteName = HudWeaponIcon.SpriteNameFor(weapon);
@@ -1608,11 +1608,13 @@ public partial class DebugRenderer : Node2D
 
     private void DrawMegaBombHud()
     {
-        if (_wave == null || _wave.Shooter.MegaBombCount <= 0) return;
+        if (_wave == null) return;
+        int megaBombCount = _wave.Inventory.GetAmt(ObjType.MegaBomb);
+        if (megaBombCount <= 0) return;
         if (!_spritePaths.TryGetValue("SMBOMB_PIC", out string? path)) return;
         var tex = LoadSpriteFromPath(path);
         if (tex == null) return;
-        foreach (var pos in HudMegaBombIndicator.Build(_wave.Shooter.MegaBombCount))
+        foreach (var pos in HudMegaBombIndicator.Build(megaBombCount))
             DrawTexture(tex, new Vector2(pos.X, pos.Y));
     }
 
