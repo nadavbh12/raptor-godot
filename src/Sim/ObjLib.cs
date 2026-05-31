@@ -5,31 +5,32 @@ namespace Raptor.Sim;
 /// <summary>
 /// Static metadata table for all purchasable/collectible object types.
 /// Data sourced from OBJECTS.C:227-623 (OBJS_Init) in the original C codebase.
-/// MAX_SHIELD = 100.
+/// SuperShield start/max both equal MAX_SHIELD = 100 (from the C source).
 /// </summary>
-public readonly record struct Entry(
-    int  Cost,
-    int  StartCnt,
-    int  MaxCnt,
-    bool Forever,
-    bool OnlyFlag,
-    bool SpecialW,
-    bool MoneyFlag,
-    bool LoseIt,
-    bool Game1Flag
-);
-
 public static class ObjLib
 {
+    /// <summary>Per-type metadata. Nested to avoid colliding with StoreLogic.Entry.</summary>
+    public readonly record struct Entry(
+        int  Cost,
+        int  StartCnt,
+        int  MaxCnt,
+        bool Forever,
+        bool OnlyFlag,
+        bool SpecialW,
+        bool MoneyFlag,
+        bool LoseIt,
+        bool Game1Flag
+    );
+
     /// <summary>First weapon type that uses the special-weapon slot.</summary>
     public const ObjType FirstSpecial = ObjType.DumbMissile;  // 3
 
     /// <summary>Last weapon type (inclusive upper bound of weapon range).</summary>
     public const ObjType LastWeapon   = ObjType.DeathRay;     // 14
 
-    // Indexed by (int)ObjType. Entries 0..23 are defined; type 24 has no C entry
-    // (it falls in the gap between ItemBuy6=23 and LastObject=25), so the array
-    // is sized to 24. Calling Of() with type 24 or LastObject(25) throws.
+    // Indexed by (int)ObjType. Entries 0..23 are defined; the array is sized to 24.
+    // The enum jumps from ItemBuy6=23 to LastObject=25; no C entry exists for 24.
+    // Calling Of() with type 24 or LastObject(25) throws.
     private static readonly Entry[] s_table = new Entry[24]
     {
         //                                             cost    start  max    forever  only   special  money  loseit  game1
