@@ -155,6 +155,64 @@ public class InventorySeedTests
     }
 }
 
+public class InventoryCopyFromTests
+{
+    [Fact]
+    public void CopyFrom_replaces_all_state()
+    {
+        // Build source inventory A with some items + an equipped special.
+        var a = new Inventory();
+        a.Load(ObjType.ForwardGuns, 1, true);
+        a.Load(ObjType.MiniGun,     2, true);
+        a.Load(ObjType.MegaBomb,    3, false);
+        a.Load(ObjType.Energy,     75, false);
+        a.EquippedSpecial = ObjType.MiniGun;
+
+        // Build target inventory B with different junk.
+        var b = new Inventory();
+        b.Load(ObjType.PlasmaGuns, 9, true);
+        b.Load(ObjType.DeathRay,   7, true);
+        b.EquippedSpecial = ObjType.DeathRay;
+
+        // CopyFrom replaces B's state with A's state.
+        b.CopyFrom(a);
+
+        // B now matches A exactly.
+        Assert.Equal(1,  b.GetAmt(ObjType.ForwardGuns));
+        Assert.True(b.IsEquip(ObjType.ForwardGuns));
+        Assert.Equal(2,  b.GetAmt(ObjType.MiniGun));
+        Assert.True(b.IsEquip(ObjType.MiniGun));
+        Assert.Equal(3,  b.GetAmt(ObjType.MegaBomb));
+        Assert.False(b.IsEquip(ObjType.MegaBomb));
+        Assert.Equal(75, b.GetAmt(ObjType.Energy));
+        Assert.False(b.IsEquip(ObjType.Energy));
+        Assert.Equal(ObjType.MiniGun, b.EquippedSpecial);
+
+        // B's prior junk is gone.
+        Assert.Equal(0, b.GetAmt(ObjType.PlasmaGuns));
+        Assert.False(b.IsEquip(ObjType.PlasmaGuns));
+        Assert.Equal(0, b.GetAmt(ObjType.DeathRay));
+        Assert.False(b.IsEquip(ObjType.DeathRay));
+    }
+
+    [Fact]
+    public void CopyFrom_preserves_caller_reference_identity()
+    {
+        // After CopyFrom, the target IS STILL THE SAME OBJECT (no replacement).
+        var a = new Inventory();
+        a.Load(ObjType.MiniGun, 1, true);
+        a.EquippedSpecial = ObjType.MiniGun;
+
+        var b = new Inventory();
+        var bRef = b;  // capture reference before CopyFrom
+
+        b.CopyFrom(a);
+
+        Assert.Same(bRef, b);                  // same instance
+        Assert.True(b.IsEquip(ObjType.MiniGun));
+    }
+}
+
 public class InventoryGetNextTests
 {
     [Fact]

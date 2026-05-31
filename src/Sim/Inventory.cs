@@ -283,4 +283,25 @@ public sealed class Inventory
         _slots.Clear();
         EquippedSpecial = null;
     }
+
+    // -----------------------------------------------------------------------
+    // CopyFrom — Task 3.2
+    // -----------------------------------------------------------------------
+    /// <summary>
+    /// Replaces all state in this instance with the state of <paramref name="other"/>.
+    /// Clears this inventory first, then copies every slot (Num, InUse) and
+    /// EquippedSpecial from <paramref name="other"/>.
+    ///
+    /// Preserves reference identity: callers holding a reference to this
+    /// instance see the updated data without the field needing to be reassigned.
+    /// Used by the pilot-load flow:
+    ///   <c>WaveController.Inventory.CopyFrom(PilotSaveStore.LoadInventory(path));</c>
+    /// </summary>
+    public void CopyFrom(Inventory other)
+    {
+        _slots.Clear();
+        foreach (var kvp in other._slots)
+            _slots[kvp.Key] = new ObjSlot { Num = kvp.Value.Num, InUse = kvp.Value.InUse };
+        EquippedSpecial = other.EquippedSpecial;
+    }
 }
