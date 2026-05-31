@@ -14,7 +14,7 @@ public class ObjTypeTests
         Assert.Equal(16, (int)ObjType.Energy);
         Assert.Equal(17, (int)ObjType.Detect);
         Assert.Equal(23, (int)ObjType.ItemBuy6);
-        Assert.Equal(25, (int)ObjType.LastObject);
+        Assert.Equal(24, (int)ObjType.LastObject);
     }
 }
 
@@ -105,13 +105,14 @@ public class InventoryCoreTests
         Assert.True(inv.IsEquip(ObjType.MiniGun));
     }
 
-    // Add's guard mirrors C `type >= S_LAST_OBJECT`; LastObject (25) is that
-    // sentinel and is the true out-of-range boundary.
+    // Add's guard mirrors C `type >= S_LAST_OBJECT`; LastObject (24) is that
+    // sentinel and is the true out-of-range boundary. Add(24) must return Error
+    // without throwing — the guard short-circuits before ObjLib.Of(24) is reached.
     [Fact]
     public void Add_out_of_range_type_returns_error_and_creates_no_slot()
     {
         var inv = new Inventory();
-        Assert.Equal(BuyStuff.Error, inv.Add(ObjType.LastObject));
+        Assert.Equal(BuyStuff.Error, inv.Add(ObjType.LastObject));      // type 24
         Assert.False(inv.IsEquip(ObjType.LastObject));
         Assert.Equal(0, inv.GetAmt(ObjType.LastObject));
     }

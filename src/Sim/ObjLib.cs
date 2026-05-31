@@ -29,8 +29,8 @@ public static class ObjLib
     public const ObjType LastWeapon   = ObjType.DeathRay;     // 14
 
     // Indexed by (int)ObjType. Entries 0..23 are defined; the array is sized to 24.
-    // The enum jumps from ItemBuy6=23 to LastObject=25; no C entry exists for 24.
-    // Calling Of() with type 24 or LastObject(25) throws.
+    // LastObject=24 (S_LAST_OBJECT) is the sentinel with no C entry; it sits just
+    // past the last real type. Calling Of() with LastObject(24) throws.
     private static readonly Entry[] s_table = new Entry[24]
     {
         //                                             cost    start  max    forever  only   special  money  loseit  game1
@@ -62,7 +62,7 @@ public static class ObjLib
 
     /// <summary>
     /// Returns the metadata entry for the given object type.
-    /// Throws <see cref="ArgumentOutOfRangeException"/> for undefined types (e.g. 24, LastObject=25).
+    /// Throws <see cref="ArgumentOutOfRangeException"/> for the sentinel LastObject=24 (no entry).
     /// </summary>
     public static Entry Of(ObjType type)
     {

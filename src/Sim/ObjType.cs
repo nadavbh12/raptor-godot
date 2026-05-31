@@ -2,7 +2,7 @@ namespace Raptor.Sim;
 
 /// <summary>
 /// Mirrors SOURCE/OBJECTS.H OBJ_TYPE enum. Integer values must match C — inventory
-/// tables and parity emitters reference the raw int. LastObject (25) mirrors S_LAST_OBJECT.
+/// tables and parity emitters reference the raw int. LastObject (24) mirrors S_LAST_OBJECT.
 /// </summary>
 public enum ObjType
 {
@@ -30,5 +30,5 @@ public enum ObjType
     ItemBuy4     = 21,  // purchasable item slot 4
     ItemBuy5     = 22,  // purchasable item slot 5
     ItemBuy6     = 23,  // purchasable item slot 6
-    LastObject   = 25,  // sentinel — mirrors S_LAST_OBJECT
+    LastObject   = 24,  // sentinel — mirrors S_LAST_OBJECT (the C trailing comment "//25" is stale; it's the 25th member = 24).
 }

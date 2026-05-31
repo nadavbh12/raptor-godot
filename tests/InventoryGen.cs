@@ -11,7 +11,7 @@ namespace Raptor.Tests;
 /// </summary>
 public static class InventoryGen
 {
-    // ObjType values 0..23 (LastObject=25 is a sentinel, value 24 is undefined).
+    // ObjType values 0..23 (LastObject=24 is the sentinel with no ObjLib entry).
     private static readonly ObjType[] ValidTypes =
         Enumerable.Range(0, 24).Select(i => (ObjType)i).ToArray();
 

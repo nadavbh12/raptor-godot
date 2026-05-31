@@ -235,7 +235,7 @@ public static class PilotSaveStore
             int typeRaw = BitConverter.ToInt32(rec, 20);
             int inuseRaw = BitConverter.ToInt32(rec, 32);
 
-            // Bound-check type: valid range is 0..23 (LastObject=25 is a sentinel; 24 is undefined).
+            // Bound-check type: valid range is 0..23 (LastObject=24 is the sentinel, no ObjLib entry).
             if (typeRaw < 0 || typeRaw > 23)
                 continue;
 
@@ -245,23 +245,13 @@ public static class PilotSaveStore
             inv.Load(type, num, inuse);
         }
 
-        // Restore equipped special weapon — mirrors RAP_LoadPlayer:279-282:
-        //   if (!OBJS_IsEquip(plr.sweapon)) OBJS_GetNext();
-        // If sweapon is in range and the type is owned + equipped, use it directly.
-        // Otherwise, call GetNext() to pick the next valid owned special.
-        bool sweaponIsValid = sweapon >= 0 && sweapon <= 23;
-        if (sweaponIsValid)
-        {
-            var swType = (ObjType)sweapon;
-            if (inv.IsEquip(swType) && ObjLib.Of(swType).SpecialW)
-                inv.EquippedSpecial = swType;
-            else
-                inv.GetNext();
-        }
+        // Mirrors RAP_LoadPlayer:279 — keep saved sweapon iff owned, else cycle to next valid.
+        // The range guard only avoids calling IsEquip with an out-of-range int; an
+        // out-of-range sweapon is treated as not-equipped → GetNext().
+        if (sweapon >= 0 && sweapon <= 23 && inv.IsEquip((ObjType)sweapon))
+            inv.EquippedSpecial = (ObjType)sweapon;
         else
-        {
             inv.GetNext();
-        }
 
         return inv;
     }
