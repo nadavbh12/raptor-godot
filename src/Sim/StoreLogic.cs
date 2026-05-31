@@ -40,13 +40,13 @@ internal sealed class StoreLogic
         {
             [ObjType.ForwardGuns]   = new(12000,   true,  false, 1),
             [ObjType.PlasmaGuns]    = new(78800,   true,  false, 1),
-            [ObjType.MicroMissle]   = new(175600,  true,  false, 1),
-            [ObjType.DumbMissle]    = new(145200,  true,  false, 1),
+            [ObjType.MicroMissile]  = new(175600,  true,  false, 1),
+            [ObjType.DumbMissile]   = new(145200,  true,  false, 1),
             [ObjType.MiniGun]       = new(250650,  true,  false, 1),
             [ObjType.Turret]        = new(512850,  false, false, 1),
-            [ObjType.MisslePods]    = new(204950,  true,  false, 1),
-            [ObjType.AirMissle]     = new(63500,   true,  false, 1),
-            [ObjType.GrdMissle]     = new(110000,  true,  false, 1),
+            [ObjType.MissilePods]   = new(204950,  true,  false, 1),
+            [ObjType.AirMissile]    = new(63500,   true,  false, 1),
+            [ObjType.GrdMissile]    = new(110000,  true,  false, 1),
             [ObjType.Bomb]          = new(98200,   false, false, 1),
             [ObjType.EnergyGrab]    = new(300750,  false, false, 1),
             [ObjType.MegaBomb]      = new(32250,   true,  true,  1),
@@ -69,10 +69,10 @@ internal sealed class StoreLogic
     private static readonly Dictionary<ObjType, int> StarterInventory = new()
     {
         [ObjType.ForwardGuns] = 1,
-        [ObjType.MicroMissle] = 1,
+        [ObjType.MicroMissile] = 1,
         [ObjType.MegaBomb]    = 1,
         [ObjType.MiniGun]     = 1,
-        [ObjType.AirMissle]   = 1,
+        [ObjType.AirMissile]  = 1,
         [ObjType.Turret]      = 1,
         [ObjType.DeathRay]    = 1,
         [ObjType.Detect]      = 1,
@@ -204,29 +204,3 @@ internal sealed class StoreLogic
     }
 }
 
-// OBJ_TYPE enum in SOURCE/OBJECTS.H. Only the entries we reference are
-// listed; the S_ITEMBUY1..6 bonus types are intentionally omitted (they
-// aren't real catalog items, they're pickup-only).
-internal enum ObjType
-{
-    ForwardGuns  = 0,
-    PlasmaGuns   = 1,
-    MicroMissle  = 2,
-    DumbMissle   = 3,
-    MiniGun      = 4,
-    Turret       = 5,
-    MisslePods   = 6,
-    AirMissle    = 7,
-    GrdMissle    = 8,
-    Bomb         = 9,
-    EnergyGrab   = 10,
-    MegaBomb     = 11,
-    PulseCannon  = 12,
-    ForwardLaser = 13,
-    DeathRay     = 14,
-    SuperShield  = 15,
-    Energy       = 16,
-    // OBJECTS.H comments say "// 18" but C enums auto-increment — S_DETECT
-    // really resolves to 17. ITEM17_TXT (not 18) is the data file.
-    Detect       = 17,
-}
