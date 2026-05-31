@@ -12,7 +12,7 @@ namespace Raptor.Sim.Bonus;
 ///   S_DUMB_MISSLE..S_DEATH_RAY (3..14) — adds to OwnedSpecials and sets active.
 ///   S_SUPER_SHIELD (15)       — Heal = MaxShield (full restore).
 ///   S_ENERGY (16)             — Heal = MaxShield / 4 (BONUS.C:214).
-///   S_DETECT (17)             — sets DetectorActivated; moneyflag = FALSE → no score.
+///   S_DETECT (17)             — records the obj slot in Inventory and sets DetectorActivated; moneyflag = FALSE → no score.
 ///   S_ITEMBUY1..S_ITEMBUY6 (18..24 in extracted map data) — adds lib->cost to plr.score (OBJECTS.C:706-710).
 ///
 /// Lives outside <see cref="WaveController"/> so it can be unit-tested without
