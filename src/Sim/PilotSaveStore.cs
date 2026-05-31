@@ -178,6 +178,94 @@ public static class PilotSaveStore
         }
     }
 
+    // -----------------------------------------------------------------------
+    // Task 2.2 — LoadInventory
+    // -----------------------------------------------------------------------
+    /// <summary>
+    /// Reads a CHAR####.FIL save file and returns its <see cref="Inventory"/>.
+    ///
+    /// Mirrors RAP_LoadPlayer (LOADSAVE.C:260-282) + OBJS_Load (OBJECTS.C:708-732):
+    /// <list type="bullet">
+    ///   <item>Decrypt the 88-byte player header independently.</item>
+    ///   <item>Read numobjs @ offset 60 and sweapon @ offset 40.</item>
+    ///   <item>For each OBJ record (40 bytes): decrypt it independently, extract
+    ///         num@16, type@20, inuse@32; bound-check type (0..23); call inv.Load.</item>
+    ///   <item>After the loop: if sweapon maps to an owned special weapon,
+    ///         set EquippedSpecial; otherwise call GetNext() — mirrors C's
+    ///         <c>if (!OBJS_IsEquip(plr.sweapon)) OBJS_GetNext()</c>.</item>
+    /// </list>
+    /// Each record is decrypted with its own fresh key/seed (Decrypt resets per call).
+    /// </summary>
+    /// <exception cref="InvalidDataException">File is too short to contain a valid header.</exception>
+    public static Inventory LoadInventory(string path)
+    {
+        byte[] data = File.ReadAllBytes(path);
+        if (data.Length < PlayerHeaderSize)
+            throw new InvalidDataException($"Save file too short: {path}");
+
+        // Decrypt the header block into a separate buffer (leaves data[] intact for records).
+        byte[] header = new byte[PlayerHeaderSize];
+        Array.Copy(data, header, PlayerHeaderSize);
+        Decrypt(header);
+
+        // PLAYEROBJ layout (PUBLIC.H):
+        //   40..43  sweapon (INT — index of currently equipped special weapon)
+        //   60..63  numobjs (INT — count of OBJ records that follow the header)
+        int sweapon = BitConverter.ToInt32(header, 40);
+        int numObjs = BitConverter.ToInt32(header, 60);
+
+        var inv = new Inventory();
+        int offset = PlayerHeaderSize;
+        const int RecordSize = 40;
+
+        for (int i = 0; i < numObjs; i++)
+        {
+            // Graceful truncation: stop if fewer than RecordSize bytes remain.
+            if (offset + RecordSize > data.Length)
+                break;
+
+            // Decrypt each record INDEPENDENTLY — Decrypt resets key/seed each call.
+            byte[] rec = new byte[RecordSize];
+            Array.Copy(data, offset, rec, 0, RecordSize);
+            Decrypt(rec);
+            offset += RecordSize;
+
+            // OBJ record layout (OBJECTS.H): num@16, type@20, inuse@32 (int32 LE).
+            int num    = BitConverter.ToInt32(rec, 16);
+            int typeRaw = BitConverter.ToInt32(rec, 20);
+            int inuseRaw = BitConverter.ToInt32(rec, 32);
+
+            // Bound-check type: valid range is 0..23 (LastObject=25 is a sentinel; 24 is undefined).
+            if (typeRaw < 0 || typeRaw > 23)
+                continue;
+
+            var type = (ObjType)typeRaw;
+            bool inuse = inuseRaw != 0;
+
+            inv.Load(type, num, inuse);
+        }
+
+        // Restore equipped special weapon — mirrors RAP_LoadPlayer:279-282:
+        //   if (!OBJS_IsEquip(plr.sweapon)) OBJS_GetNext();
+        // If sweapon is in range and the type is owned + equipped, use it directly.
+        // Otherwise, call GetNext() to pick the next valid owned special.
+        bool sweaponIsValid = sweapon >= 0 && sweapon <= 23;
+        if (sweaponIsValid)
+        {
+            var swType = (ObjType)sweapon;
+            if (inv.IsEquip(swType) && ObjLib.Of(swType).SpecialW)
+                inv.EquippedSpecial = swType;
+            else
+                inv.GetNext();
+        }
+        else
+        {
+            inv.GetNext();
+        }
+
+        return inv;
+    }
+
     private static string[] CandidateDirectories(string? explicitDirectory)
     {
         if (!string.IsNullOrWhiteSpace(explicitDirectory))

@@ -199,6 +199,44 @@ public class PilotSaveStoreTests
         }
     }
 
+    // -----------------------------------------------------------------------
+    // Task 2.2 — LoadInventory tests
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void Loaded_inventory_round_trips_objs()
+    {
+        using var tmp = new TempDir();
+        WriteFakePilot(tmp.Path, slot: 0, name: "A", callsign: "B", idPic: 0, score: 5000u,
+            sweapon: (int)ObjType.MiniGun, curGame: 0, gameWave: new[] { 0, 0, 0 }, diff: new[] { 1, 1, 1, 1 },
+            trainFlag: false, finTrain: false,
+            objs: new[] {
+                (ObjType.ForwardGuns, 1, true),
+                (ObjType.MiniGun,     1, true),
+                (ObjType.MegaBomb,    3, false),
+                (ObjType.Energy,     75, false),
+            });
+        var inv = PilotSaveStore.LoadInventory(Path.Combine(tmp.Path, "CHAR0000.FIL"));
+        Assert.True(inv.IsEquip(ObjType.ForwardGuns));
+        Assert.Equal(3, inv.GetAmt(ObjType.MegaBomb));
+        Assert.Equal(75, inv.GetAmt(ObjType.Energy));
+        Assert.Equal(ObjType.MiniGun, inv.EquippedSpecial);   // sweapon applied + valid
+    }
+
+    [Theory]
+    [MemberData(nameof(InventoryGen.RandomInventories), 50, MemberType = typeof(InventoryGen))]
+    public void Save_then_load_is_identity((ObjType type, int num, bool inuse)[] objs, int sweapon)
+    {
+        using var tmp = new TempDir();
+        WriteFakePilot(tmp.Path, slot: 0, name: "X", callsign: "Y", idPic: 0, score: 0u,
+            sweapon: sweapon, curGame: 0, gameWave: new[] { 0, 0, 0 }, diff: new[] { 0, 0, 0, 0 },
+            trainFlag: false, finTrain: false,
+            objs: objs);
+        var inv = PilotSaveStore.LoadInventory(Path.Combine(tmp.Path, "CHAR0000.FIL"));
+        foreach (var (t, n, _) in objs)
+            Assert.Equal(n, inv.GetAmt(t));
+    }
+
     internal sealed class TempDir : IDisposable
     {
         public string Path { get; }

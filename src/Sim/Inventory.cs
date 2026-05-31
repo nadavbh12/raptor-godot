@@ -141,11 +141,19 @@ public sealed class Inventory
     // OBJS_GetAmt — OBJECTS.C:1007-1021
     // -----------------------------------------------------------------------
     /// <summary>
-    /// Returns the Num of the equipped (p_objs) slot, or 0 if not equipped.
+    /// Returns the Num of the slot for <paramref name="type"/>, or 0 if no slot exists.
+    ///
+    /// DEVIATION FROM C OBJS_GetAmt: C's version reads p_objs[type] which is only set
+    /// when inuse=true, so it returns 0 for un-equipped items. We return Num regardless
+    /// of InUse so that save/load round-trips are correct: OBJS_Load can restore a slot
+    /// with inuse=false (representing a purchased-but-not-equipped item) and GetAmt
+    /// must still report the saved quantity. No existing test relied on GetAmt returning
+    /// 0 for an un-equipped-but-owned slot; InUse=false means IsEquip returns false,
+    /// which is the meaningful gameplay predicate.
     /// </summary>
     public int GetAmt(ObjType type)
     {
-        if (_slots.TryGetValue(type, out var slot) && slot.InUse)
+        if (_slots.TryGetValue(type, out var slot))
             return slot.Num;
         return 0;
     }
@@ -206,6 +214,26 @@ public sealed class Inventory
         }
 
         EquippedSpecial = setval;
+    }
+
+    // -----------------------------------------------------------------------
+    // OBJS_Load — OBJECTS.C:708-732
+    // -----------------------------------------------------------------------
+    /// <summary>
+    /// Rebuilds one inventory slot from a saved OBJ record.
+    /// Mirrors C OBJS_Load: allocates/overwrites the slot, sets Num and InUse,
+    /// and — if inuse — registers the type as equipped (p_objs[type] = cur).
+    ///
+    /// Does NOT touch EquippedSpecial (sweapon). In C, RAP_LoadPlayer restores
+    /// sweapon after the OBJS_Load loop via <c>if (!OBJS_IsEquip(plr.sweapon)) OBJS_GetNext()</c>.
+    /// The caller (<see cref="PilotSaveStore.LoadInventory"/>) is responsible for that step.
+    /// </summary>
+    public void Load(ObjType type, int num, bool inuse)
+    {
+        // Overwrite any existing slot for this type (mirrors OBJS_Get() + fresh assignment).
+        var slot = new ObjSlot { Num = num, InUse = inuse };
+        _slots[type] = slot;
+        // Note: EquippedSpecial deliberately not set here — mirrors C OBJS_Load.
     }
 
     // -----------------------------------------------------------------------
