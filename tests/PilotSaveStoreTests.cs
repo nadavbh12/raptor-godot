@@ -218,6 +218,7 @@ public class PilotSaveStoreTests
             });
         var inv = PilotSaveStore.LoadInventory(Path.Combine(tmp.Path, "CHAR0000.FIL"));
         Assert.True(inv.IsEquip(ObjType.ForwardGuns));
+        Assert.True(inv.IsEquip(ObjType.MiniGun));
         Assert.Equal(3, inv.GetAmt(ObjType.MegaBomb));
         Assert.Equal(75, inv.GetAmt(ObjType.Energy));
         Assert.Equal(ObjType.MiniGun, inv.EquippedSpecial);   // sweapon applied + valid
@@ -233,8 +234,11 @@ public class PilotSaveStoreTests
             trainFlag: false, finTrain: false,
             objs: objs);
         var inv = PilotSaveStore.LoadInventory(Path.Combine(tmp.Path, "CHAR0000.FIL"));
-        foreach (var (t, n, _) in objs)
+        foreach (var (t, n, inuse) in objs)
+        {
             Assert.Equal(n, inv.GetAmt(t));
+            Assert.Equal(inuse, inv.IsEquip(t));
+        }
     }
 
     internal sealed class TempDir : IDisposable
