@@ -52,14 +52,21 @@ public class BonusEffectDispatcherTests
     }
 
     [Fact]
-    public void Super_shield_heals_to_full()
+    public void Super_shield_pickup_adds_persistent_object_not_heal()
     {
+        // BONUS.C:251 → OBJS_Add(S_SUPER_SHIELD): a super-shield pickup is a
+        // persistent absorbing object (num = start_cnt = MAX_SHIELD = 100), NOT an
+        // instant heal of the energy bar. OBJS_SubEnergy (OBJECTS.C:1231) drains the
+        // super-shield slot before energy. So the pickup must route through
+        // Inventory.Add — leaving HealAmount untouched (no energy-bar heal).
         var inv = new Inventory();
         var ps = new PlayerShooter(inv);
         var r = BonusEffectDispatcher.Apply(objType: 15 /* SuperShield */, ps, inv, MaxShield);
         Assert.False(r.GrantedWeapon);
-        Assert.Equal(MaxShield, r.HealAmount);
+        Assert.Equal(0, r.HealAmount);          // no energy-bar heal
         Assert.Equal(0u, r.ScoreAdd);
+        Assert.True(inv.IsEquip(ObjType.SuperShield));
+        Assert.Equal(100, inv.GetAmt(ObjType.SuperShield));   // start_cnt = MAX_SHIELD
     }
 
     [Fact]

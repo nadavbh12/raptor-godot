@@ -10,8 +10,8 @@ namespace Raptor.Sim.Bonus;
 ///   S_PLASMA_GUNS (1)         — adds to weapon inventory.
 ///   S_MICRO_MISSLE (2)        — adds to weapon inventory.
 ///   S_DUMB_MISSLE..S_DEATH_RAY (3..14) — adds to OwnedSpecials and sets active.
-///   S_SUPER_SHIELD (15)       — Heal = MaxShield (full restore).
-///   S_ENERGY (16)             — Heal = MaxShield / 4 (BONUS.C:214).
+///   S_SUPER_SHIELD (15)       — OBJS_Add: persistent absorbing object (BONUS.C:251).
+///   S_ENERGY (16)             — Heal = MaxShield / 4 via AddEnergy (BONUS.C:214,249).
 ///   S_DETECT (17)             — records the obj slot in Inventory and sets DetectorActivated; moneyflag = FALSE → no score.
 ///   S_ITEMBUY1..S_ITEMBUY6 (18..24 in extracted map data) — adds lib->cost to plr.score (OBJECTS.C:706-710).
 ///
@@ -51,7 +51,11 @@ public static class BonusEffectDispatcher
         switch (objType)
         {
             case 15:                    // S_SUPER_SHIELD
-                r.HealAmount = maxShield;
+                // BONUS.C:251 → OBJS_Add(S_SUPER_SHIELD): a persistent absorbing
+                // object (num = start_cnt = MAX_SHIELD), NOT an instant heal of the
+                // energy bar. OBJS_SubEnergy (OBJECTS.C:1231) drains the super-shield
+                // slot before energy; AddEnergy spills a quarter into it at max energy.
+                inventory.Add(ObjType.SuperShield);
                 break;
             case 16:                    // S_ENERGY
                 r.HealAmount = maxShield / 4;
