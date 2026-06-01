@@ -146,6 +146,7 @@ public partial class WaveController : Node
     // set by the 12-scenario L2a gate, so the default code path is unchanged.
     private bool _godmode = false;                       // RAPTOR_GODMODE: player invuln
     private int _bossLowHp = 0;                          // RAPTOR_BOSS_LOWHP: clamp boss hits at spawn
+    private bool _forceSecret = false;                   // RAPTOR_FORCE_SECRET: unlock secret-tier enemies (ES_LASER)
     private readonly List<ObjType> _grantTypes = new();  // RAPTOR_GRANT: items to grant per wave
     private int _paletteStuffCnt = 0;
     private bool _skipInitialPaletteStuff = false;
@@ -223,6 +224,13 @@ public partial class WaveController : Node
     //   other → EB_NOT_USED = 64
     // cur_diff for DIFF_2 (Normal, the default for a new pilot pressing Return on
     // the difficulty dialog default "MEDIUM"): EB_EASY_LEVEL | EB_MED_LEVEL = 24.
+    // Secret tiers (ENEMY.H): map levels 0/1/2 = E_SECRET_1/2/3 → these bits.
+    // Only ever in cur_diff once the three secret areas are found (WINDOWS.C:1617);
+    // the RAPTOR_FORCE_SECRET capture hook ORs them in to make the wave-8 ES_LASER
+    // secret enemy spawnable for visual review.
+    private const int EB_SECRET_1    = 1;
+    private const int EB_SECRET_2    = 2;
+    private const int EB_SECRET_3    = 4;
     private const int EB_EASY_LEVEL  = 8;
     private const int EB_MED_LEVEL   = 16;
     private const int EB_HARD_LEVEL  = 32;
@@ -235,8 +243,11 @@ public partial class WaveController : Node
     /// Maps a raw CSPRITE.level value to the corresponding EB_ bitmask.
     /// Mirrors the switch in ENEMY_LoadSprites (LOADSAVE.C RAP_SetPlayerDiff).
     /// </summary>
-    private static int GetEbLevel(int rawLevel) => rawLevel switch
+    internal static int GetEbLevel(int rawLevel) => rawLevel switch
     {
+        0 => EB_SECRET_1,   // E_SECRET_1
+        1 => EB_SECRET_2,   // E_SECRET_2
+        2 => EB_SECRET_3,   // E_SECRET_3
         3 => EB_EASY_LEVEL,
         4 => EB_MED_LEVEL,
         5 => EB_HARD_LEVEL,
@@ -417,6 +428,7 @@ public partial class WaveController : Node
         _debugDemoReplay = OS.GetEnvironment("RAPTOR_DEBUG_DEMO") == "1";
         _godmode = OS.GetEnvironment("RAPTOR_GODMODE") == "1";
         int.TryParse(OS.GetEnvironment("RAPTOR_BOSS_LOWHP"), out _bossLowHp);
+        _forceSecret = OS.GetEnvironment("RAPTOR_FORCE_SECRET") == "1";
         _grantTypes.Clear();
         _grantTypes.AddRange(ParseGrant(OS.GetEnvironment("RAPTOR_GRANT")));
 
@@ -677,6 +689,10 @@ public partial class WaveController : Node
         // bonus pickup (BonusEffectDispatcher) which sets both — the scanner /
         // boss-health bar (DrawScannerHud) is gated on HasSecretsDetector.
         if (_grantTypes.Contains(ObjType.Detect)) HasSecretsDetector = true;
+        // Capture hook: unlock the three secret tiers so the wave-8 ES_LASER secret
+        // enemy spawns (mirrors C WINDOWS.C:1617 finding all secret areas). Inert
+        // unless RAPTOR_FORCE_SECRET is set — no scenario sets it.
+        if (_forceSecret) _curDiff |= EB_SECRET_1 | EB_SECRET_2 | EB_SECRET_3;
     }
 
     private void DoInitialSpawn()

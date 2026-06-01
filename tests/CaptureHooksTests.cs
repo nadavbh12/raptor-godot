@@ -75,6 +75,26 @@ public class CaptureHooksTests
         Assert.Equal(350, e.Hits);
     }
 
+    // ── secret-tier spawn mapping (WaveController.GetEbLevel) ──────────────────
+
+    [Theory]
+    [InlineData(0, 1)]   // E_SECRET_1 → EB_SECRET_1
+    [InlineData(1, 2)]   // E_SECRET_2 → EB_SECRET_2
+    [InlineData(2, 4)]   // E_SECRET_3 → EB_SECRET_3
+    [InlineData(3, 8)]   // E_EASY_LEVEL
+    [InlineData(4, 16)]  // E_MED_LEVEL
+    [InlineData(5, 32)]  // E_HARD_LEVEL
+    public void GetEbLevel_maps_secret_tiers_so_secret_enemies_can_spawn(int rawLevel, int expectedBit)
+    {
+        // Regression: secret levels 0/1/2 previously fell through to EB_NOT_USED,
+        // so the wave-8 ES_LASER secret enemy could never spawn. Parity-inert: the
+        // secret bits are absent from cur_diff in every scenario, so a secret-level
+        // sprite still doesn't spawn unless RAPTOR_FORCE_SECRET adds them.
+        Assert.Equal(expectedBit, WaveController.GetEbLevel(rawLevel));
+        const int normalDiff = 8 | 16 | 32;   // EASY|MED|HARD, no secret bits
+        Assert.Equal(rawLevel <= 2 ? 0 : expectedBit, WaveController.GetEbLevel(rawLevel) & normalDiff);
+    }
+
     // ── shot_map.tsv InvariantCulture formatting (DebugRenderer.FormatShotMapRow) ─
 
     [Fact]
