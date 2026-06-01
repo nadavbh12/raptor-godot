@@ -633,8 +633,8 @@ public partial class DebugRenderer : Node2D
             int spawnIter = _wave.GameLoopIter;
             foreach (var m in _wave.MuzzlesThisTick)
                 _effects.Spawn("GUNSTR_BLK", totalFrames: 4, x: m.X, y: m.Y, spawnIter: spawnIter, ground: false);
+            _effects.Prune(_wave.GameLoopIter);
         }
-        _effects.Prune(_wave.GameLoopIter);
 
         DrawExplosions();
         DrawViewEffects();
