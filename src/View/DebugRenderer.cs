@@ -418,7 +418,25 @@ public partial class DebugRenderer : Node2D
         if (string.IsNullOrEmpty(_shotMapPath)) return;
         string fileName = Path.GetFileName(path);
         File.AppendAllText(_shotMapPath,
-            $"{fileName}\t{savedFc}\t{_lastDrawnFc}\t{_lastDrawnIter}\t{_lastDrawnScore}\t{_lastDrawnShield}\t{_lastDrawnEnemies}\t{_lastDrawnPbullets}\t{_lastDrawnEbullets}\n");
+            FormatShotMapRow(fileName, savedFc, _lastDrawnFc, _lastDrawnIter, _lastDrawnScore,
+                _lastDrawnShield, _lastDrawnEnemies, _lastDrawnPbullets, _lastDrawnEbullets));
+    }
+
+    /// <summary>
+    /// Format one shot_map.tsv row with InvariantCulture. Critical: a Hebrew/RTL
+    /// system locale otherwise prefixes negative ints (e.g. iter=-1 before the
+    /// first in-game frame) with a bidi mark (U+200E), which breaks the int()
+    /// parse in the visual-audit alignment tools. Pure/testable.
+    /// </summary>
+    internal static string FormatShotMapRow(string fileName, int savedFc, int drawnFc, int drawnIter,
+        uint score, int shield, int enemies, int pbullets, int ebullets)
+    {
+        var ci = System.Globalization.CultureInfo.InvariantCulture;
+        return string.Join("\t",
+            fileName,
+            savedFc.ToString(ci), drawnFc.ToString(ci), drawnIter.ToString(ci),
+            score.ToString(ci), shield.ToString(ci), enemies.ToString(ci),
+            pbullets.ToString(ci), ebullets.ToString(ci)) + "\n";
     }
 
     /// <summary>

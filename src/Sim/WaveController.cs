@@ -139,6 +139,14 @@ public partial class WaveController : Node
     private InputState? _testInteractiveInput;
     private readonly Queue<ObjType> _testSpecialSelects = new();
     private bool _debugDemoReplay = false;
+    // ── Capture/test-only hooks (env-gated, OFF by default → parity-inert) ──
+    // Used only by the cosmetic visual-capture harness to force states that are
+    // unreachable in the parity scenarios (reaching late-wave bosses, owning
+    // detect/super-shield/megabomb, a low-health boss). None of these envs are
+    // set by the 12-scenario L2a gate, so the default code path is unchanged.
+    private bool _godmode = false;                       // RAPTOR_GODMODE: player invuln
+    private int _bossLowHp = 0;                          // RAPTOR_BOSS_LOWHP: clamp boss hits at spawn
+    private readonly List<ObjType> _grantTypes = new();  // RAPTOR_GRANT: items to grant per wave
     private int _paletteStuffCnt = 0;
     private bool _skipInitialPaletteStuff = false;
 
@@ -407,6 +415,10 @@ public partial class WaveController : Node
 
         _assetsRoot = ProjectSettings.GlobalizePath("res://assets");
         _debugDemoReplay = OS.GetEnvironment("RAPTOR_DEBUG_DEMO") == "1";
+        _godmode = OS.GetEnvironment("RAPTOR_GODMODE") == "1";
+        int.TryParse(OS.GetEnvironment("RAPTOR_BOSS_LOWHP"), out _bossLowHp);
+        _grantTypes.Clear();
+        _grantTypes.AddRange(ParseGrant(OS.GetEnvironment("RAPTOR_GRANT")));
 
         var menuController = GetNodeOrNull<MenuController>("../MenuController");
         if (menuController != null)
@@ -447,6 +459,25 @@ public partial class WaveController : Node
             if (_pendingDemoStartFrame >= 0) return -1;
             if (_demoReplay != null) return _demoRecordIndex;
             return int.MinValue;
+        }
+    }
+
+    /// <summary>
+    /// Parse the RAPTOR_GRANT capture env (comma/space/semicolon list of item
+    /// names) into the ObjTypes to grant. Unknown names are ignored. Pure and
+    /// testable; returns empty for null/blank (the parity-inert default).
+    /// </summary>
+    internal static IEnumerable<ObjType> ParseGrant(string? env)
+    {
+        if (string.IsNullOrWhiteSpace(env)) yield break;
+        foreach (var raw in env.Split(new[] { ',', ' ', ';' }, StringSplitOptions.RemoveEmptyEntries))
+        {
+            switch (raw.Trim().ToLowerInvariant())
+            {
+                case "detect":      yield return ObjType.Detect;      break;
+                case "supershield": yield return ObjType.SuperShield; break;
+                case "megabomb":    yield return ObjType.MegaBomb;    break;
+            }
         }
     }
 
@@ -637,6 +668,11 @@ public partial class WaveController : Node
         // ENEMY_DoSprites is called once before the main loop, spawning the initial
         // enemies. We replicate that here so fc=0 shows the correct enemy count.
         DoInitialSpawn();
+
+        // Capture hook: grant items requested via RAPTOR_GRANT (parity-inert —
+        // _grantTypes is empty unless the env is set). Applied after the resets
+        // above so nothing wipes them; Inventory.Add respects each item's cap.
+        foreach (var t in _grantTypes) Inventory.Add(t);
     }
 
     private void DoInitialSpawn()
@@ -684,7 +720,9 @@ public partial class WaveController : Node
                                  + MAP_BLOCKSIZE / 2 - meta.HalfX;
                     int mapY   = _tileyoff - ((tiley - cur.Y) * MAP_BLOCKSIZE) - 97
                                  + MAP_BLOCKSIZE / 2 - meta.HalfY;
-                    _enemies.Add(new EnemyLogic(meta, spawnX, mapY));
+                    var enemy = new EnemyLogic(meta, spawnX, mapY);
+                    if (_bossLowHp > 0 && enemy.IsBoss) enemy.DebugClampHits(_bossLowHp);
+                    _enemies.Add(enemy);
                 }
 
                 _spawnIdx++;
@@ -1438,6 +1476,7 @@ public partial class WaveController : Node
     /// </summary>
     private void ApplyPlayerDamage(int amt)
     {
+        if (_godmode) return;  // RAPTOR_GODMODE capture hook: invuln (parity-inert; env off in all scenarios).
         int dmg = GateSubEnergyDamage(amt, endWaveActive: _endWaveCountdown >= 0, _curPlayerDiff);
         if (dmg > 0) PlayerLogic.TakeDamage(dmg);
     }

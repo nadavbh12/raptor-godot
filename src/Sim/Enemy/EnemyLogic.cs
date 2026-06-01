@@ -45,6 +45,16 @@ public sealed class EnemyLogic
     /// </summary>
     private readonly int _maxHits;
     public int MaxHits => _maxHits;
+    /// <summary>
+    /// Capture/test hook (RAPTOR_BOSS_LOWHP): clamp current hits down so the boss
+    /// low-health smoke cosmetic (hits &lt; 50) can be triggered for visual review.
+    /// MaxHits is unchanged. No-op unless <paramref name="n"/> is positive and
+    /// below current Hits — never used by the parity scenarios.
+    /// </summary>
+    internal void DebugClampHits(int n)
+    {
+        if (n > 0 && n < Hits) Hits = n;
+    }
     public bool Done { get; private set; }
     public bool Alive => Hits > 0 && !Done;
     public bool PendingRemovalDump { get; private set; }

@@ -89,7 +89,11 @@ def read_godot_shot_map(g_dir: Path) -> dict[str, dict[str, int]]:
         return {}
     rows: dict[str, dict[str, int]] = {}
     for line in shot_map.read_text(encoding="utf-8").splitlines()[1:]:
-        parts = line.split("\t")
+        # Godot C# int formatting on a Hebrew/RTL system locale prefixes negative
+        # values with a bidi mark (LRM U+200E / RLM U+200F), which breaks int().
+        # Strip them defensively (the writer is also fixed to use InvariantCulture).
+        parts = [p.replace("‎", "").replace("‏", "").strip()
+                 for p in line.split("\t")]
         if len(parts) != 9:
             continue
         file_name, saved_fc, drawn_fc, drawn_iter, score, shield, enemies, pbullets, ebullets = parts
