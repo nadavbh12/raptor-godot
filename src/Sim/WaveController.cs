@@ -184,6 +184,13 @@ public partial class WaveController : Node
     public  Inventory      Inventory     { get; } = new();
     // Shooter is initialized in the WaveController constructor body (after Inventory).
     public  PlayerShooter  Shooter       { get; }
+
+    /// <summary>
+    /// Muzzle world-positions recorded by the player shooter this tick.
+    /// View-only / parity-inert passthrough — consumed by DebugRenderer to
+    /// spawn GUNSTR_BLK muzzle-flash cosmetics. Never checkpointed.
+    /// </summary>
+    public IReadOnlyList<PlayerShooter.MuzzlePos> MuzzlesThisTick => Shooter.Muzzles;
     public  uint           Score { get; private set; } = 0;
 
     /// <summary>Forcibly set the score (e.g. when loading a saved pilot).
@@ -709,6 +716,10 @@ public partial class WaveController : Node
 
     internal void PhaseInput()
     {
+        // Clear last tick's muzzle positions before any shooting is processed.
+        // View-only / parity-inert (DebugRenderer muzzle-flash cosmetics).
+        Shooter.ClearMuzzles();
+
         if (_demoReplay != null)
         {
             if (_demoRecordIndex >= _demoReplay.Records.Count)

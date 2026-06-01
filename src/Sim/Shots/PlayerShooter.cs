@@ -27,6 +27,17 @@ public sealed class PlayerShooter
         DeterministicRandom.Enabled ||
         Environment.GetEnvironmentVariable("RAPTOR_DETERMINISTIC_MINIGUN") == "1";
 
+    public readonly record struct MuzzlePos(int X, int Y);
+    private readonly List<MuzzlePos> _muzzles = new();
+
+    /// <summary>
+    /// Read-only muzzle positions recorded since the last ClearMuzzles().
+    /// View-only / parity-inert — never checkpointed.
+    /// </summary>
+    public IReadOnlyList<MuzzlePos> Muzzles => _muzzles;
+    public void ClearMuzzles() => _muzzles.Clear();
+    private void RecordMuzzle(int x, int y) => _muzzles.Add(new MuzzlePos(x, y));
+
     // Injected inventory — owns all standing-weapon state (Task 3.3).
     // WaveController passes its canonical Inventory; tests pass new Inventory()
     // or a pre-seeded one. An empty Inventory produces the default loadout:
@@ -245,15 +256,23 @@ public sealed class PlayerShooter
                 // SHOTS.C:650-684. Two bullets: gun1 right and gun1 left (minus 1).
                 ConsumeRandomPitchSound(rng, "sound.fx_gun");
                 NextRandom(rng, lib.NumFrames, "forward.frame.r");  // cur->curframe = random(lib->numframes)
-                sink.Add(BulletLogic.PlayerStraight(
-                    spawnX: playerCx + GunOffsets.OGun1[pic], spawnY: playerCy,
-                    initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed,
-                    hlx: lib.Hlx, hly: lib.Hly, damage: lib.Hits));
+                {
+                    int fgxR = playerCx + GunOffsets.OGun1[pic];
+                    sink.Add(BulletLogic.PlayerStraight(
+                        spawnX: fgxR, spawnY: playerCy,
+                        initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed,
+                        hlx: lib.Hlx, hly: lib.Hly, damage: lib.Hits));
+                    RecordMuzzle(fgxR, playerCy);
+                }
                 NextRandom(rng, lib.NumFrames, "forward.frame.l");
-                sink.Add(BulletLogic.PlayerStraight(
-                    spawnX: playerCx - GunOffsets.OGun1[pic] - 1, spawnY: playerCy,
-                    initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed,
-                    hlx: lib.Hlx, hly: lib.Hly, damage: lib.Hits));
+                {
+                    int fgxL = playerCx - GunOffsets.OGun1[pic] - 1;
+                    sink.Add(BulletLogic.PlayerStraight(
+                        spawnX: fgxL, spawnY: playerCy,
+                        initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed,
+                        hlx: lib.Hlx, hly: lib.Hly, damage: lib.Hits));
+                    RecordMuzzle(fgxL, playerCy);
+                }
                 break;
 
             case ObjType.PlasmaGuns:
@@ -264,32 +283,49 @@ public sealed class PlayerShooter
                     spawnX: playerCx, spawnY: playerCy,
                     initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed,
                     hlx: lib.Hlx, hly: lib.Hly, damage: lib.Hits));
+                RecordMuzzle(playerCx, playerCy);
                 break;
 
             case ObjType.MicroMissile:
                 // SHOTS.C:703-733. Two bullets at gun3 ± offset.
                 ConsumeRandomPitchSound(rng, "sound.fx_gun");
-                sink.Add(BulletLogic.PlayerStraight(
-                    spawnX: playerCx + GunOffsets.OGun3[pic], spawnY: playerCy,
-                    initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed,
-                    hlx: lib.Hlx, hly: lib.Hly, damage: lib.Hits));
-                sink.Add(BulletLogic.PlayerStraight(
-                    spawnX: playerCx - GunOffsets.OGun3[pic], spawnY: playerCy,
-                    initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed,
-                    hlx: lib.Hlx, hly: lib.Hly, damage: lib.Hits));
+                {
+                    int mmxR = playerCx + GunOffsets.OGun3[pic];
+                    sink.Add(BulletLogic.PlayerStraight(
+                        spawnX: mmxR, spawnY: playerCy,
+                        initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed,
+                        hlx: lib.Hlx, hly: lib.Hly, damage: lib.Hits));
+                    RecordMuzzle(mmxR, playerCy);
+                }
+                {
+                    int mmxL = playerCx - GunOffsets.OGun3[pic];
+                    sink.Add(BulletLogic.PlayerStraight(
+                        spawnX: mmxL, spawnY: playerCy,
+                        initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed,
+                        hlx: lib.Hlx, hly: lib.Hly, damage: lib.Hits));
+                    RecordMuzzle(mmxL, playerCy);
+                }
                 break;
 
             case ObjType.MissilePods:
                 // SHOTS.C:818-848. Two bullets at gun2 ± offset, with smoke.
                 ConsumeRandomPitchSound(rng, "sound.fx_gun");
-                sink.Add(BulletLogic.PlayerStraight(
-                    spawnX: playerCx + GunOffsets.OGun2[pic], spawnY: playerCy,
-                    initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed,
-                    hlx: lib.Hlx, hly: lib.Hly, damage: lib.Hits, smoke: lib.Smoke));
-                sink.Add(BulletLogic.PlayerStraight(
-                    spawnX: playerCx - GunOffsets.OGun2[pic], spawnY: playerCy,
-                    initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed,
-                    hlx: lib.Hlx, hly: lib.Hly, damage: lib.Hits, smoke: lib.Smoke));
+                {
+                    int mpxR = playerCx + GunOffsets.OGun2[pic];
+                    sink.Add(BulletLogic.PlayerStraight(
+                        spawnX: mpxR, spawnY: playerCy,
+                        initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed,
+                        hlx: lib.Hlx, hly: lib.Hly, damage: lib.Hits, smoke: lib.Smoke));
+                    RecordMuzzle(mpxR, playerCy);
+                }
+                {
+                    int mpxL = playerCx - GunOffsets.OGun2[pic];
+                    sink.Add(BulletLogic.PlayerStraight(
+                        spawnX: mpxL, spawnY: playerCy,
+                        initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed,
+                        hlx: lib.Hlx, hly: lib.Hly, damage: lib.Hits, smoke: lib.Smoke));
+                    RecordMuzzle(mpxL, playerCy);
+                }
                 break;
 
             case ObjType.AirMissile:
@@ -297,14 +333,22 @@ public sealed class PlayerShooter
             case ObjType.GrdMissile:
                 // SHOTS.C:880-908. Two bullets at gun2 ± offset, S_GROUND hit.
                 ConsumeRandomPitchSound(rng, "sound.fx_missle");
-                sink.Add(BulletLogic.PlayerStraight(
-                    spawnX: playerCx + GunOffsets.OGun2[pic], spawnY: playerCy,
-                    initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed,
-                    hlx: lib.Hlx, hly: lib.Hly, damage: lib.Hits, smoke: lib.Smoke));
-                sink.Add(BulletLogic.PlayerStraight(
-                    spawnX: playerCx - GunOffsets.OGun2[pic], spawnY: playerCy,
-                    initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed,
-                    hlx: lib.Hlx, hly: lib.Hly, damage: lib.Hits, smoke: lib.Smoke));
+                {
+                    int amxR = playerCx + GunOffsets.OGun2[pic];
+                    sink.Add(BulletLogic.PlayerStraight(
+                        spawnX: amxR, spawnY: playerCy,
+                        initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed,
+                        hlx: lib.Hlx, hly: lib.Hly, damage: lib.Hits, smoke: lib.Smoke));
+                    RecordMuzzle(amxR, playerCy);
+                }
+                {
+                    int amxL = playerCx - GunOffsets.OGun2[pic];
+                    sink.Add(BulletLogic.PlayerStraight(
+                        spawnX: amxL, spawnY: playerCy,
+                        initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed,
+                        hlx: lib.Hlx, hly: lib.Hly, damage: lib.Hits, smoke: lib.Smoke));
+                    RecordMuzzle(amxL, playerCy);
+                }
                 break;
 
             case ObjType.Bomb:
