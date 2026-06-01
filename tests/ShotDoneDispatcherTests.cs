@@ -94,6 +94,36 @@ public class ShotDoneDispatcherTests
     }
 
     [Fact]
+    public void MegaBomb_dispatch_reports_detonation_other_branches_do_not()
+    {
+        // The MegaBombDetonated flag drives the parity-inert View flash; it must
+        // be true only on the actual MEGA_BOMB detonation branch.
+        var bomb = BulletLogic.AimedAt(BulletKind.Player, 160, 176, 160, 75,
+            initSpeed: 1, maxSpeed: 1, damage: 8);
+        bomb.PlayerWeapon = ObjType.MegaBomb;
+        var bombResult = ShotDoneDispatcher.Dispatch(bomb,
+            new List<BulletLogic>(), new List<EnemyLogic>(), rng: null);
+        Assert.True(bombResult.MegaBombDetonated);
+
+        var gun = BulletLogic.AimedAt(BulletKind.Player, 100, 100, 150, 100,
+            initSpeed: 1, maxSpeed: 1, damage: 1);
+        gun.PlayerWeapon = ObjType.MiniGun;
+        var gunResult = ShotDoneDispatcher.Dispatch(gun,
+            new List<BulletLogic>(), new List<EnemyLogic>(), rng: null);
+        Assert.False(gunResult.MegaBombDetonated);
+
+        // Delayed re-init path (not a detonation) must not signal either.
+        var delayed = BulletLogic.AimedAt(BulletKind.Player, 160, 100, 175, 105,
+            initSpeed: 1, maxSpeed: 1, damage: 1);
+        delayed.PlayerWeapon = ObjType.DumbMissile;
+        delayed.Delayed = true;
+        for (int i = 0; i < 50 && !delayed.ReachedTarget; i++) delayed.Tick();
+        var delayedResult = ShotDoneDispatcher.Dispatch(delayed,
+            new List<BulletLogic>(), new List<EnemyLogic>(), rng: new Random(123));
+        Assert.False(delayedResult.MegaBombDetonated);
+    }
+
+    [Fact]
     public void MegaBomb_dispatch_damages_all_destructible_tiles_by_twenty_and_reports_bounty()
     {
         // SHOTS.C:1234: MegaBomb calls TILE_DamageAll(), which subtracts 20

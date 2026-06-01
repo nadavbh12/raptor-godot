@@ -372,6 +372,11 @@ public partial class WaveController : Node
     // ── Scheduler ─────────────────────────────────────────────────────────────
     private readonly GamePhaseScheduler _scheduler;
 
+    // ── Megabomb-detonation View signal (parity-inert; never serialized) ──────
+    private readonly Shots.MegaBombFlash _megaFlash = new();
+    public void SignalMegaBombDetonated() => _megaFlash.Signal();
+    public bool ConsumeMegaBombDetonated() => _megaFlash.Consume();
+
     public WaveController()
     {
         // Shooter must be wired to this.Inventory (Task 3.3).
@@ -1405,6 +1410,7 @@ public partial class WaveController : Node
     {
         var result = ShotDoneDispatcher.Dispatch(b, _enemyBullets, _enemies, _shooterRng, _tileSlice);
         if (result.TileBounty > 0) Score += (uint)result.TileBounty;
+        if (result.MegaBombDetonated) SignalMegaBombDetonated();
         SyncTileSliceToBacking();
     }
 

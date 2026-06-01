@@ -26,12 +26,17 @@ internal static class ShotDoneDispatcher
 {
     public readonly struct DispatchResult
     {
-        public DispatchResult(int tileBounty)
+        public DispatchResult(int tileBounty, bool megaBombDetonated = false)
         {
             TileBounty = tileBounty;
+            MegaBombDetonated = megaBombDetonated;
         }
 
         public int TileBounty { get; }
+
+        /// True only on the tick a MEGA_BOMB shot_done actually detonates.
+        /// Parity-inert: drives a transient View flash, never sim state.
+        public bool MegaBombDetonated { get; }
     }
 
     public static DispatchResult Dispatch(BulletLogic b,
@@ -54,7 +59,7 @@ internal static class ShotDoneDispatcher
                 foreach (var e in enemies) if (e.Alive) e.TakeDamage(b.Damage, deferRemovalForDump: true);
                 int bounty = tiles == null ? 0 : DamageAllTiles(tiles, damage: 20);
                 b.Kill();
-                return new DispatchResult(bounty);
+                return new DispatchResult(bounty, megaBombDetonated: true);
             case ObjType.Turret:
                 return new DispatchResult(0);
             default:
