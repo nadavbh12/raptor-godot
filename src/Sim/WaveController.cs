@@ -351,6 +351,15 @@ public partial class WaveController : Node
     public int TileYOff => _tileyoff;
     /// <summary>Current top-of-screen row in the tile grid (mirrors C's tilepos).</summary>
     public int TilePos  => _tilepos;
+    /// <summary>
+    /// Whether the tile map is advancing this tick (mirrors C's scroll_flag,
+    /// TILE.C:240/279/472). In C scroll_flag starts TRUE and goes FALSE only at
+    /// the very end of the map (last_tile && tileyoff >= 0). The port stops
+    /// advancing _tileyoff/_tilepos exactly when PhaseSpawn early-returns on
+    /// _endWaveFlag, which also freezes the visible scroll — so !_endWaveFlag is
+    /// true on precisely the ticks the map advances by 1px. Read-only / parity-inert.
+    /// </summary>
+    public bool IsScrolling => !_endWaveFlag;
     public int MapRows  => MAP_ROWS;
     public int MapCols  => MAP_COLS;
     public int MapOnScreen   => MAP_ONSCREEN;

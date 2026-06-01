@@ -1476,9 +1476,21 @@ public partial class DebugRenderer : Node2D
             if (tex == null) continue;
             int dw = (int)tex.GetWidth();
             int dh = (int)tex.GetHeight();
-            DrawTexture(tex, new Vector2(ex.X - dw / 2, ex.Y - dh / 2));
+            // ANIMS.C:418 — GROUND-family anims drift +1px Y per frame while the
+            // map is scrolling. Applied as a render-time offset only; the sim's
+            // stored explosion position is untouched (parity-inert).
+            int driftY = IsGroundFamily(family) ? GroundExplosionDrift.YOffset(frame, _wave.IsScrolling) : 0;
+            DrawTexture(tex, new Vector2(ex.X - dw / 2, ex.Y - dh / 2 + driftY));
         }
     }
+
+    // ANIMS.C ANIMS_Init GROUND registrations: GEXPLO_BLK, BOOM_PIC, SPLAT_BLK,
+    // BIGSPLAT_BLK, EXPLO2_BLK, FLARE_PIC, SPARKLE_PIC. Of those, only the two
+    // below are reachable through this renderer's ExpAnim table (the others are
+    // never produced by the sim explosion path). LGFLAK_BLK / SMFLAK_BLK /
+    // NRGBANG_BLK in ExpAnim are HIGH_AIR in C, so they do NOT drift.
+    private static bool IsGroundFamily(string f) =>
+        f is "GEXPLO_BLK" or "EXPLO2_BLK";
 
     private Texture2D? LoadBlkFrame(string family, int frame)
     {
