@@ -39,4 +39,24 @@ public class ViewEffectsTests
         fx.Prune(currentIter: 100);
         Assert.Equal(0, fx.Count);
     }
+
+    [Fact]
+    public void Prune_retains_still_active_entries()
+    {
+        var fx = new ViewEffects();
+        fx.Spawn("GUNSTR_BLK", totalFrames: 4, x: 0, y: 0, spawnIter: 0, ground: false);
+        fx.Prune(currentIter: 3); // frame 3 of 4 — still alive
+        Assert.Equal(1, fx.Count);
+        fx.Prune(currentIter: 4); // now expired
+        Assert.Equal(0, fx.Count);
+    }
+
+    [Fact]
+    public void Clear_empties_the_list()
+    {
+        var fx = new ViewEffects();
+        fx.Spawn("X", 1, 0, 0, 0, false);
+        fx.Clear();
+        Assert.Equal(0, fx.Count);
+    }
 }

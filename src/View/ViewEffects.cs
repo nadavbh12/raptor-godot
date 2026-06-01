@@ -8,7 +8,7 @@ namespace Raptor.View;
 /// mirroring WaveController.AnimationAge.
 internal sealed class ViewEffects
 {
-    public readonly record struct Anim(string Family, int TotalFrames, int X, int Y, int SpawnIter, bool Ground);
+    private readonly record struct Anim(string Family, int TotalFrames, int X, int Y, int SpawnIter, bool Ground);
     public readonly record struct ActiveAnim(string Family, int Frame, int X, int Y, bool Ground);
 
     private readonly List<Anim> _anims = new();
