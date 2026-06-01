@@ -1645,9 +1645,18 @@ public partial class DebugRenderer : Node2D
     private void DrawScannerHud()
     {
         if (_wave == null || !_wave.HasSecretsDetector) return;
-        foreach (var line in HudScannerIndicator.BuildIdle(_scannerState.CurrentDpos))
-            DrawRect(new Rect2(line.X, line.Y, 1, line.Height),
-                ScannerPaletteColor(line.PaletteIndex));
+        int dmg = _wave.GetBaseDamage();
+        if (dmg > 0)
+        {
+            foreach (var b in HudScannerIndicator.BuildDamage(dmg))
+                DrawRect(new Rect2(b.X, b.Y, b.W, b.H), ScannerPaletteColor(b.PaletteIndex));
+        }
+        else
+        {
+            foreach (var line in HudScannerIndicator.BuildIdle(_scannerState.CurrentDpos))
+                DrawRect(new Rect2(line.X, line.Y, 1, line.Height),
+                    ScannerPaletteColor(line.PaletteIndex));
+        }
         if (_lastScannerFrame != SimClock.Frame)
         {
             _scannerState.AfterSimTick();
