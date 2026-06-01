@@ -693,6 +693,7 @@ public partial class DebugRenderer : Node2D
         DrawShieldHud();
         DrawCurrentWeaponHud();
         DrawMegaBombHud();
+        DrawSuperShieldHud();
         DrawScannerHud();
         DrawWarningHud();
 
@@ -1727,6 +1728,17 @@ public partial class DebugRenderer : Node2D
         if (tex == null) return;
         foreach (var pos in HudMegaBombIndicator.Build(megaBombCount))
             DrawTexture(tex, new Vector2(pos.X, pos.Y));
+    }
+
+    private void DrawSuperShieldHud()
+    {
+        if (_wave == null) return;
+        int count = _wave.Inventory.GetTotal(ObjType.SuperShield);
+        if (count <= 0) return;
+        var tex = LoadSprite("SMSHIELD_PIC");
+        if (tex == null) return;
+        foreach (var p in HudSuperShieldIndicator.Build(count))
+            DrawTexture(tex, new Vector2(p.X, p.Y));
     }
 
     private void DrawScannerHud()
