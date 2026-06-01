@@ -39,10 +39,12 @@ public sealed class EnemyLogic
     /// <summary>True iff this enemy is flagged as a boss (C SPRITE.bossflag != 0).</summary>
     public bool IsBoss => Meta.BossFlag != 0;
     /// <summary>
-    /// Base/max hit points (C lib->hits). Matches the constructor's clamp so
-    /// Hits/MaxHits stay consistent for the boss-health-% computation.
+    /// Base/max hit points (C lib->hits). Immutable; Hits starts equal to this
+    /// and decreases as the enemy takes damage. Single source of truth for the
+    /// clamp so Hits/MaxHits stay consistent for the boss-health-% computation.
     /// </summary>
-    public int MaxHits => Meta.Hits > 0 ? Meta.Hits : 1;
+    private readonly int _maxHits;
+    public int MaxHits => _maxHits;
     public bool Done { get; private set; }
     public bool Alive => Hits > 0 && !Done;
     public bool PendingRemovalDump { get; private set; }
@@ -124,7 +126,8 @@ public sealed class EnemyLogic
     public EnemyLogic(SpriteMeta meta, int spawnX, int mapY)
     {
         Meta = meta;
-        Hits = meta.Hits > 0 ? meta.Hits : 1;
+        _maxHits = meta.Hits > 0 ? meta.Hits : 1;
+        Hits = _maxHits;
 
         _sx = spawnX;
         _sy = 100 - meta.HalfY;   // C: sy = 100 - new->hly (uses actual sprite half-height)

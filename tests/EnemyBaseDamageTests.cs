@@ -28,4 +28,19 @@ public class EnemyBaseDamageTests
             (boss: true, y: 10, hly: 12, hits: 100, maxHits: 100),
             (boss: true, y: 10, hly: 12, hits: 50,  maxHits: 100),
         }));
+
+    [Fact]
+    public void Boss_at_exactly_y_plus_hly_zero_is_included()
+        => Assert.Equal(50, WaveController.ComputeBaseDamage(
+            new[] { (boss: true, y: -12, hly: 12, hits: 50, maxHits: 100) }));
+
+    [Fact]
+    public void Boss_one_pixel_above_boundary_is_excluded()
+        => Assert.Equal(0, WaveController.ComputeBaseDamage(
+            new[] { (boss: true, y: -13, hly: 12, hits: 50, maxHits: 100) }));
+
+    [Fact]
+    public void Boss_at_full_health_is_one_hundred_percent()
+        => Assert.Equal(100, WaveController.ComputeBaseDamage(
+            new[] { (boss: true, y: 0, hly: 0, hits: 100, maxHits: 100) }));
 }

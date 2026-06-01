@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using Godot;
 using Raptor.Sim.Bonus;
 using Raptor.Sim.Bullet;
@@ -1319,6 +1320,7 @@ public partial class WaveController : Node
         {
             if (!r.boss) continue;
             if (r.y + r.hly < 0) continue;
+            // guard div-by-zero for standalone callers; via GetBaseDamage maxHits is always >= 1
             if (r.maxHits <= 0) continue;
             total += (r.hits * 100) / r.maxHits;
             nums++;
@@ -1331,7 +1333,7 @@ public partial class WaveController : Node
     /// view's scanner/boss-health bar. Pure read over the live enemy list.
     /// </summary>
     public int GetBaseDamage()
-        => ComputeBaseDamage(System.Linq.Enumerable.Select(GetEnemies(),
+        => ComputeBaseDamage(GetEnemies().Select(
             e => (e.IsBoss, e.Y, e.HalfH, e.Hits, e.MaxHits)));
 
     /// <summary>
