@@ -1467,28 +1467,32 @@ public partial class DebugRenderer : Node2D
                     ex.Y - (int)sparkTex.GetHeight() / 2));
                 continue;
             }
-            int idx = (ex.ExpType >= 0 && ex.ExpType < ExpAnim.Length)
-                ? ex.ExpType : 0;
-            var (family, total) = ExpAnim[idx];
-            int frame = WaveController.AnimationAge(gameIter, ex.StartIter);
-            if (frame < 0 || frame >= total) continue;
-            var tex = LoadBlkFrame(family, frame);
-            if (tex == null) continue;
-            int dw = (int)tex.GetWidth();
-            int dh = (int)tex.GetHeight();
-            // ANIMS.C:418 — GROUND-family anims drift +1px Y per frame while the
-            // map is scrolling. Applied as a render-time offset only; the sim's
-            // stored explosion position is untouched (parity-inert).
-            int driftY = IsGroundFamily(family) ? GroundExplosionDrift.YOffset(frame, _wave.IsScrolling) : 0;
-            DrawTexture(tex, new Vector2(ex.X - dw / 2, ex.Y - dh / 2 + driftY));
+            {
+                int idx = (ex.ExpType >= 0 && ex.ExpType < ExpAnim.Length)
+                    ? ex.ExpType : 0;
+                var (family, total) = ExpAnim[idx];
+                int age = WaveController.AnimationAge(gameIter, ex.StartIter);
+                if (age < 0 || age >= total) continue;
+                var tex = LoadBlkFrame(family, age);
+                if (tex == null) continue;
+                int dw = (int)tex.GetWidth();
+                int dh = (int)tex.GetHeight();
+                // ANIMS.C:418 — GROUND-family anims drift +1px Y per frame while the
+                // map is scrolling. Applied as a render-time offset only; the sim's
+                // stored explosion position is untouched (parity-inert).
+                int driftY = IsGroundFamily(family) ? GroundExplosionDrift.YOffset(age, _wave.IsScrolling) : 0;
+                DrawTexture(tex, new Vector2(ex.X - dw / 2, ex.Y - dh / 2 + driftY));
+            }
         }
     }
 
-    // ANIMS.C ANIMS_Init GROUND registrations: GEXPLO_BLK, BOOM_PIC, SPLAT_BLK,
-    // BIGSPLAT_BLK, EXPLO2_BLK, FLARE_PIC, SPARKLE_PIC. Of those, only the two
-    // below are reachable through this renderer's ExpAnim table (the others are
-    // never produced by the sim explosion path). LGFLAK_BLK / SMFLAK_BLK /
-    // NRGBANG_BLK in ExpAnim are HIGH_AIR in C, so they do NOT drift.
+    /// <summary>
+    /// ANIMS.C ANIMS_Init GROUND registrations: GEXPLO_BLK, BOOM_PIC, SPLAT_BLK,
+    /// BIGSPLAT_BLK, EXPLO2_BLK, FLARE_PIC, SPARKLE_PIC. Of those, only the two
+    /// below are reachable through this renderer's ExpAnim table (the others are
+    /// never produced by the sim explosion path). LGFLAK_BLK / SMFLAK_BLK /
+    /// NRGBANG_BLK in ExpAnim are HIGH_AIR in C, so they do NOT drift.
+    /// </summary>
     private static bool IsGroundFamily(string f) =>
         f is "GEXPLO_BLK" or "EXPLO2_BLK";
 
