@@ -1137,7 +1137,7 @@ public partial class WaveController : Node
             if (b.IsEnemyLaser)
             {
                 int laserDmg = b.LaserTick(pcx, pcy);
-                if (laserDmg > 0) PlayerLogic.TakeDamage(laserDmg);
+                if (laserDmg > 0) ApplyPlayerDamage(laserDmg);
                 continue;
             }
             b.Tick();
@@ -1337,7 +1337,7 @@ public partial class WaveController : Node
             bool wasAlive = e.Alive;
             e.TakeDamage(playerWidth2);
             int bodyDmg = e.Meta.BodyCrashDamage;
-            PlayerLogic.TakeDamage(bodyDmg);
+            ApplyPlayerDamage(bodyDmg);
             AddExplosion(ExpAirSmall2, PlayerLogic.X + 16, PlayerLogic.Y + 16);
             if (wasAlive && !e.Alive)
             {
@@ -1379,12 +1379,24 @@ public partial class WaveController : Node
         if (r.DetectorActivated)    HasSecretsDetector = true;
     }
 
+    /// <summary>
+    /// Single player-damage chokepoint, mirroring C where every shield hit flows
+    /// through OBJS_SubEnergy. Applies the SubEnergy pre-drain gates
+    /// (<see cref="GateSubEnergyDamage"/> — end-wave suppression + DIFF_0 halving)
+    /// before draining the shield.
+    /// </summary>
+    private void ApplyPlayerDamage(int amt)
+    {
+        int dmg = GateSubEnergyDamage(amt, endWaveActive: _endWaveCountdown >= 0, _curPlayerDiff);
+        if (dmg > 0) PlayerLogic.TakeDamage(dmg);
+    }
+
     internal void PhaseCollisionResolve()
     {
         // Apply player damage from enemy bullets.
         if (_playerHit && _playerHitDmg > 0)
         {
-            PlayerLogic.TakeDamage(_playerHitDmg);
+            ApplyPlayerDamage(_playerHitDmg);
         }
 
         // Apply enemy damage from player bullets.
@@ -1715,6 +1727,22 @@ public partial class WaveController : Node
             if (!deathActive && !endWaveActive) heal = true;
         }
         return (thinkCnt, heal);
+    }
+
+    /// <summary>
+    /// Pure-C# port of the pre-drain gates in OBJS_SubEnergy (OBJECTS.C:1227-1235):
+    /// damage is suppressed entirely during the end-wave fly-off
+    /// (startendwave != EMPTY), and halved for amounts &gt; 1 in training mode
+    /// (curplr_diff == DIFF_0). The godmode gate is omitted — the port has no
+    /// godmode input path. Returns the effective damage to apply.
+    /// </summary>
+    internal static int GateSubEnergyDamage(int amt, bool endWaveActive, int curPlayerDiff)
+    {
+        // C:1229  if (startendwave != EMPTY) return 0 — no damage during end-wave.
+        if (endWaveActive) return 0;
+        // C:1233-1234  if (curplr_diff == DIFF_0 && amt > 1) amt = amt>>1.
+        if (curPlayerDiff == 0 && amt > 1) amt >>= 1;
+        return amt;
     }
 
     internal void PhaseHud()

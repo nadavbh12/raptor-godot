@@ -125,6 +125,30 @@ public class WaveControllerTests
     }
 
     [Fact]
+    public void SubEnergy_damage_gate_mirrors_OBJS_SubEnergy_preconditions()
+    {
+        // OBJECTS.C:1227-1235 OBJS_SubEnergy pre-drain gates (godmode omitted —
+        // no input path in the port):
+        //   startendwave != EMPTY        → return 0 (no damage during end-wave fly-off)
+        //   curplr_diff == DIFF_0 && amt>1 → amt >>= 1 (training-mode halving)
+
+        // Normal play (Normal difficulty, mid-wave): damage passes through unchanged.
+        Assert.Equal(10, WaveController.GateSubEnergyDamage(10, endWaveActive: false, curPlayerDiff: 2));
+
+        // End-of-wave fly-off (startendwave != EMPTY): all damage suppressed.
+        Assert.Equal(0, WaveController.GateSubEnergyDamage(10, endWaveActive: true, curPlayerDiff: 2));
+
+        // DIFF_0 (training) halves amounts > 1 (amt >> 1).
+        Assert.Equal(5, WaveController.GateSubEnergyDamage(10, endWaveActive: false, curPlayerDiff: 0));
+
+        // DIFF_0 leaves amt <= 1 untouched (the amt > 1 guard).
+        Assert.Equal(1, WaveController.GateSubEnergyDamage(1, endWaveActive: false, curPlayerDiff: 0));
+
+        // End-wave suppression takes precedence over the DIFF_0 halving.
+        Assert.Equal(0, WaveController.GateSubEnergyDamage(10, endWaveActive: true, curPlayerDiff: 0));
+    }
+
+    [Fact]
     public void Coconut_enemy_shot_consumes_monkey_pick_before_random_pitch()
     {
         var actual = new System.Random(1234);
