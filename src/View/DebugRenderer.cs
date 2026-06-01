@@ -606,7 +606,7 @@ public partial class DebugRenderer : Node2D
             // parity/test scenario; this replaces only the laser draw.
             if (b.IsEnemyLaser)
             {
-                int fi = System.Math.Clamp(b.FrameCounter - 1, 0, 3); // C: curframe-1
+                int fi = System.Math.Clamp(b.FrameCounter - 1, 0, b.NumFrames - 1); // C: curframe-1
                 var colTex = LoadBlkFrame("ELASER_BLK", fi);
                 if (colTex != null)
                     foreach (int ly in LaserBeam.ColumnYs(b.Y, b.Y2))
