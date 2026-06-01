@@ -647,6 +647,19 @@ public partial class DebugRenderer : Node2D
                 _megaFadeStartIter = _wave.GameLoopIter;
                 _effects.Spawn("SHIPGLOW_BLK", totalFrames: 4, x: 160, y: 100, spawnIter: _wave.GameLoopIter, ground: false);
             }
+            // Boss low-health smoke: ENEMY.C:1076-1085 — a boss with hits<50 emits
+            // A_SMALL_AIR_EXPLO (SMFLAK_BLK, 14 frames) every other game-loop pass
+            // (gl_cnt & 2) at a within-bounds offset. Under the deterministic RNG
+            // random(n)==n/2, so the offset is (width/2, height/2) — no RNG draw.
+            // Parity-inert View cosmetic: spawned into _effects, never _explosions.
+            int glCnt = _wave.GameLoopIter;
+            foreach (var e in _wave.GetEnemies())
+            {
+                if (!e.IsBoss) continue;
+                if (!BossSmoke.ShouldSpawn(e.Hits, glCnt)) continue;
+                var (sx, sy) = BossSmoke.SpawnPoint(e.X, e.Y, e.Meta.Width, e.Meta.Height);
+                _effects.Spawn("SMFLAK_BLK", totalFrames: 14, x: sx, y: sy, spawnIter: _wave.GameLoopIter, ground: false);
+            }
             _effects.Prune(_wave.GameLoopIter);
         }
 
