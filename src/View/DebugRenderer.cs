@@ -31,6 +31,8 @@ public partial class DebugRenderer : Node2D
     private int _lastDrawnEbullets = 0;
     private readonly HudScannerIndicator.State _scannerState = new();
     private int _lastScannerFrame = -1;
+    private readonly ViewEffects _effects = new();
+    private int _lastMuzzleFrame = -1;
 
     private readonly Dictionary<string, Texture2D> _spriteCache = new();
     private string? _agxRoot;
@@ -624,7 +626,18 @@ public partial class DebugRenderer : Node2D
 
         DrawBonuses();
 
+        // Spawn muzzle-flash cosmetics once per sim tick.
+        if (_lastMuzzleFrame != SimClock.Frame)
+        {
+            _lastMuzzleFrame = SimClock.Frame;
+            int spawnIter = _wave.GameLoopIter;
+            foreach (var m in _wave.MuzzlesThisTick)
+                _effects.Spawn("GUNSTR_BLK", totalFrames: 4, x: m.X, y: m.Y, spawnIter: spawnIter, ground: false);
+        }
+        _effects.Prune(_wave.GameLoopIter);
+
         DrawExplosions();
+        DrawViewEffects();
         DrawScoreHud();
         DrawShieldHud();
         DrawCurrentWeaponHud();
@@ -1370,6 +1383,17 @@ public partial class DebugRenderer : Node2D
     private const int SmokeExpType = 100;
     private const int SparkBlueExpType = 101;
     private const int SparkOrangeExpType = 102;
+
+    private void DrawViewEffects()
+    {
+        if (_wave == null || _blkRoot == null) return;
+        foreach (var e in _effects.Active(_wave.GameLoopIter))
+        {
+            var tex = LoadBlkFrame(e.Family, e.Frame);
+            if (tex == null) continue;
+            DrawTexture(tex, new Vector2(e.X - (int)tex.GetWidth() / 2, e.Y - (int)tex.GetHeight() / 2));
+        }
+    }
 
     private void DrawExplosions()
     {
