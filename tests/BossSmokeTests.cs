@@ -9,7 +9,7 @@ namespace RaptorTests;
 public class BossSmokeTests
 {
     [Fact]
-    public void Spawns_only_when_boss_low_and_on_even_gl_cnt_bit()
+    public void Spawns_only_when_boss_low_and_gl_cnt_bit1_set()
     {
         Assert.True(BossSmoke.ShouldSpawn(hits: 49, glCnt: 2));
         Assert.False(BossSmoke.ShouldSpawn(hits: 49, glCnt: 1)); // 1 & 2 == 0

@@ -4,6 +4,7 @@ namespace Raptor.View;
 /// every other game-loop pass (gl_cnt & 2) at a within-bounds offset. C uses
 /// random(width)/random(height); under deterministic RNG that is width/2,height/2,
 /// computed here with no RNG draw.
+/// (& 2, not & 1 — fires every other pass, out-of-phase with &1-gated effects, matching C.)
 internal static class BossSmoke
 {
     public static bool ShouldSpawn(int hits, int glCnt) => hits < 50 && (glCnt & 2) != 0;

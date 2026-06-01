@@ -658,7 +658,7 @@ public partial class DebugRenderer : Node2D
                 if (!e.IsBoss) continue;
                 if (!BossSmoke.ShouldSpawn(e.Hits, glCnt)) continue;
                 var (sx, sy) = BossSmoke.SpawnPoint(e.X, e.Y, e.Meta.Width, e.Meta.Height);
-                _effects.Spawn("SMFLAK_BLK", totalFrames: 14, x: sx, y: sy, spawnIter: _wave.GameLoopIter, ground: false);
+                _effects.Spawn("SMFLAK_BLK", totalFrames: 14, x: sx, y: sy, spawnIter: glCnt, ground: false);
             }
             _effects.Prune(_wave.GameLoopIter);
         }
