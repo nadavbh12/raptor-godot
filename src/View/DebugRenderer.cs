@@ -38,8 +38,11 @@ public partial class DebugRenderer : Node2D
     // Sentinel is a clean out-of-range value so age = GameLoopIter - (-10000)
     // is always >> MegaFadeFrames until a real detonation sets it.
     private int _megaFadeStartIter = -10000;
-    private const int MegaFadeFrames = 8;
-    private const float MegaFadeMaxAlpha = 0.85f;
+    // Tuned to C's GFX_FadeOut(63,60,60,1) palette fade (RAP.C:1127): captured C
+    // peaks near-white (~247/255) at detonation and decays over ~17 game-loop
+    // iters. The earlier 8-frame / 0.85-alpha approximation was too dim + short.
+    private const int MegaFadeFrames = 17;
+    private const float MegaFadeMaxAlpha = 0.96f;
 
     private readonly Dictionary<string, Texture2D> _spriteCache = new();
     private string? _agxRoot;
@@ -587,6 +590,15 @@ public partial class DebugRenderer : Node2D
                 DrawEngineFlames(e, eframe);
         }
 
+        // Sky-layer cosmetics (muzzle flash, explosions, boss smoke) draw BEFORE
+        // the player ship, mirroring C's ANIMS_DisplaySky → ship order (RAP.C:1071
+        // →1077): the ship sprite occludes the inner half of the gun muzzle flash,
+        // so drawing the flash over the ship made it read too large. Spawn + prune
+        // once per game-loop tick, then draw.
+        SpawnTickEffects();
+        DrawExplosions();
+        DrawViewEffects();
+
         // Sim X/Y are TOP-LEFT (matching C's sprite->x/y semantics — see ENEMY_Add
         // comments in WaveController). C's GFX_PutSprite renders at top-left, so
         // we draw directly at (X, Y) without subtracting half-size. The player
@@ -675,45 +687,10 @@ public partial class DebugRenderer : Node2D
 
         DrawBonuses();
 
-        // Spawn muzzle-flash cosmetics once per game-loop tick. The game loop
-        // runs ~3 SimClock.Frame per GameLoopIter, so gating on GameLoopIter
-        // (not SimClock.Frame) avoids re-spawning identical cosmetics 3× per
-        // iter. MuzzlesThisTick is populated during the iter's PhaseInput and
-        // persists until the next iter's PhaseInput, so reading it once-per-iter
-        // still captures that iter's shots.
-        if (_wave.GameLoopIter != _lastSpawnIter)
-        {
-            _lastSpawnIter = _wave.GameLoopIter;
-            int spawnIter = _wave.GameLoopIter;
-            foreach (var m in _wave.MuzzlesThisTick)
-                _effects.Spawn("GUNSTR_BLK", totalFrames: 4, x: m.X, y: m.Y, spawnIter: spawnIter, ground: false);
-            // Megabomb detonation: consume the one-shot sim signal exactly once
-            // per tick, start the white-out flash, and spawn the SHIPGLOW_BLK
-            // glow (drawn through DrawViewEffects). Mirrors C SHOTS.C:1273-1274's
-            // startfadeflag + ANIMS_StartAnim(A_SUPER_SHIELD) + RAP.C:1127 fade.
-            if (_wave.ConsumeMegaBombDetonated())
-            {
-                _megaFadeStartIter = _wave.GameLoopIter;
-                _effects.Spawn("SHIPGLOW_BLK", totalFrames: 4, x: 160, y: 100, spawnIter: _wave.GameLoopIter, ground: false);
-            }
-            // Boss low-health smoke: ENEMY.C:1076-1085 — a boss with hits<50 emits
-            // A_SMALL_AIR_EXPLO (SMFLAK_BLK, 14 frames) every other game-loop pass
-            // (gl_cnt & 2) at a within-bounds offset. Under the deterministic RNG
-            // random(n)==n/2, so the offset is (width/2, height/2) — no RNG draw.
-            // Parity-inert View cosmetic: spawned into _effects, never _explosions.
-            int glCnt = _wave.GameLoopIter;
-            foreach (var e in _wave.GetEnemies())
-            {
-                if (!e.IsBoss) continue;
-                if (!BossSmoke.ShouldSpawn(e.Hits, glCnt)) continue;
-                var (sx, sy) = BossSmoke.SpawnPoint(e.X, e.Y, e.Meta.Width, e.Meta.Height);
-                _effects.Spawn("SMFLAK_BLK", totalFrames: 14, x: sx, y: sy, spawnIter: glCnt, ground: false);
-            }
-            _effects.Prune(_wave.GameLoopIter);
-        }
-
-        DrawExplosions();
-        DrawViewEffects();
+        // (Muzzle-flash + explosion cosmetics are spawned and drawn ABOVE, before
+        //  the player ship, to mirror C's ANIMS_DisplaySky → ship → DisplayHigh
+        //  z-order — the ship occludes the inner half of the gun flash. See
+        //  SpawnTickEffects()/DrawExplosions()/DrawViewEffects() in DrawScene.)
         DrawScoreHud();
         DrawShieldHud();
         DrawCurrentWeaponHud();
@@ -1481,6 +1458,41 @@ public partial class DebugRenderer : Node2D
     private const int SparkBlueExpType = 101;
     private const int SparkOrangeExpType = 102;
 
+    /// <summary>
+    /// Spawn the per-game-loop-tick View cosmetics (muzzle flash, megabomb glow,
+    /// boss smoke) into the shared effects list and prune expired ones. Gated to
+    /// run once per GameLoopIter (the loop runs ~3 SimClock.Frame per iter). Called
+    /// before the player ship is drawn so the gun flash renders behind it (C's
+    /// ANIMS_DisplaySky → ship order).
+    /// </summary>
+    private void SpawnTickEffects()
+    {
+        if (_wave == null || _wave.GameLoopIter == _lastSpawnIter) return;
+        _lastSpawnIter = _wave.GameLoopIter;
+        int spawnIter = _wave.GameLoopIter;
+        foreach (var m in _wave.MuzzlesThisTick)
+            _effects.Spawn("GUNSTR_BLK", totalFrames: 4, x: m.X, y: m.Y, spawnIter: spawnIter, ground: false);
+        // Megabomb detonation: consume the one-shot sim signal exactly once per
+        // tick, start the white-out flash, and spawn the SHIPGLOW_BLK glow. Mirrors
+        // C SHOTS.C:1273-1274 startfadeflag + A_SUPER_SHIELD + RAP.C:1127 fade.
+        if (_wave.ConsumeMegaBombDetonated())
+        {
+            _megaFadeStartIter = _wave.GameLoopIter;
+            _effects.Spawn("SHIPGLOW_BLK", totalFrames: 4, x: 160, y: 100, spawnIter: _wave.GameLoopIter, ground: false);
+        }
+        // Boss low-health smoke (ENEMY.C:1076-1085): a boss with hits<50 emits
+        // A_SMALL_AIR_EXPLO (SMFLAK_BLK, 14 frames) every other pass (gl_cnt & 2).
+        int glCnt = _wave.GameLoopIter;
+        foreach (var e in _wave.GetEnemies())
+        {
+            if (!e.IsBoss) continue;
+            if (!BossSmoke.ShouldSpawn(e.Hits, glCnt)) continue;
+            var (sx, sy) = BossSmoke.SpawnPoint(e.X, e.Y, e.Meta.Width, e.Meta.Height);
+            _effects.Spawn("SMFLAK_BLK", totalFrames: 14, x: sx, y: sy, spawnIter: glCnt, ground: false);
+        }
+        _effects.Prune(_wave.GameLoopIter);
+    }
+
     private void DrawViewEffects()
     {
         if (_wave == null || _blkRoot == null) return;
@@ -1758,7 +1770,12 @@ public partial class DebugRenderer : Node2D
     private void DrawSuperShieldHud()
     {
         if (_wave == null) return;
-        int count = _wave.Inventory.GetTotal(ObjType.SuperShield);
+        // One icon per super-shield CHARGE (C OBJECTS.C:665 counts discrete objects).
+        // The port stores super-shield as a single point buffer, so convert points
+        // → charges = ceil(points / per-charge). per-charge = SuperShield StartCnt.
+        int points = _wave.Inventory.GetAmt(ObjType.SuperShield);
+        int count = HudSuperShieldIndicator.ChargeCount(
+            points, Raptor.Sim.ObjLib.Of(ObjType.SuperShield).StartCnt);
         if (count <= 0) return;
         var tex = LoadSprite("SMSHIELD_PIC");
         if (tex == null) return;

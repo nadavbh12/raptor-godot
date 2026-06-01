@@ -95,6 +95,21 @@ public class CaptureHooksTests
         Assert.Equal(rawLevel <= 2 ? 0 : expectedBit, WaveController.GetEbLevel(rawLevel) & normalDiff);
     }
 
+    // ── super-shield HUD charge count (HudSuperShieldIndicator.ChargeCount) ──────
+
+    [Theory]
+    [InlineData(0, 100, 0)]     // none owned
+    [InlineData(100, 100, 1)]   // one full charge → one icon (was ~100 icons)
+    [InlineData(50, 100, 1)]    // a partial charge still shows one icon
+    [InlineData(250, 100, 3)]   // ceil(2.5) → 3
+    [InlineData(500, 100, 5)]   // five charges
+    public void SuperShield_HUD_shows_charge_count_not_shield_points(int points, int perCharge, int expected)
+    {
+        // Regression: the HUD drew GetTotal (= the point buffer, ~100) icons,
+        // flooding the row. C draws one icon per discrete super-shield charge.
+        Assert.Equal(expected, Raptor.View.HudSuperShieldIndicator.ChargeCount(points, perCharge));
+    }
+
     // ── shot_map.tsv InvariantCulture formatting (DebugRenderer.FormatShotMapRow) ─
 
     [Fact]
