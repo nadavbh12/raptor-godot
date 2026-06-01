@@ -318,7 +318,9 @@ public sealed class PlayerShooter
                         spawnX: mpxL, spawnY: playerCy,
                         initSpeed: lib.Speed, maxSpeed: lib.MaxSpeed,
                         hlx: lib.Hlx, hly: lib.Hly, damage: lib.Hits, smoke: lib.Smoke));
-                    RecordMuzzle(mpxL, playerCy + 1);
+                    // C's A_PLAYER_SHOOT left flash is at -o_gun2[playerpic] - 1
+                    // (SHOTS.C:866); the bullet spawnX above is unchanged.
+                    RecordMuzzle(mpxL - 1, playerCy + 1);
                 }
                 break;
 

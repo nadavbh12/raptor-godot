@@ -32,10 +32,12 @@ public partial class DebugRenderer : Node2D
     private readonly HudScannerIndicator.State _scannerState = new();
     private int _lastScannerFrame = -1;
     private readonly ViewEffects _effects = new();
-    private int _lastMuzzleFrame = -1;
+    private int _lastSpawnIter = -1;
     // Megabomb white-out flash: GameLoopIter at which detonation fired, and the
     // number of iters the flash eases out over. Parity-inert View cosmetic.
-    private int _megaFadeStartIter = int.MinValue;
+    // Sentinel is a clean out-of-range value so age = GameLoopIter - (-10000)
+    // is always >> MegaFadeFrames until a real detonation sets it.
+    private int _megaFadeStartIter = -10000;
     private const int MegaFadeFrames = 8;
     private const float MegaFadeMaxAlpha = 0.85f;
 
@@ -655,10 +657,15 @@ public partial class DebugRenderer : Node2D
 
         DrawBonuses();
 
-        // Spawn muzzle-flash cosmetics once per sim tick.
-        if (_lastMuzzleFrame != SimClock.Frame)
+        // Spawn muzzle-flash cosmetics once per game-loop tick. The game loop
+        // runs ~3 SimClock.Frame per GameLoopIter, so gating on GameLoopIter
+        // (not SimClock.Frame) avoids re-spawning identical cosmetics 3× per
+        // iter. MuzzlesThisTick is populated during the iter's PhaseInput and
+        // persists until the next iter's PhaseInput, so reading it once-per-iter
+        // still captures that iter's shots.
+        if (_wave.GameLoopIter != _lastSpawnIter)
         {
-            _lastMuzzleFrame = SimClock.Frame;
+            _lastSpawnIter = _wave.GameLoopIter;
             int spawnIter = _wave.GameLoopIter;
             foreach (var m in _wave.MuzzlesThisTick)
                 _effects.Spawn("GUNSTR_BLK", totalFrames: 4, x: m.X, y: m.Y, spawnIter: spawnIter, ground: false);
