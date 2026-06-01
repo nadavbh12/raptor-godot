@@ -49,6 +49,17 @@ for script in mission_start mission_long menu_demo full_demo; do
     run_step "L2 parity: $script" "$ROOT/tests/run_l2a.sh" "$script"
 done
 
+# Per-wave death scenarios (episode-1 waves 1,2,4-9, no gameplay input). run_l2a
+# auto-sets RAPTOR_START_WAVE + RAPTOR_QUIT_AFTER_DEATH, so Godot emits gameplay-
+# only output (quits at death) and compares against the trimmed goldens. All 8 are
+# frame-exact (100% PASS), ~60-110s each. death_wave3 is intentionally omitted: it
+# is the held-input probe with the open #24 input-onset skew (98.7%, not frame-exact)
+# — kept as a manual/manifested probe so a CI gate doesn't ride on that residual.
+for script in death_wave1 death_wave2 death_wave4 death_wave5 \
+              death_wave6 death_wave7 death_wave8 death_wave9; do
+    run_step "L2 parity: $script" "$ROOT/tests/run_l2a.sh" "$script"
+done
+
 if [[ -n "${MENU_C_CAPTURE_ROOT:-}" ]]; then
     run_step "menu pixel parity" env \
         C_CAPTURE_ROOT="$MENU_C_CAPTURE_ROOT" \
