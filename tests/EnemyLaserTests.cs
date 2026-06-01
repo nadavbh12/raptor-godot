@@ -54,6 +54,36 @@ public class EnemyLaserTests
     }
 
     [Fact]
+    public void Laser_y2_endpoint_is_player_cy_when_aligned_and_above()
+    {
+        // ESHOT.C:464 — aligned-and-above lowers move.y2 to player_cy
+        // (+random(4)-2 = 0 deterministically). View column ends at the player.
+        var e = EnemyAt(100, 40);
+        var laser = BulletLogic.EnemyLaser(e, gunShootX: 4, gunShootY: 8);
+        int beamX = e.X + 4 - 4;
+        int beamY = e.Y + 8;
+        int playerCy = beamY + 50;
+
+        laser.LaserTick(playerCx: beamX, playerCy: playerCy);
+
+        Assert.Equal(playerCy, laser.Y2);
+    }
+
+    [Fact]
+    public void Laser_y2_endpoint_is_200_when_not_aligned()
+    {
+        // ESHOT.C:458 — move.y2 defaults to 200 (the column runs to the bottom).
+        var e = EnemyAt(100, 40);
+        var laser = BulletLogic.EnemyLaser(e, gunShootX: 4, gunShootY: 8);
+        int beamX = e.X + 4 - 4;
+        int beamY = e.Y + 8;
+
+        laser.LaserTick(playerCx: beamX + 16, playerCy: beamY + 50); // misaligned
+
+        Assert.Equal(200, laser.Y2);
+    }
+
+    [Fact]
     public void Laser_no_damage_when_horizontally_misaligned()
     {
         var e = EnemyAt(100, 40);

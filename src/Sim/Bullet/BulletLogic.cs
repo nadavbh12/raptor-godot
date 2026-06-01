@@ -380,9 +380,20 @@ public sealed class BulletLogic
     private readonly Raptor.Sim.Enemy.EnemyLogic? _laserEnemy;
     private readonly int _laserShootX, _laserShootY, _laserNumFrames;
     private const int PlayerWidth2 = 16;   // PLAYERWIDTH/2
+    // C shot->move.y2 for the ES_LASER beam: the bottom endpoint of the rendered
+    // column. ESHOT.C:390/458 default it to 200; ESHOT.C:464 lowers it to
+    // player_cy (+random(4)-2, =0 deterministically) when aligned-and-above.
+    // Pure View state — never checkpointed; only the column renderer reads it.
+    private int _laserY2 = 200;
 
     /// <summary>True iff this is an enemy ES_LASER beam (driven via LaserTick).</summary>
     public bool IsEnemyLaser => _enemyLaser;
+
+    /// <summary>
+    /// Bottom endpoint of the ES_LASER rendered column (C shot->move.y2). View-only;
+    /// 200 unless the beam is aligned above the player, where it ends at player_cy.
+    /// </summary>
+    public int Y2 => _laserY2;
 
     /// <summary>
     /// Spawn an enemy ES_LASER beam (ESHOT.C:385-393). It tracks the firing
@@ -432,8 +443,14 @@ public sealed class BulletLogic
         {
             X = _laserEnemy.X + _laserShootX - 4;          // ESHOT.C:456
             Y = _laserEnemy.Y + _laserShootY;              // ESHOT.C:457
+            _laserY2 = 200;                                // ESHOT.C:458
             if (System.Math.Abs(X - playerCx) < PlayerWidth2 && Y < playerCy)  // ESHOT.C:462
+            {
+                // ESHOT.C:464 move.y2 = player_cy + random(4) - 2 (=player_cy
+                // deterministically; the jitter is View-only and not modeled).
+                _laserY2 = playerCy;
                 return Damage;                             // OBJS_SubEnergy(lib->hits) (ESHOT.C:465)
+            }
             return 0;
         }
         Alive = false;                                     // ESHOT.C:469 doneflag

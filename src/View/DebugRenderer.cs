@@ -598,6 +598,30 @@ public partial class DebugRenderer : Node2D
         foreach (var b in _wave.GetEnemyBullets())
         {
             if (!b.Alive) continue;
+            // ES_LASER beam column (ESHOT.C:558-573). Draws ELASER_BLK every 3px
+            // from shot.y down to move.y2 (exclusive), the ELASEPOW_BLK power glow
+            // at the gun (shot.x, shot.y), and the DRAYHIT_BLK impact sprite at
+            // (shot.x - h.width/4, move.y2 - 8) when that y is on-screen.
+            // Parity-inert: ES_LASER is secret-cheat-gated and never fires in any
+            // parity/test scenario; this replaces only the laser draw.
+            if (b.IsEnemyLaser)
+            {
+                int fi = System.Math.Clamp(b.FrameCounter - 1, 0, 3); // C: curframe-1
+                var colTex = LoadBlkFrame("ELASER_BLK", fi);
+                if (colTex != null)
+                    foreach (int ly in LaserBeam.ColumnYs(b.Y, b.Y2))
+                        DrawWorldTexture(colTex, b.X, ly);
+                var powTex = LoadBlkFrame("ELASEPOW_BLK", fi);
+                if (powTex != null) DrawWorldTexture(powTex, b.X, b.Y);
+                var hitTex = LoadBlkFrame("DRAYHIT_BLK", fi);
+                if (hitTex != null)
+                {
+                    int hy = b.Y2 - 8;
+                    if (hy > 0 && hy < 200)
+                        DrawWorldTexture(hitTex, b.X - (int)hitTex.GetWidth() / 4, hy);
+                }
+                continue;
+            }
             int ti = (int)b.ShotType;
             var frames = (ti >= 0 && ti < _shotTypeFrames.Length) ? _shotTypeFrames[ti] : null;
             Texture2D? tex = null;
