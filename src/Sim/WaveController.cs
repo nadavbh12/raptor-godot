@@ -673,6 +673,10 @@ public partial class WaveController : Node
         // _grantTypes is empty unless the env is set). Applied after the resets
         // above so nothing wipes them; Inventory.Add respects each item's cap.
         foreach (var t in _grantTypes) Inventory.Add(t);
+        // Granting Detect also flips the secrets-detector flag, mirroring the
+        // bonus pickup (BonusEffectDispatcher) which sets both — the scanner /
+        // boss-health bar (DrawScannerHud) is gated on HasSecretsDetector.
+        if (_grantTypes.Contains(ObjType.Detect)) HasSecretsDetector = true;
     }
 
     private void DoInitialSpawn()
