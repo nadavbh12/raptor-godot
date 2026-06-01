@@ -22,6 +22,15 @@ public class CosmeticAssetPresenceTests
         return Path.Combine(d!, "assets", "bullets");
     }
 
+    private static string SpritesDir()
+    {
+        var d = AppContext.BaseDirectory;
+        while (d != null && !File.Exists(Path.Combine(d, "raptor.csproj")))
+            d = Directory.GetParent(d)?.FullName;
+        Assert.NotNull(d);
+        return Path.Combine(d!, "assets", "sprites");
+    }
+
     private static bool HasFamily(string family)
         => Directory.GetFiles(BulletsDir(), $"{family}_*.png").Any();
 
@@ -32,4 +41,10 @@ public class CosmeticAssetPresenceTests
         Assert.True(HasFamily("ELASEPOW_BLK"));
         Assert.True(HasFamily("DRAYHIT_BLK")); // lashit impact, shared with deathray
     }
+
+    // Task 7a: SMSHIELD_PIC (GLB item 966, name "SMSHIELD_PIC//") is the
+    // super-shield HUD counter icon — OBJECTS.C:663-672.
+    [Fact]
+    public void SuperShield_hud_icon_is_extracted()
+        => Assert.True(Directory.GetFiles(SpritesDir(), "*_SMSHIELD_PIC.png").Any());
 }
