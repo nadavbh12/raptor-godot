@@ -33,6 +33,10 @@ public partial class DebugRenderer : Node2D
     private int _lastScannerFrame = -1;
     private readonly ViewEffects _effects = new();
     private int _lastMuzzleFrame = -1;
+    // Megabomb white-out flash: GameLoopIter at which detonation fired, and the
+    // number of iters the flash eases out over. Parity-inert View cosmetic.
+    private int _megaFadeStartIter = int.MinValue;
+    private const int MegaFadeFrames = 8;
 
     private readonly Dictionary<string, Texture2D> _spriteCache = new();
     private string? _agxRoot;
@@ -633,6 +637,15 @@ public partial class DebugRenderer : Node2D
             int spawnIter = _wave.GameLoopIter;
             foreach (var m in _wave.MuzzlesThisTick)
                 _effects.Spawn("GUNSTR_BLK", totalFrames: 4, x: m.X, y: m.Y, spawnIter: spawnIter, ground: false);
+            // Megabomb detonation: consume the one-shot sim signal exactly once
+            // per tick, start the white-out flash, and spawn the SHIPGLOW_BLK
+            // glow (drawn through DrawViewEffects). Mirrors C SHOTS.C:1273-1274's
+            // startfadeflag + ANIMS_StartAnim(A_SUPER_SHIELD) + RAP.C:1127 fade.
+            if (_wave.ConsumeMegaBombDetonated())
+            {
+                _megaFadeStartIter = _wave.GameLoopIter;
+                _effects.Spawn("SHIPGLOW_BLK", totalFrames: 4, x: 160, y: 100, spawnIter: _wave.GameLoopIter, ground: false);
+            }
             _effects.Prune(_wave.GameLoopIter);
         }
 
@@ -656,7 +669,27 @@ public partial class DebugRenderer : Node2D
             var font = ThemeDB.FallbackFont;
             DrawString(font, new Vector2(4, 195), hud, HorizontalAlignment.Left, -1, 8, new Color(1, 1, 1));
         }
+
+        // Megabomb white-out flash sits over everything (HUD included), matching
+        // C's full-screen GFX_FadeOut after detonation.
+        DrawMegaBombFlash();
         RecordDrawnState();
+    }
+
+    /// <summary>
+    /// Full-screen white-out overlay for a megabomb detonation. C does a palette
+    /// fade toward near-white (GFX_FadeOut(63,60,60,1), RAP.C:1127); we approximate
+    /// with a fading white quad over the playfield. Parity-inert: driven purely by
+    /// the consumed sim signal, touches no sim state.
+    /// </summary>
+    private void DrawMegaBombFlash()
+    {
+        if (_wave == null) return;
+        int age = _wave.GameLoopIter - _megaFadeStartIter;
+        if (age < 0 || age >= MegaFadeFrames) return;
+        // White-out toward (63,60,60)/63 ≈ (1,0.95,0.95), strongest at age 0, easing out.
+        float t = 1f - (age / (float)MegaFadeFrames);
+        DrawRect(new Rect2(0, 0, 320, 200), new Color(1f, 0.95f, 0.95f, 0.85f * t));
     }
 
     private void RecordDrawnState()
