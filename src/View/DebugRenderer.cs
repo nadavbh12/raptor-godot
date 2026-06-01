@@ -37,6 +37,7 @@ public partial class DebugRenderer : Node2D
     // number of iters the flash eases out over. Parity-inert View cosmetic.
     private int _megaFadeStartIter = int.MinValue;
     private const int MegaFadeFrames = 8;
+    private const float MegaFadeMaxAlpha = 0.85f;
 
     private readonly Dictionary<string, Texture2D> _spriteCache = new();
     private string? _agxRoot;
@@ -689,7 +690,7 @@ public partial class DebugRenderer : Node2D
         if (age < 0 || age >= MegaFadeFrames) return;
         // White-out toward (63,60,60)/63 ≈ (1,0.95,0.95), strongest at age 0, easing out.
         float t = 1f - (age / (float)MegaFadeFrames);
-        DrawRect(new Rect2(0, 0, 320, 200), new Color(1f, 0.95f, 0.95f, 0.85f * t));
+        DrawRect(new Rect2(0, 0, 320, 200), new Color(1f, 0.95f, 0.95f, MegaFadeMaxAlpha * t));
     }
 
     private void RecordDrawnState()
