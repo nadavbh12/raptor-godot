@@ -14,12 +14,21 @@ public partial class MenuController : Node
 {
     public MenuStateMachine Menu { get; } = new MenuStateMachine();
 
+    // Parity death-wave runs: quit (and stop emitting) the moment the death movie
+    // completes and the scenario returns to MENU, instead of idling through the
+    // script's trailing `wait`. Keeps the captured output gameplay-only (matching a
+    // trimmed C golden) and cuts run time. Off for normal play and other scenarios.
+    private bool _quitAfterDeath;
+
     public override void _Ready()
     {
+        _quitAfterDeath = OS.GetEnvironment("RAPTOR_QUIT_AFTER_DEATH") == "1";
+
         var emitter = GetNodeOrNull<ParityEmitter>("../ParityEmitter");
         if (emitter != null)
         {
             emitter.Menu = Menu;
+            emitter.QuitAfterDeath = _quitAfterDeath;
             Menu.OnStateChanged += emitter.OnStateChanged;
         }
 
@@ -59,6 +68,12 @@ public partial class MenuController : Node
 
     public override void _Process(double delta)
     {
-        Menu.CompleteDeathMovieIfDone(SimClock.Frame, MenuStateMachine.DeathMovieFrames);
+        bool deathMovieJustCompleted =
+            Menu.CompleteDeathMovieIfDone(SimClock.Frame, MenuStateMachine.DeathMovieFrames);
+
+        // Death-wave parity runs: the scenario is over once the death movie returns to
+        // MENU — quit rather than idle through the script's trailing `wait`.
+        if (deathMovieJustCompleted && _quitAfterDeath)
+            GetTree().Quit();
     }
 }

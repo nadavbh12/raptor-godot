@@ -78,20 +78,30 @@ dotnet build "$REPO/raptor.csproj" --nologo --verbosity quiet 2>&1
 # mission_start.txt total: ~4200 sim frames (enters Do_Game, 28s of gameplay).
 # In fast mode (MaxPhysicsStepsPerFrame=256), display-frame to sim-frame ratio is ~1.7:1.
 # 4200 sim frames × 1.7 + buffer = ~20000 display frames (safe upper bound for all scripts).
-MAX_FRAMES=20000
+# RAPTOR_MAX_FRAMES overrides this per scenario: each scenario stops emitting at its
+# completion (death→MENU, or end of playthrough), so a calibrated --quit-after just above
+# (last emitted sim-frame × 1.7 × margin) yields IDENTICAL output far faster than 20000.
+# Default stays 20000 (CI / unknown scripts use the safe upper bound).
+MAX_FRAMES="${RAPTOR_MAX_FRAMES:-20000}"
 
 echo "[run_l2a] running godot..."
 # death_wave<N> scenarios start mid-episode-1 at wave N (RAPTOR_START_WAVE).
+# They also set RAPTOR_QUIT_AFTER_DEATH so Godot quits (and stops emitting) the
+# moment the death movie returns to MENU — gameplay-only output matching the
+# (trimmed) C golden, no idle through the script's trailing `wait`.
 START_WAVE_ENV=""
+QUIT_AFTER_DEATH_ENV=""
 if [[ "$NAME" =~ ^death_wave([0-9]+)$ ]]; then
     START_WAVE_ENV="RAPTOR_START_WAVE=${BASH_REMATCH[1]}"
-    echo "[run_l2a] $NAME -> $START_WAVE_ENV"
+    QUIT_AFTER_DEATH_ENV="RAPTOR_QUIT_AFTER_DEATH=1"
+    echo "[run_l2a] $NAME -> $START_WAVE_ENV $QUIT_AFTER_DEATH_ENV"
 fi
 env RAPTOR_PLAYTHROUGH="$SCRIPT" \
 RAPTOR_PARITY_OUT="$OUT/godot.parity.txt" \
 RAPTOR_TEST_FAST=1 \
 RAPTOR_DETERMINISTIC_RNG=1 \
 $START_WAVE_ENV \
+$QUIT_AFTER_DEATH_ENV \
 "$GODOT_BIN" --path "$REPO" --headless --quit-after $MAX_FRAMES \
     --audio-driver Dummy \
     >"$OUT/godot.log" 2>&1 || {

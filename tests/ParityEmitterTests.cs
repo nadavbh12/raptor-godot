@@ -69,6 +69,40 @@ public class ParityEmitterTests
     }
 
     [Fact]
+    public void QuitAfterDeath_suppresses_the_post_death_menu_tail()
+    {
+        // Death scenarios freeze the wave snapshot and re-emit it as MENU rows
+        // until the script's trailing `wait` expires — a frozen tail whose length
+        // depends on run length (the #27c death-movie-tail artifact). With
+        // QuitAfterDeath set (parity death-wave runs), the emitter must stop once a
+        // death has occurred, so the output is gameplay-only and matches a C golden
+        // trimmed to the same point. Without the flag the menu tail still emits.
+        var path = Path.GetTempFileName();
+        try {
+            SimClock.ResetForTest();
+            var menu = new MenuStateMachine();
+            menu.EnterMenu(0);
+            using var worker = new ParityEmitWorker { Menu = menu, QuitAfterDeath = true };
+            worker.Open(path);
+
+            // Player dies → Death state; tick through it so the worker observes it
+            // (emission already suppressed during Death by #26).
+            menu.PlayerDied(SimClock.Frame);
+            for (int i = 0; i < 5; i++) { SimClock.Tick(); worker.Tick(); }
+            // Death movie completes → back to MENU (the frozen-tail context).
+            menu.CompleteDeathMovieIfDone(SimClock.Frame, 0);
+            Assert.Equal(WinState.Menu, menu.State);
+
+            // Tick well past several 70-frame emit boundaries: nothing must emit.
+            for (int i = 0; i < 210; i++) { SimClock.Tick(); worker.Tick(); }
+
+            Assert.Equal("", File.ReadAllText(path).Trim());
+        } finally {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
     public void Demo_playback_uses_mission_iter_buckets_not_menu_fc_schedule()
     {
         var path = Path.GetTempFileName();

@@ -27,6 +27,11 @@ internal class ParityEmitWorker : IDisposable
     // Win-state context from MenuStateMachine.
     public Sim.MenuStateMachine? Menu { get; set; }
 
+    // When set (parity death-wave runs), stop emitting once a death has occurred so
+    // the output is gameplay-only — see QuitAfterDeath_suppresses_the_post_death_menu_tail.
+    public bool QuitAfterDeath { get; set; }
+    private bool _deathSeen;
+
     // Live game state providers — wired by WaveController when in-game.
     // These delegate to WaveController's properties via lambdas.
     public Func<int>?  GetPlayerX  { get; set; }
@@ -169,7 +174,14 @@ internal class ParityEmitWorker : IDisposable
             // C's MENU rows by index and (b) shift the whole tail. Suppress them
             // to mirror C. (Landing/Intro are likewise C-absent transitional
             // states, but only Death occurs in the death scenarios.)
-            if (Menu.State == Sim.WinState.Death) return;
+            if (Menu.State == Sim.WinState.Death) { _deathSeen = true; return; }
+
+            // Death-wave parity runs (QuitAfterDeath): once a death has occurred, stop
+            // emitting the frozen post-death MENU tail entirely. Its length depends on
+            // run length (the #27c artifact); suppressing it yields gameplay-only output
+            // that matches a C golden trimmed to the same point. MenuController quits at
+            // the Death→MENU transition, so this also bounds the run.
+            if (_deathSeen && QuitAfterDeath) return;
 
             int demoSeq = GetMenuDemoEmitSequence?.Invoke() ?? DemoEmitDisabled;
             if (demoSeq != DemoEmitDisabled)
@@ -258,6 +270,7 @@ public partial class ParityEmitter : Node
 
     // Forwarded properties for scene-level wiring.
     public Sim.MenuStateMachine? Menu { get => _worker.Menu; set => _worker.Menu = value; }
+    public bool QuitAfterDeath { get => _worker.QuitAfterDeath; set => _worker.QuitAfterDeath = value; }
 
     // Live-state delegate hooks — wired by WaveController.
     public Func<int>?  GetPlayerX  { get => _worker.GetPlayerX;  set => _worker.GetPlayerX  = value; }
