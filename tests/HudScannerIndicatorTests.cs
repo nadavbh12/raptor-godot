@@ -1,4 +1,7 @@
 using System.Linq;
+using FsCheck;
+using FsCheck.Fluent;
+using FsCheck.Xunit;
 using Raptor.View;
 using Xunit;
 
@@ -37,4 +40,29 @@ public class HudScannerIndicatorTests
         state.AfterSimTick();
         Assert.Equal(0, state.CurrentDpos);
     }
+
+    [Fact]
+    public void Damage_bar_draws_frame_then_fill_with_c_geometry()
+    {
+        var boxes = HudScannerIndicator.BuildDamage(damage: 60).ToArray();
+        Assert.Equal(2, boxes.Length);
+        Assert.Equal(new HudScannerIndicator.Box(109, 191, 102, 8, 74), boxes[0]);
+        Assert.Equal(new HudScannerIndicator.Box(110, 192, 60, 6, 68), boxes[1]);
+    }
+
+    [Fact]
+    public void Zero_damage_builds_no_boxes() => Assert.Empty(HudScannerIndicator.BuildDamage(0));
+
+    // Property "Damage-bar fidelity": fill width == raw damage (no clamp); frame fixed;
+    // damage branch non-empty iff damage > 0.
+    [Property(MaxTest = 50)]
+    public Property Damage_bar_fill_width_equals_raw_damage()
+        => Prop.ForAll(Gen.Choose(0, 200).ToArbitrary(), dmg =>
+        {
+            var boxes = HudScannerIndicator.BuildDamage(dmg).ToArray();
+            if (dmg <= 0) return boxes.Length == 0;
+            return boxes.Length == 2
+                && boxes[0] == new HudScannerIndicator.Box(109, 191, 102, 8, 74)
+                && boxes[1] == new HudScannerIndicator.Box(110, 192, dmg, 6, 68);
+        });
 }
