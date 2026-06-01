@@ -260,6 +260,10 @@ public class EnemyLogicTests
         var m = lib.Get(0);
         Assert.True(m.Hits >= 0);
         Assert.True(m.FlightX.Length >= 0);
+        // Regression: the JSON encodes "bossflag" as an int (0/1), not a bool.
+        // Deserializing it as System.Boolean throws; SpriteMeta.BossFlag must be int.
+        Assert.Equal(0, m.BossFlag);
+        Assert.False(new EnemyLogic(m, 0, 0).IsBoss);
     }
 
     private static SpriteMeta Ground(int flightType, int width = 32, int height = 24, int movespeed = 1, int hits = 20) =>

@@ -56,9 +56,9 @@ public sealed class SpriteMeta
     // forward end of the bounce skips the early waypoints once initial flight
     // completes. See ENEMY.C:894-900.
     [JsonPropertyName("repos")]      public int    Repos       { get; set; }
-    // C SOURCE/MAP.H SPRITE.bossflag — true for boss enemies. Read-only metadata
+    // C SOURCE/MAP.H SPRITE.bossflag — int 0/1 in the JSON. Read-only metadata
     // consumed by WaveController.GetBaseDamage (boss-health/scanner bar).
-    [JsonPropertyName("bossflag")]   public bool   BossFlag    { get; set; }
+    [JsonPropertyName("bossflag")]   public int    BossFlag    { get; set; }
     // Additional fields present in JSON but not consumed:
     // suck, animtype, sfx, song.
 
