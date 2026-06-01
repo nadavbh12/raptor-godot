@@ -1310,6 +1310,30 @@ public partial class WaveController : Node
     /// (C's p_objs[S_DETECT] survives RAP_LoadMap).</summary>
     public bool HasSecretsDetector { get; private set; }
 
+    /// Pure mirror of ENEMY_GetBaseDamage (ENEMY.C:1270): average health-% of
+    /// on-screen bosses (y+hly >= 0), or 0 when none. Integer arithmetic matches C.
+    internal static int ComputeBaseDamage(System.Collections.Generic.IEnumerable<(bool boss, int y, int hly, int hits, int maxHits)> rows)
+    {
+        int total = 0, nums = 0;
+        foreach (var r in rows)
+        {
+            if (!r.boss) continue;
+            if (r.y + r.hly < 0) continue;
+            if (r.maxHits <= 0) continue;
+            total += (r.hits * 100) / r.maxHits;
+            nums++;
+        }
+        return nums > 0 ? total / nums : 0;
+    }
+
+    /// <summary>
+    /// Average boss health-% over on-screen bosses (or 0 when none). Used by the
+    /// view's scanner/boss-health bar. Pure read over the live enemy list.
+    /// </summary>
+    public int GetBaseDamage()
+        => ComputeBaseDamage(System.Linq.Enumerable.Select(GetEnemies(),
+            e => (e.IsBoss, e.Y, e.HalfH, e.Hits, e.MaxHits)));
+
     /// <summary>
     /// Returns true iff a bullet with the given HitType can damage this enemy.
     /// Mirrors the SHOTS.C SHOTS_Think `case lib->ht` branches:

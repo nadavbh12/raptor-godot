@@ -36,6 +36,13 @@ public sealed class EnemyLogic
     public bool IsGround => Meta.FlightType >= 3 && Meta.FlightType <= 5;
 
     public int Hits { get; private set; }
+    /// <summary>True iff this enemy is flagged as a boss (C SPRITE.bossflag).</summary>
+    public bool IsBoss => Meta.BossFlag;
+    /// <summary>
+    /// Base/max hit points (C lib->hits). Matches the constructor's clamp so
+    /// Hits/MaxHits stay consistent for the boss-health-% computation.
+    /// </summary>
+    public int MaxHits => Meta.Hits > 0 ? Meta.Hits : 1;
     public bool Done { get; private set; }
     public bool Alive => Hits > 0 && !Done;
     public bool PendingRemovalDump { get; private set; }
