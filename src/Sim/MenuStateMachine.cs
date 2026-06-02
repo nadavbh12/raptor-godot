@@ -89,16 +89,12 @@ public sealed class MenuStateMachine
     private int _difficultyFieldId = 3; // ASKDIFF MED/VETERAN default.
 
     // ── Hangar sub-state ─────────────────────────────────────────────────────
-    // Hangar has 4 positions: 0=MISSION, 1=SUPPLIES, 2=MAINMENU, 3=QSAVE.
-    // C default hangto=HANGTOSTORE(0) → case HANGTOSTORE → pos=1 (SUPPLIES).
-    // From golden: 02_hangar_supplies = initial dump, then Down to 03_hangar_mission.
-    // Down in C: pos-- (so 1→0=MISSION). Then Return on MISSION → hangar_exit → UNKNOWN.
-    private int _hangarPos = 1;  // default: SUPPLIES (hangto=HANGTOSTORE)
+    // Hangar cursor position + navigation/hit-test live in HangarController.
+    private readonly HangarController _hangar = new();
 
     // ── Sector-select sub-state ──────────────────────────────────────────────
     // After HANGAR exit → UNKNOWN (sector select dialog). One Return → game enter.
     private bool _inSectorSelect = false;
-    private bool _inOptions = false;
     private bool _inLoadMission = false;
     private bool _inAskBool = false;
     private string _askBoolQuestion = "";
@@ -106,14 +102,10 @@ public sealed class MenuStateMachine
     private Action? _askBoolOnYes;
     private bool _inWinMsg = false;
     private string _winMsgText = "";
-    private int _optionsField = 0; // 0=detail, 1=music volume, 2=sound FX volume.
-    private bool _optionDetailHigh = true;
-    // WINDOWS.C:39 opt_vol = {127,127}; FX.C:906/973 default both volume globals
-    // to 127 (full) on first run. No persisted-prefs layer yet, so seed full.
-    private int _optionMusicVolume = 127;
-    private int _optionFxVolume = 127;
-    private string _helpTextName = "HELP1_TXT";
-    private int _helpPageIndex = 0;
+    // OPTIONS dialog state + handlers live in OptionsPanel.
+    private readonly OptionsPanel _options = new();
+    // Help paging state + page-cycle logic live in HelpSystemController.
+    private readonly HelpSystemController _help = new();
 
     // Live player inventory the supply-room store reads for ownership (Task 3.5).
     // Defaults to a fresh empty Inventory so headless / no-WaveController paths
@@ -158,43 +150,29 @@ public sealed class MenuStateMachine
     /// diff, etc. to active game state.</summary>
     public event System.Action<PilotSaveSummary>? OnPilotLoaded;
     public int DifficultyFieldId => _difficultyFieldId;
-    public int HangarPosition => _hangarPos;
+    public int HangarPosition => _hangar.Position;
     public bool InSectorSelect => _inSectorSelect;
-    public bool InOptions => _inOptions;
+    public bool InOptions => _options.Active;
     public bool InLoadMission => _inLoadMission;
     public bool InAskBool => _inAskBool;
     public string AskBoolQuestion => _askBoolQuestion;
     public bool AskBoolYesSelected => _askBoolYes;
     public bool InWinMsg => _inWinMsg;
     public string WinMsgText => _winMsgText;
-    public int OptionsField => _optionsField;
-    public bool OptionDetailHigh => _optionDetailHigh;
-    public int OptionMusicVolume => _optionMusicVolume;
-    public int OptionFxVolume => _optionFxVolume;
-    public string HelpTextName => _helpTextName;
-    public int HelpPageIndex => _helpPageIndex;
+    public int OptionsField => _options.Field;
+    public bool OptionDetailHigh => _options.DetailHigh;
+    public int OptionMusicVolume => _options.MusicVolume;
+    public int OptionFxVolume => _options.FxVolume;
+    public string HelpTextName => _help.TextName;
+    public int HelpPageIndex => _help.PageIndex;
 
     /// <summary>
     /// Ordered table of Help item names mirroring C HELP.C's modular page
-    /// cycle. Derived from <c>SOURCE/file0000.inc</c>: items 0x12 (HELP1_TXT,
-    /// the first STARTHELP entry after the +=2 unregistered offset and post-
-    /// increment) through 0x38 (VEND00_TXT, last item before ENDHELP=0x39).
-    /// 39 entries; mirrors <c>maxpages = enditem - startitem - 1 = 0x27</c>
-    /// at HELP.C:33.
+    /// cycle. Owned by <see cref="HelpSystemController"/>; forwarded here for the
+    /// View / tests. See <see cref="HelpSystemController.PageOrder"/> for the
+    /// derivation from <c>SOURCE/file0000.inc</c>.
     /// </summary>
-    public static readonly System.Collections.Generic.IReadOnlyList<string> HelpPageOrder = new[]
-    {
-        "HELP1_TXT",    "STORY1_TXT",   "OVERVW01_TXT", "OVERVW02_TXT",
-        "TRAIN01_TXT",  "TRAIN02_TXT",  "OVERVW03_TXT", "OVERVW04_TXT",
-        "OVERVW05_TXT", "OVERVW06_TXT", "OVERVW07_TXT", "OVERVW08_TXT",
-        "OVERVW09_TXT", "GAMEHLP1_TXT", "GAMEHLP2_TXT", "GAMEHLP3_TXT",
-        "GAMEHLP4_TXT", "GAMEHLP5_TXT", "HINTS01_TXT",  "HINTS02_TXT",
-        "NEWPLAY1_TXT", "NEWPLAY2_TXT", "LOADPLY1_TXT", "LOADPLY2_TXT",
-        "HANGHLP1_TXT", "HANGHLP2_TXT", "COMPHLP1_TXT", "COMPHLP2_TXT",
-        "STORHLP1_TXT", "STORHLP2_TXT", "RAP1_TXT",     "RAP2_TXT",
-        "WEAP01_TXT",   "WEAP02_TXT",   "WEAP03_TXT",   "RAP3_TXT",
-        "RAP4_TXT",     "RAP5_TXT",     "VEND00_TXT",
-    };
+    public static System.Collections.Generic.IReadOnlyList<string> HelpPageOrder => HelpSystemController.PageOrder;
     public string? PilotSaveDirectory { get; init; }
     public System.Collections.Generic.IReadOnlyList<PilotSaveSummary> LoadMissionPilots => _loadMissionPilots;
     public int LoadMissionSelectedIndex { get; private set; }
@@ -236,9 +214,9 @@ public sealed class MenuStateMachine
     {
         InGame = false;
         _inSectorSelect = false;
-        _inOptions = false;
+        _options.Close();
         _pilotCreateStep = 0;
-        _hangarPos = 1;
+        _hangar.Position = 1;
         EnterState(WinState.Hangar, currentFrame, reAnchor: true);
     }
 
@@ -246,7 +224,7 @@ public sealed class MenuStateMachine
     {
         InGame = false;
         _inSectorSelect = false;
-        _inOptions = false;
+        _options.Close();
         _pilotCreateStep = 0;
         EnterState(WinState.Death, currentFrame, reAnchor: true);
     }
@@ -270,9 +248,9 @@ public sealed class MenuStateMachine
         _difficultyFieldId = 3;
         PilotName = "";
         Callsign = "";
-        _hangarPos = 1;
+        _hangar.Position = 1;
         _inSectorSelect = false;
-        _inOptions = false;
+        _options.Reset();
         _inLoadMission = false;
         _loadMissionPilots = new();
         LoadMissionSelectedIndex = 0;
@@ -282,8 +260,7 @@ public sealed class MenuStateMachine
         _askBoolOnYes = null;
         _inWinMsg = false;
         _winMsgText = "";
-        _optionsField = 0;
-        _helpTextName = "HELP1_TXT";
+        _help.ResetTextName();
         EnterState(WinState.Menu, currentFrame, reAnchor: true);
     }
 
@@ -316,12 +293,12 @@ public sealed class MenuStateMachine
                 // Pagination (HELP.C:91-121 keypress switch + modular wrap).
                 if (action == "Down" || action == "Right" || action == "PageDown")
                 {
-                    SetHelpPage(_helpPageIndex + 1);
+                    SetHelpPage(_help.PageIndex + 1);
                     return true;
                 }
                 if (action == "Up" || action == "Left" || action == "PageUp")
                 {
-                    SetHelpPage(_helpPageIndex - 1);
+                    SetHelpPage(_help.PageIndex - 1);
                     return true;
                 }
                 if (action == "Home")
@@ -416,8 +393,8 @@ public sealed class MenuStateMachine
 
         if (State == WinState.Menu)
         {
-            if (_inOptions)
-                return HandleOptionsPointerClick(x, y);
+            if (_options.Active)
+                return _options.HandlePointerClick(x, y);
 
             int item = MainMenuItemAt(x, y);
             if (item < 0) return false;
@@ -427,9 +404,9 @@ public sealed class MenuStateMachine
 
         if (State == WinState.Hangar)
         {
-            int pos = HangarPositionAt(x, y);
+            int pos = HangarController.PositionAt(x, y);
             if (pos < 0) return false;
-            _hangarPos = pos;
+            _hangar.Position = pos;
             return HandleInput("Return", currentFrame);
         }
 
@@ -454,8 +431,8 @@ public sealed class MenuStateMachine
         }
         if (_inAskBool)
             return HandleAskBoolInput(action);
-        if (_inOptions)
-            return HandleOptionsInput(action);
+        if (_options.Active)
+            return _options.HandleInput(action);
         if (_inLoadMission)
             return HandleLoadMissionInput(action);
 
@@ -522,7 +499,7 @@ public sealed class MenuStateMachine
                     // C: hangto defaults to HANGTOSTORE → pos=1 (SUPPLIES) on first entry.
                     _pilotCreateStep = 0;
                     _difficultyFieldId = 3;
-                    _hangarPos = 1;  // HANGTOSTORE → pos=1=SUPPLIES
+                    _hangar.Position = 1;  // HANGTOSTORE → pos=1=SUPPLIES
                     // Notify that a new pilot was created (triggers stat initialization).
                     OnPilotCreated?.Invoke();
                     // Delay anchor by HangarFadeFrames to simulate fade transitions.
@@ -582,8 +559,7 @@ public sealed class MenuStateMachine
             }
             if (CurrentItem == OptionsItemIndex)
             {
-                _inOptions = true;
-                _optionsField = 0;
+                _options.Open();
                 return true;
             }
             if (CurrentItem == NewItemIndex)
@@ -618,7 +594,7 @@ public sealed class MenuStateMachine
         }
         if (action == "Escape")
         {
-            _hangarPos = 2;
+            _hangar.Position = 2;
             EnterMenu(currentFrame);
             return true;
         }
@@ -665,7 +641,7 @@ public sealed class MenuStateMachine
         IdPic = pilot.IdPic;
         OnPilotLoaded?.Invoke(pilot);
         EnterState(WinState.Hangar, currentFrame + HangarFadeFrames, reAnchor: true);
-        _hangarPos = 1;  // HANGTOSTORE → SUPPLIES
+        _hangar.Position = 1;  // HANGTOSTORE → SUPPLIES
     }
 
     private void OpenAskBoolSave()
@@ -737,79 +713,6 @@ public sealed class MenuStateMachine
         return true;
     }
 
-    private bool HandleOptionsInput(string action)
-    {
-        if (action == "Escape")
-        {
-            _inOptions = false;
-            _optionsField = 0;
-            return true;
-        }
-        if (action == "Down")
-        {
-            if (_optionsField < 2) _optionsField++;
-            return true;
-        }
-        if (action == "Up")
-        {
-            if (_optionsField > 0) _optionsField--;
-            return true;
-        }
-        if (action == "Left")
-        {
-            AdjustOptionVolume(-8);
-            return true;
-        }
-        if (action == "Right")
-        {
-            AdjustOptionVolume(8);
-            return true;
-        }
-        if (action == "Return" && _optionsField == 0)
-        {
-            _optionDetailHigh = !_optionDetailHigh;
-            return true;
-        }
-        return true;
-    }
-
-    private bool HandleOptionsPointerClick(int x, int y)
-    {
-        if (InRect(x, y, 184, 159, 57, 12))
-        {
-            _inOptions = false;
-            _optionsField = 0;
-            return true;
-        }
-        if (InRect(x, y, 107, 58, 118, 12))
-        {
-            _optionsField = 0;
-            _optionDetailHigh = !_optionDetailHigh;
-            return true;
-        }
-        if (InRect(x, y, 107, 91, 127, 13))
-        {
-            _optionsField = 1;
-            _optionMusicVolume = Math.Clamp(x - 107, 0, 127);
-            return true;
-        }
-        if (InRect(x, y, 107, 131, 127, 13))
-        {
-            _optionsField = 2;
-            _optionFxVolume = Math.Clamp(x - 107, 0, 127);
-            return true;
-        }
-        return false;
-    }
-
-    private void AdjustOptionVolume(int delta)
-    {
-        if (_optionsField == 1)
-            _optionMusicVolume = Math.Clamp(_optionMusicVolume + delta, 0, 127);
-        else if (_optionsField == 2)
-            _optionFxVolume = Math.Clamp(_optionFxVolume + delta, 0, 127);
-    }
-
     private static bool InRect(int x, int y, int rx, int ry, int w, int h)
         => x >= rx && x < rx + w && y >= ry && y < ry + h;
 
@@ -837,15 +740,6 @@ public sealed class MenuStateMachine
         return 0;
     }
 
-    private static int HangarPositionAt(int x, int y)
-    {
-        if (InRect(x, y, 120, 140, 60, 45)) return 0; // MISSION
-        if (InRect(x, y, 215, 60, 55, 50)) return 1;  // SUPPLIES
-        if (InRect(x, y, 5, 112, 65, 50)) return 2;   // MAIN MENU
-        if (InRect(x, y, 225, 150, 75, 45)) return 3; // QUICK SAVE
-        return -1;
-    }
-
     private bool HandleHangarInput(string action, int currentFrame)
     {
         if (_inAskBool) return HandleAskBoolInput(action);
@@ -860,34 +754,26 @@ public sealed class MenuStateMachine
             EnterHelp("HANGHLP1_TXT", currentFrame);
             return true;
         }
-        if (action == "Down" || action == "Right")
-        {
-            // In C: Down/Right → pos-- (SC_DOWN case in WINDOWS.C); wraps from 0 to 3.
-            _hangarPos = (_hangarPos - 1 + 4) % 4;
+        // Cursor-only navigation (Down/Right → pos--, Up/Left → pos++); the
+        // controller owns the wrap arithmetic. Returns false like the original.
+        if (_hangar.TryNavigate(action))
             return false;
-        }
-        if (action == "Up" || action == "Left")
-        {
-            // In C: Up/Left/Tab → pos++.
-            _hangarPos = (_hangarPos + 1) % 4;
-            return false;
-        }
         if (action == "Escape")
         {
-            _hangarPos = 2;
+            _hangar.Position = 2;
             EnterMenu(currentFrame);
             return true;
         }
         if (action == "Return")
         {
-            if (_hangarPos == 0)  // MISSION
+            if (_hangar.Position == 0)  // MISSION
             {
                 // Leave HANGAR → UNKNOWN (sector select). Anchor stays (reAnchor=false).
                 _inSectorSelect = true;
                 EnterState(WinState.Unknown, currentFrame, reAnchor: false);
                 return true;
             }
-            if (_hangarPos == 1)  // SUPPLIES → STORE_Enter
+            if (_hangar.Position == 1)  // SUPPLIES → STORE_Enter
             {
                 Store = new StoreLogic(
                     Inventory,
@@ -970,39 +856,24 @@ public sealed class MenuStateMachine
 
     /// <summary>
     /// Enter WinState.Help at the page indexed by <paramref name="itemName"/>
-    /// in <see cref="HelpPageOrder"/>. Unknown names fall back to page 0
-    /// (HELP1_TXT) — matches C HELP_Win's <c>EXIT_Error("Invalid Page")</c>
-    /// path being unreachable in practice.
+    /// in <see cref="HelpPageOrder"/>. Page resolution (with the page-0 fallback)
+    /// lives in <see cref="HelpSystemController.SelectPageByName"/>; this method
+    /// keeps ownership of the actual WinState.Help transition and frame anchor.
     /// </summary>
     private void EnterHelp(string itemName, int currentFrame)
     {
-        int idx = -1;
-        for (int i = 0; i < HelpPageOrder.Count; i++)
-        {
-            if (HelpPageOrder[i] == itemName) { idx = i; break; }
-        }
-        if (idx < 0) { idx = 0; itemName = HelpPageOrder[0]; }
-        _helpPageIndex = idx;
-        _helpTextName = itemName;
+        _help.SelectPageByName(itemName);
         EnterState(WinState.Help, currentFrame + HelpFadeFrames, reAnchor: true);
     }
 
     /// <summary>
     /// Set the current Help page with C-style modular wrap (HELP.C:75-78).
-    /// Updates both <see cref="HelpPageIndex"/> and <see cref="HelpTextName"/>.
+    /// Updates both <see cref="HelpPageIndex"/> and <see cref="HelpTextName"/>
+    /// (via the controller) and fires OnStateChanged, matching the original.
     /// </summary>
     private void SetHelpPage(int newPage)
     {
-        int n = HelpPageOrder.Count;
-        // C: `if (curpage >= 0) curpage %= maxpages; else curpage = maxpages + curpage`.
-        // Handles -1 → n-1, n → 0 cleanly.
-        if (newPage >= 0)
-            newPage = newPage % n;
-        else
-            newPage = n + (newPage % n);
-        if (newPage == n) newPage = 0;
-        _helpPageIndex = newPage;
-        _helpTextName = HelpPageOrder[_helpPageIndex];
+        _help.SetPage(newPage);
         OnStateChanged?.Invoke();
     }
 }
