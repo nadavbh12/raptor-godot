@@ -223,7 +223,7 @@ public class WaveControllerTests
     {
         // ENEMY.C:391-392 — the end-wave countdown arms on last-enemy-removed,
         // regardless of lingering explosions (which keep rendering during fly-off).
-        Assert.Equal(expected, WaveController.ShouldCompleteMission(
+        Assert.Equal(expected, EndWaveSequencer.ShouldCompleteMission(
             waveActive, demoActive, endWave, playerAlive, enemiesRemaining));
     }
 

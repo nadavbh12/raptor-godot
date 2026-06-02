@@ -366,15 +366,9 @@ public partial class WaveController : Node
     private SpriteMetaLibrary?    _slib;
     private int                   _spawnIdx = 0;   // index into _mapSprites
     private bool                  _endWaveFlag = false;
-    private bool                  _missionCompleteNotified = false;
     private readonly PlayerDeathSequence _playerDeath = new();
-    // End-of-wave fly-off countdown. -1 = inactive. When the wave ends and no
-    // enemies/explosions remain, this counts down from EndWaveSequence.Duration
-    // (60). The player ship glides up by 4 px/iter (and centers horizontally)
-    // once it crosses below EndWaveSequence.FlyOff (40). Mission complete fires
-    // when the countdown reaches 0. Mirrors RAP.C:599-617, 1039-1047.
-    private int                   _endWaveCountdown = -1;
-    public int                    EndWaveCountdown => _endWaveCountdown;
+    private readonly EndWaveSequencer _endWave = new();
+    public int                    EndWaveCountdown => _endWave.Countdown;
 
     // ── Scheduler ─────────────────────────────────────────────────────────────
     private readonly GamePhaseScheduler _scheduler;
@@ -591,9 +585,8 @@ public partial class WaveController : Node
         _shieldHud.ResetForWave(PlayerLogic.Shield);
         _playerHit = false;
         _endWaveFlag = false;
-        _missionCompleteNotified = false;
         _playerDeath.Reset();
-        _endWaveCountdown = -1;
+        _endWave.Reset();
         DrawPlayer = true;
         _subTick = 0;
         _gameLoopIter = 0;
@@ -785,7 +778,7 @@ public partial class WaveController : Node
         // ship's motion comes entirely from RAP_DisplayStats' IPT_FMovePlayer
         // (applied later in PhaseCleanup). Zero out directional input so the
         // forced glide isn't fought by residual velocity.
-        if (EndWaveSequence.InputLocked(_endWaveCountdown))
+        if (EndWaveSequence.InputLocked(_endWave.Countdown))
             PlayerLogic.Tick(0, 0);
         else
             PlayerLogic.Tick(input.Dx, input.Dy);
@@ -1455,7 +1448,7 @@ public partial class WaveController : Node
     private void ApplyPlayerDamage(int amt)
     {
         if (_godmode) return;  // RAPTOR_GODMODE capture hook: invuln (parity-inert; env off in all scenarios).
-        int dmg = GateSubEnergyDamage(amt, endWaveActive: _endWaveCountdown >= 0, _curPlayerDiff);
+        int dmg = GateSubEnergyDamage(amt, endWaveActive: _endWave.Active, _curPlayerDiff);
         if (dmg > 0) PlayerLogic.TakeDamage(dmg);
     }
 
@@ -1602,17 +1595,6 @@ public partial class WaveController : Node
     // enemy is removed during an end-wave — there is NO explosion/ANIMS gate.
     // RAP.C:1039-1046 then just counts down. Explosions keep ticking/rendering
     // during the fly-off; they never block the wave from ending.
-    internal static bool ShouldCompleteMission(bool waveActive,
-                                               bool demoActive,
-                                               bool endWave,
-                                               bool playerAlive,
-                                               bool enemiesRemaining) =>
-        waveActive
-        && !demoActive
-        && endWave
-        && playerAlive
-        && !enemiesRemaining;
-
     private void SpawnTileExplosion(int mapspot)
     {
         foreach (var tile in _tileSlice)
@@ -1701,45 +1683,20 @@ public partial class WaveController : Node
         int currentIter = GameLoopIter;
         _explosions.RemoveAll(x =>
             AnimationAge(currentIter, x.StartIter) >= AnimFramesFor(x.ExpType));
-        CompleteMissionIfWaveEnded();
-    }
 
-    private void CompleteMissionIfWaveEnded()
-    {
-        if (_missionCompleteNotified) return;
-        bool enemiesRemaining = _enemies.Exists(e => e.Alive || e.PendingRemovalDump);
-
-        // Once the wave-end conditions are met, start the fly-off countdown
-        // instead of jumping straight to the hangar (mirrors RAP.C:1039-1047
-        // where startendwave counts down from END_DURATION before end_wave fires).
-        if (_endWaveCountdown < 0
-            && ShouldCompleteMission(
-                _waveActive,
-                _demoReplay != null,
-                _endWaveFlag,
-                PlayerLogic.Alive,
-                enemiesRemaining))
+        var endWave = _endWave.Tick(
+            _waveActive, _demoReplay != null, _endWaveFlag,
+            PlayerLogic.Alive, PlayerLogic.X,
+            _enemies.Exists(e => e.Alive || e.PendingRemovalDump));
+        if (endWave.ForcedDx != 0 || endWave.ForcedDy != 0)
+            PlayerLogic.ApplyForcedMove(endWave.ForcedDx, endWave.ForcedDy);
+        if (endWave.MissionComplete)
         {
-            _endWaveCountdown = EndWaveSequence.Duration;
+            _waveActive = false;
+            _menu?.CompleteMission(SimClock.Frame);
         }
-
-        if (_endWaveCountdown < 0) return;
-
-        // Per-tick fly-off displacement (RAP.C:599-617).
-        var (dx, dy) = EndWaveSequence.PlayerDelta(
-            _endWaveCountdown, PlayerLogic.X, PlayerLogic.Alive);
-        if (dx != 0 || dy != 0)
-            PlayerLogic.ApplyForcedMove(dx, dy);
-
-        _endWaveCountdown--;
-        if (_endWaveCountdown > 0) return;
-
-        // Countdown hit zero: actually leave the wave (mirrors end_wave=TRUE
-        // in RAP.C:1041-1046 ending the gameplay loop).
-        _missionCompleteNotified = true;
-        _waveActive = false;
-        _menu?.CompleteMission(SimClock.Frame);
     }
+
 
     /// <summary>
     /// Pure-C# port of the pre-drain gates in OBJS_SubEnergy (OBJECTS.C:1227-1235):
@@ -1765,7 +1722,7 @@ public partial class WaveController : Node
         // the wave's initial-skip frame and the main shield tick, as before.
         if (_shieldHud.TickSkipInitial(PlayerLogic, _curPlayerDiff,
                 deathActive: _playerDeath.Active,
-                endWaveActive: _endWaveCountdown >= 0))
+                endWaveActive: _endWave.Active))
             return;
 
         if (_playerDeath.Active)
@@ -1779,7 +1736,7 @@ public partial class WaveController : Node
 
         _shieldHud.Tick(PlayerLogic, Inventory, _curPlayerDiff,
             deathActive: _playerDeath.Active,
-            endWaveActive: _endWaveCountdown >= 0,
+            endWaveActive: _endWave.Active,
             gameLoopIter: _gameLoopIter, shooterRng: _shooterRng);
     }
 
