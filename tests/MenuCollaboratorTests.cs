@@ -1,12 +1,14 @@
+using System.Collections.Generic;
 using Raptor.Sim;
 using Xunit;
 
 namespace Raptor.Tests;
 
-// Focused unit tests for the three menu collaborators extracted from
-// MenuStateMachine in Phase 4 tranche A. The full behavior (transitions,
-// anchors, event order) is pinned by MenuStateMachineTests through HandleInput;
-// these cover the collaborators' own logic in isolation.
+// Focused unit tests for the menu collaborators extracted from
+// MenuStateMachine in Phase 4 tranches A (Help/Options/Hangar) and B
+// (LoadMission/PilotCreation). The full behavior (transitions, anchors, event
+// order) is pinned by MenuStateMachineTests through HandleInput; these cover the
+// collaborators' own logic in isolation.
 
 public class HelpSystemControllerTests
 {
@@ -185,5 +187,232 @@ public class HangarControllerTests
         Assert.Equal(2, HangarController.PositionAt(30, 130));  // MAIN MENU
         Assert.Equal(3, HangarController.PositionAt(260, 170)); // QUICK SAVE
         Assert.Equal(-1, HangarController.PositionAt(0, 0));    // miss
+    }
+}
+
+public class LoadMissionPanelTests
+{
+    private static List<PilotSaveSummary> ThreePilots() => new()
+    {
+        Pilot("ALICE"), Pilot("BOB"), Pilot("CAROL"),
+    };
+
+    private static PilotSaveSummary Pilot(string name) => new(
+        Slot: 0, Name: name, Callsign: "X", IdPic: 0, Score: 0u, SWeapon: 0,
+        CurGame: 0, GameWave: new[] { 0, 0, 0 }, Diff: new[] { 0, 0, 0, 0 },
+        TrainFlag: false, FinTrain: false);
+
+    [Fact]
+    public void Defaults_are_closed_empty()
+    {
+        var p = new LoadMissionPanel();
+        Assert.False(p.Active);
+        Assert.Empty(p.Pilots);
+        Assert.Null(p.SelectedPilot);
+    }
+
+    [Fact]
+    public void Open_activates_with_first_pilot_selected()
+    {
+        var p = new LoadMissionPanel();
+        p.Open(ThreePilots());
+        Assert.True(p.Active);
+        Assert.Equal(0, p.SelectedIndex);
+        Assert.Equal("ALICE", p.SelectedPilot!.Name);
+    }
+
+    [Fact]
+    public void Down_PageDown_Left_advance_to_next_with_wrap()
+    {
+        var p = new LoadMissionPanel();
+        p.Open(ThreePilots());
+        Assert.Equal(LoadMissionPanel.Result.Handled, p.HandleInput("Down"));
+        Assert.Equal("BOB", p.SelectedPilot!.Name);
+        p.HandleInput("PageDown");
+        Assert.Equal("CAROL", p.SelectedPilot!.Name);
+        p.HandleInput("Left");                 // wraps 2 → 0
+        Assert.Equal("ALICE", p.SelectedPilot!.Name);
+    }
+
+    [Fact]
+    public void Up_PageUp_Right_step_to_prev_with_wrap()
+    {
+        var p = new LoadMissionPanel();
+        p.Open(ThreePilots());
+        p.HandleInput("Up");                   // wraps 0 → 2
+        Assert.Equal("CAROL", p.SelectedPilot!.Name);
+        p.HandleInput("Right");
+        Assert.Equal("BOB", p.SelectedPilot!.Name);
+        p.HandleInput("PageUp");
+        Assert.Equal("ALICE", p.SelectedPilot!.Name);
+    }
+
+    [Fact]
+    public void Escape_closes_and_signals_Closed()
+    {
+        var p = new LoadMissionPanel();
+        p.Open(ThreePilots());
+        Assert.Equal(LoadMissionPanel.Result.Closed, p.HandleInput("Escape"));
+        Assert.False(p.Active);
+    }
+
+    [Fact]
+    public void Return_closes_and_signals_Confirm_keeping_selection_readable()
+    {
+        var p = new LoadMissionPanel();
+        p.Open(ThreePilots());
+        p.HandleInput("Down");                 // select BOB
+        Assert.Equal(LoadMissionPanel.Result.Confirm, p.HandleInput("Return"));
+        Assert.False(p.Active);
+        Assert.Equal("BOB", p.SelectedPilot!.Name);  // still readable post-confirm
+    }
+
+    [Fact]
+    public void Reset_clears_list_and_selection()
+    {
+        var p = new LoadMissionPanel();
+        p.Open(ThreePilots());
+        p.HandleInput("Down");
+        p.Reset();
+        Assert.False(p.Active);
+        Assert.Empty(p.Pilots);
+        Assert.Equal(0, p.SelectedIndex);
+        Assert.Null(p.SelectedPilot);
+    }
+}
+
+public class PilotCreationFlowTests
+{
+    [Fact]
+    public void Defaults_are_idle_veteran_empty()
+    {
+        var f = new PilotCreationFlow();
+        Assert.False(f.Active);
+        Assert.Equal(0, f.Step);
+        Assert.Equal(3, f.DifficultyFieldId);
+        Assert.Equal("", f.PilotName);
+        Assert.Equal("", f.Callsign);
+    }
+
+    [Fact]
+    public void Begin_enters_name_step()
+    {
+        var f = new PilotCreationFlow();
+        f.Begin();
+        Assert.True(f.Active);
+        Assert.Equal(1, f.Step);
+    }
+
+    [Fact]
+    public void Text_entry_uppercases_and_caps_at_12_per_step()
+    {
+        var f = new PilotCreationFlow();
+        f.Begin();                                // step 1 = name
+        foreach (char c in "abcdefghijklmno")     // 15 chars
+            f.HandleInput(c.ToString());
+        Assert.Equal("ABCDEFGHIJKL", f.PilotName);  // capped at 12, upper-cased
+        f.HandleInput("Backspace");
+        Assert.Equal("ABCDEFGHIJK", f.PilotName);
+
+        f.HandleInput("Return");                  // step 2 = callsign
+        Assert.Equal(2, f.Step);
+        f.HandleInput("1"); f.HandleInput("2"); f.HandleInput("z");
+        Assert.Equal("12Z", f.Callsign);
+        Assert.Equal("ABCDEFGHIJK", f.PilotName); // name unaffected by callsign entry
+    }
+
+    [Fact]
+    public void Non_alphanumeric_keys_are_absorbed_without_mutating_text()
+    {
+        var f = new PilotCreationFlow();
+        f.Begin();
+        f.HandleInput("A");
+        Assert.Equal(PilotCreationFlow.Result.Handled, f.HandleInput("Space"));
+        Assert.Equal(PilotCreationFlow.Result.Handled, f.HandleInput("Tab"));
+        Assert.Equal("A", f.PilotName);
+    }
+
+    [Fact]
+    public void F1_signals_OpenHelp_without_changing_step()
+    {
+        var f = new PilotCreationFlow();
+        f.Begin();
+        Assert.Equal(PilotCreationFlow.Result.OpenHelp, f.HandleInput("F1"));
+        Assert.Equal(1, f.Step);
+    }
+
+    [Fact]
+    public void Escape_step1_aborts_and_clears_text()
+    {
+        var f = new PilotCreationFlow();
+        f.Begin();
+        f.HandleInput("A");
+        f.HandleInput("Escape");
+        Assert.Equal(0, f.Step);
+        Assert.Equal("", f.PilotName);
+        Assert.Equal("", f.Callsign);
+    }
+
+    [Fact]
+    public void Escape_below_step3_resets_difficulty_default()
+    {
+        var f = new PilotCreationFlow();
+        f.Begin();
+        f.HandleInput("Return");   // step 2
+        f.HandleInput("Return");   // step 3 (difficulty)
+        f.HandleInput("Down");     // difficulty 3 → 4
+        Assert.Equal(4, f.DifficultyFieldId);
+        f.HandleInput("Escape");   // step 3 → 2 (< 3) → difficulty reset to 3
+        Assert.Equal(2, f.Step);
+        Assert.Equal(3, f.DifficultyFieldId);
+    }
+
+    [Fact]
+    public void Difficulty_nav_wraps_1_to_5()
+    {
+        var f = new PilotCreationFlow();
+        f.Begin();
+        f.HandleInput("Return");   // step 2
+        f.HandleInput("Return");   // step 3
+        f.HandleInput("Up");       // 3 → 2
+        f.HandleInput("Up");       // 2 → 1
+        f.HandleInput("Up");       // 1 → 5 (wrap)
+        Assert.Equal(5, f.DifficultyFieldId);
+        f.HandleInput("Down");     // 5 → 1 (wrap)
+        Assert.Equal(1, f.DifficultyFieldId);
+    }
+
+    [Fact]
+    public void Confirm_at_step4_signals_Confirm_and_resets()
+    {
+        var f = new PilotCreationFlow();
+        f.Begin();
+        f.HandleInput("Return");   // step 2
+        f.HandleInput("Return");   // step 3
+        Assert.Equal(PilotCreationFlow.Result.Confirm, f.HandleInput("Return")); // step 4 accept
+        Assert.Equal(0, f.Step);
+        Assert.Equal(3, f.DifficultyFieldId);
+    }
+
+    [Fact]
+    public void Step4_abort_mission_field_resets_without_confirm()
+    {
+        var f = new PilotCreationFlow();
+        f.Begin();
+        f.HandleInput("Return");   // step 2
+        f.HandleInput("Return");   // step 3
+        f.SetDifficultyField(5);   // ABORT MISSION
+        Assert.Equal(PilotCreationFlow.Result.Handled, f.HandleInput("Return"));
+        Assert.Equal(0, f.Step);
+        Assert.Equal(3, f.DifficultyFieldId);
+    }
+
+    [Fact]
+    public void SetIdentity_sets_name_and_callsign()
+    {
+        var f = new PilotCreationFlow();
+        f.SetIdentity("VETERAN", "VET");
+        Assert.Equal("VETERAN", f.PilotName);
+        Assert.Equal("VET", f.Callsign);
     }
 }

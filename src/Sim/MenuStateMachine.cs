@@ -79,14 +79,11 @@ public sealed class MenuStateMachine
     public const int HangarFadeFrames = 100;
 
     // ── Pilot-creation sub-flow ──────────────────────────────────────────────
-    // When the player presses Return on NEW, we enter a multi-step dialog:
-    //   Step 0: idle (not in pilot creation)
-    //   Step 1: name dialog — waiting for Return (confirm name)
-    //   Step 2: callsign dialog — waiting for Return (confirm callsign → difficulty)
-    //   Step 3: difficulty dialog — waiting for Return (accept → HANGAR)
-    // Typed letters are no-ops in the state machine (text input is absorbed).
-    private int _pilotCreateStep = 0;
-    private int _difficultyFieldId = 3; // ASKDIFF MED/VETERAN default.
+    // The multi-step dialog (name → callsign → difficulty → confirm), its
+    // text-entry buffers (PilotName/Callsign), and the difficulty field cursor
+    // live in PilotCreationFlow. MenuStateMachine owns the F1→HELP open, the
+    // OnPilotCreated emission and the WinState.Hangar transition it drives.
+    private readonly PilotCreationFlow _pilotCreate = new();
 
     // ── Hangar sub-state ─────────────────────────────────────────────────────
     // Hangar cursor position + navigation/hit-test live in HangarController.
@@ -95,7 +92,10 @@ public sealed class MenuStateMachine
     // ── Sector-select sub-state ──────────────────────────────────────────────
     // After HANGAR exit → UNKNOWN (sector select dialog). One Return → game enter.
     private bool _inSectorSelect = false;
-    private bool _inLoadMission = false;
+    // LOAD-mission pilot list + cursor nav live in LoadMissionPanel. The
+    // PilotSaveStore.LoadAll I/O, the "No Pilots to Load" WIN_Msg and the
+    // OnPilotLoaded / Hangar transition stay in MenuStateMachine.
+    private readonly LoadMissionPanel _loadMission = new();
     private bool _inAskBool = false;
     private string _askBoolQuestion = "";
     private bool _askBoolYes = true;
@@ -140,20 +140,20 @@ public sealed class MenuStateMachine
     /// </summary>
     public int CurrentItem { get; private set; } = 0;
 
-    public int PilotCreateStep => _pilotCreateStep;
-    public string PilotName { get; private set; } = "";
-    public string Callsign { get; private set; } = "";
+    public int PilotCreateStep => _pilotCreate.Step;
+    public string PilotName => _pilotCreate.PilotName;
+    public string Callsign => _pilotCreate.Callsign;
     /// <summary>Portrait variant (0=WMALE, 1=BMALE, 2=WFEMALE, 3=BFEMALE).</summary>
     public int IdPic { get; private set; } = 0;
     /// <summary>Fires when a saved pilot is loaded via the LOAD dialog. Receives the
     /// full summary so subscribers (e.g. WaveController) can apply Score, CurGame,
     /// diff, etc. to active game state.</summary>
     public event System.Action<PilotSaveSummary>? OnPilotLoaded;
-    public int DifficultyFieldId => _difficultyFieldId;
+    public int DifficultyFieldId => _pilotCreate.DifficultyFieldId;
     public int HangarPosition => _hangar.Position;
     public bool InSectorSelect => _inSectorSelect;
     public bool InOptions => _options.Active;
-    public bool InLoadMission => _inLoadMission;
+    public bool InLoadMission => _loadMission.Active;
     public bool InAskBool => _inAskBool;
     public string AskBoolQuestion => _askBoolQuestion;
     public bool AskBoolYesSelected => _askBoolYes;
@@ -174,12 +174,9 @@ public sealed class MenuStateMachine
     /// </summary>
     public static System.Collections.Generic.IReadOnlyList<string> HelpPageOrder => HelpSystemController.PageOrder;
     public string? PilotSaveDirectory { get; init; }
-    public System.Collections.Generic.IReadOnlyList<PilotSaveSummary> LoadMissionPilots => _loadMissionPilots;
-    public int LoadMissionSelectedIndex { get; private set; }
-    public PilotSaveSummary? LoadMissionPilot =>
-        _loadMissionPilots.Count == 0 ? null : _loadMissionPilots[LoadMissionSelectedIndex];
-
-    private System.Collections.Generic.List<PilotSaveSummary> _loadMissionPilots = new();
+    public System.Collections.Generic.IReadOnlyList<PilotSaveSummary> LoadMissionPilots => _loadMission.Pilots;
+    public int LoadMissionSelectedIndex => _loadMission.SelectedIndex;
+    public PilotSaveSummary? LoadMissionPilot => _loadMission.SelectedPilot;
 
     /// <summary>
     /// The frame number at which the CURRENT (non-Unknown) context was entered.
@@ -215,7 +212,7 @@ public sealed class MenuStateMachine
         InGame = false;
         _inSectorSelect = false;
         _options.Close();
-        _pilotCreateStep = 0;
+        _pilotCreate.ResetStep();
         _hangar.Position = 1;
         EnterState(WinState.Hangar, currentFrame, reAnchor: true);
     }
@@ -225,7 +222,7 @@ public sealed class MenuStateMachine
         InGame = false;
         _inSectorSelect = false;
         _options.Close();
-        _pilotCreateStep = 0;
+        _pilotCreate.ResetStep();
         EnterState(WinState.Death, currentFrame, reAnchor: true);
     }
 
@@ -244,16 +241,11 @@ public sealed class MenuStateMachine
     public void EnterMenu(int currentFrame)
     {
         CurrentItem = 0;
-        _pilotCreateStep = 0;
-        _difficultyFieldId = 3;
-        PilotName = "";
-        Callsign = "";
+        _pilotCreate.Reset();
         _hangar.Position = 1;
         _inSectorSelect = false;
         _options.Reset();
-        _inLoadMission = false;
-        _loadMissionPilots = new();
-        LoadMissionSelectedIndex = 0;
+        _loadMission.Reset();
         _inAskBool = false;
         _askBoolQuestion = "";
         _askBoolYes = true;
@@ -352,7 +344,7 @@ public sealed class MenuStateMachine
                 // WIN_MainMenu's input loop after WIN_Credits/HELP_Win, so
                 // route keys to the main-menu handler here to keep parity
                 // labels intact while restoring live interactivity.
-                if (!_inSectorSelect && _pilotCreateStep == 0)
+                if (!_inSectorSelect && !_pilotCreate.Active)
                     return HandleMenuInput(action, currentFrame);
                 break;
         }
@@ -368,26 +360,26 @@ public sealed class MenuStateMachine
         if (State != WinState.Menu && State != WinState.Hangar && State != WinState.Store && State != WinState.Unknown)
             return false;
 
-        if (_pilotCreateStep == 1 || _pilotCreateStep == 2)
+        if (_pilotCreate.Step == 1 || _pilotCreate.Step == 2)
         {
             if (InRect(x, y, 183, 128, 110, 12))
             {
-                _pilotCreateStep = 1;
+                _pilotCreate.SetStep(1);
                 return true;
             }
             if (InRect(x, y, 183, 144, 110, 12))
             {
-                _pilotCreateStep = 2;
+                _pilotCreate.SetStep(2);
                 return true;
             }
             return false;
         }
 
-        if (_pilotCreateStep == 3)
+        if (_pilotCreate.Step == 3)
         {
             int field = DifficultyFieldAt(x, y);
             if (field == 0) return false;
-            _difficultyFieldId = field;
+            _pilotCreate.SetDifficultyField(field);
             return HandleInput("Return", currentFrame);
         }
 
@@ -433,98 +425,32 @@ public sealed class MenuStateMachine
             return HandleAskBoolInput(action);
         if (_options.Active)
             return _options.HandleInput(action);
-        if (_inLoadMission)
+        if (_loadMission.Active)
             return HandleLoadMissionInput(action);
 
-        // Pilot-creation sub-flow: absorb inputs until we've consumed enough Returns.
-        if (_pilotCreateStep > 0)
+        // Pilot-creation sub-flow: the step machine + text entry live in
+        // PilotCreationFlow; MenuStateMachine drives the F1→HELP open and the
+        // step-4 confirm (OnPilotCreated + HANGAR transition) off its result.
+        if (_pilotCreate.Active)
         {
-            if (action == "F1")
+            switch (_pilotCreate.HandleInput(action))
             {
-                // C WINDOWS.C:800 — SC_F1 in registration → HELP_Win("NEWPLAY1_TXT").
-                EnterHelp("NEWPLAY1_TXT", currentFrame);
-                return true;
-            }
-            if (action == "Escape")
-            {
-                if (_pilotCreateStep == 1)
-                {
-                    _pilotCreateStep = 0;
-                    PilotName = "";
-                    Callsign = "";
-                }
-                else
-                {
-                    _pilotCreateStep--;
-                    if (_pilotCreateStep < 3)
-                        _difficultyFieldId = 3;
-                }
-                return true;
-            }
-            if (_pilotCreateStep == 3)
-            {
-                if (action == "Down" || action == "Right")
-                {
-                    _difficultyFieldId = _difficultyFieldId == 5 ? 1 : _difficultyFieldId + 1;
+                case PilotCreationFlow.Result.OpenHelp:
+                    // C WINDOWS.C:800 — SC_F1 in registration → HELP_Win("NEWPLAY1_TXT").
+                    EnterHelp("NEWPLAY1_TXT", currentFrame);
                     return true;
-                }
-                if (action == "Up" || action == "Left")
-                {
-                    _difficultyFieldId = _difficultyFieldId == 1 ? 5 : _difficultyFieldId - 1;
-                    return true;
-                }
-            }
-            if (action == "Return")
-            {
-                _pilotCreateStep++;
-                if (_pilotCreateStep == 2)
-                {
-                    // Name confirmed; now in callsign dialog.
-                    return true;
-                }
-                if (_pilotCreateStep == 3)
-                {
-                    // Callsign confirmed; now in difficulty dialog.
-                    return true;
-                }
-                if (_pilotCreateStep == 4)
-                {
-                    if (_difficultyFieldId == 5)
-                    {
-                        _pilotCreateStep = 0;
-                        _difficultyFieldId = 3;
-                        return true;
-                    }
+                case PilotCreationFlow.Result.Confirm:
                     // Difficulty accepted → enter HANGAR (with fade delay).
                     // C: hangto defaults to HANGTOSTORE → pos=1 (SUPPLIES) on first entry.
-                    _pilotCreateStep = 0;
-                    _difficultyFieldId = 3;
                     _hangar.Position = 1;  // HANGTOSTORE → pos=1=SUPPLIES
                     // Notify that a new pilot was created (triggers stat initialization).
                     OnPilotCreated?.Invoke();
                     // Delay anchor by HangarFadeFrames to simulate fade transitions.
                     EnterState(WinState.Hangar, currentFrame + HangarFadeFrames, reAnchor: true);
                     return true;
-                }
+                default:
+                    return true;
             }
-            if (action == "Backspace")
-            {
-                if (_pilotCreateStep == 1 && PilotName.Length > 0)
-                    PilotName = PilotName[..^1];
-                else if (_pilotCreateStep == 2 && Callsign.Length > 0)
-                    Callsign = Callsign[..^1];
-                return true;
-            }
-            if (action.Length == 1 && char.IsLetterOrDigit(action[0]))
-            {
-                if (_pilotCreateStep == 1 && PilotName.Length < 12)
-                    PilotName += char.ToUpperInvariant(action[0]);
-                else if (_pilotCreateStep == 2 && Callsign.Length < 12)
-                    Callsign += char.ToUpperInvariant(action[0]);
-                return true;
-            }
-            // Other non-Return keys are absorbed silently.
-            return true;
         }
 
         // Normal menu navigation. Wrap over the visible item set so the
@@ -565,22 +491,21 @@ public sealed class MenuStateMachine
             if (CurrentItem == NewItemIndex)
             {
                 // Enter pilot-creation sub-flow: step 1 = name dialog.
-                _pilotCreateStep = 1;
+                _pilotCreate.Begin();
                 // No win-state change; still MENU during character creation.
                 return true;
             }
             if (CurrentItem == LoadItemIndex)
             {
-                _loadMissionPilots = PilotSaveStore.LoadAll(PilotSaveDirectory);
-                if (_loadMissionPilots.Count == 0)
+                var pilots = PilotSaveStore.LoadAll(PilotSaveDirectory);
+                if (pilots.Count == 0)
                 {
                     // C WINDOWS.C:2104-2106: RAP_LoadWin returns -1 → WIN_Msg.
                     _winMsgText = "No Pilots to Load";
                     _inWinMsg = true;
                     return true;
                 }
-                LoadMissionSelectedIndex = 0;
-                _inLoadMission = true;
+                _loadMission.Open(pilots);
                 return true;
             }
             if (CurrentItem == QuitItemIndex)
@@ -636,8 +561,7 @@ public sealed class MenuStateMachine
     /// </summary>
     public void ApplyLoadedPilot(PilotSaveSummary pilot, int currentFrame)
     {
-        PilotName = pilot.Name;
-        Callsign = pilot.Callsign;
+        _pilotCreate.SetIdentity(pilot.Name, pilot.Callsign);
         IdPic = pilot.IdPic;
         OnPilotLoaded?.Invoke(pilot);
         EnterState(WinState.Hangar, currentFrame + HangarFadeFrames, reAnchor: true);
@@ -674,43 +598,23 @@ public sealed class MenuStateMachine
 
     private bool HandleLoadMissionInput(string action)
     {
-        if (action == "Escape")
+        switch (_loadMission.HandleInput(action))
         {
-            _inLoadMission = false;
-            return true;
+            case LoadMissionPanel.Result.Confirm:
+                // C LOADSAVE.C:608-612: Return on LOAD_LOAD calls RAP_LoadPlayer
+                // which copies the saved PLAYEROBJ into active game state, then
+                // returns to the hangar (ingameflag=FALSE in WIN_MainMenu exits
+                // the menu loop). Apply the selected pilot's data here, fire
+                // OnPilotLoaded so WaveController can pick up Score etc., then
+                // transition to Hangar.
+                var picked = _loadMission.SelectedPilot;
+                if (picked != null)
+                    ApplyLoadedPilot(picked, StateEnteredFrame);
+                return true;
+            default:
+                // Closed (Escape) and Handled (nav / no-op) need no transition.
+                return true;
         }
-
-        if (action == "Return")
-        {
-            // C LOADSAVE.C:608-612: Return on LOAD_LOAD calls RAP_LoadPlayer
-            // which copies the saved PLAYEROBJ into active game state, then
-            // returns to the hangar (ingameflag=FALSE in WIN_MainMenu exits
-            // the menu loop). Apply the selected pilot's data here, fire
-            // OnPilotLoaded so WaveController can pick up Score etc., then
-            // transition to Hangar.
-            var picked = LoadMissionPilot;
-            _inLoadMission = false;
-            if (picked != null)
-                ApplyLoadedPilot(picked, StateEnteredFrame);
-            return true;
-        }
-
-        if (_loadMissionPilots.Count == 0)
-            return true;
-
-        // C RAP_LoadWin: Down/PageDown/Left → next; Up/PageUp/Right → prev; wrap.
-        int delta = action switch
-        {
-            "Down" or "PageDown" or "Left" => +1,
-            "Up" or "PageUp" or "Right" => -1,
-            _ => 0,
-        };
-        if (delta != 0)
-        {
-            int n = _loadMissionPilots.Count;
-            LoadMissionSelectedIndex = ((LoadMissionSelectedIndex + delta) % n + n) % n;
-        }
-        return true;
     }
 
     private static bool InRect(int x, int y, int rx, int ry, int w, int h)
