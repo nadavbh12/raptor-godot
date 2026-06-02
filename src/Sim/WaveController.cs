@@ -1145,24 +1145,18 @@ public partial class WaveController : Node
         _playerHit = false;
         _playerHitDmg = 0;
 
-        foreach (var b in _enemyBullets)
+        // Detection extracted to CollisionDetection (E10); WaveController applies
+        // the kill + per-bullet damage + impact flash in hit order so the
+        // side-effect/RNG sequence is unchanged. Mirror ESHOT.C:521 flash
+        // (A_SMALL_AIR_EXPLO at shot->x/y) wherever a bullet clips the player.
+        var enemyBulletHits = new List<CollisionDetection.EnemyBulletHit>();
+        CollisionDetection.CollectEnemyBulletHits(_enemyBullets, px, py, playerHw, playerHh, enemyBulletHits);
+        foreach (var hit in enemyBulletHits)
         {
-            if (!b.Alive) continue;
-            // ES_LASER applies its own alignment-based damage in the tick phase
-            // (ESHOT.C:462-465); it is not an AABB hit. Skip it here.
-            if (b.IsEnemyLaser) continue;
-            int dx = Math.Abs(b.X - px);
-            int dy = Math.Abs(b.Y - py);
-            if (dx < playerHw && dy < playerHh)
-            {
-                b.Kill();
-                _playerHit = true;
-                _playerHitDmg += b.Damage;  // use per-bullet damage from ESHOT_LIB
-                // Mirror ESHOT.C:521: ANIMS_StartAnim(A_SMALL_AIR_EXPLO, shot->x, shot->y).
-                // A small orange flash appears at the impact point — visible in C
-                // wherever a bullet clips the player ship.
-                AddExplosion(ExpAirSmall2, b.X, b.Y);
-            }
+            hit.Bullet.Kill();
+            _playerHit = true;
+            _playerHitDmg += hit.Bullet.Damage;  // per-bullet damage from ESHOT_LIB
+            AddExplosion(ExpAirSmall2, hit.ImpactX, hit.ImpactY);
         }
 
         // Player bullets vs enemy/tile collision. C SHOTS.C dispatches this as
@@ -1198,22 +1192,7 @@ public partial class WaveController : Node
         // per-shot hits; the beam does NOT despawn on hit. LineBeam (TURRET)
         // bullets have BeamDamages=false because PlayerShooter already applied
         // damage at spawn — they exist only for the visual.
-        foreach (var b in _playerBullets)
-        {
-            if (!b.Alive || !b.IsBeam || !b.BeamDamages) continue;
-            foreach (var e in _enemies)
-            {
-                if (!e.Alive) continue;
-                if (!HitTypeMatches(b.HitType, e)) continue;
-                int ex  = e.X;
-                int ex2 = e.X + 2 * e.HalfW - 1;
-                if (b.X > ex && b.X < ex2 && e.Y < py && e.Y > -30)
-                {
-                    _hitEnemies.Add((e, b.Damage));
-                    break;
-                }
-            }
-        }
+        CollisionDetection.CollectBeamEnemyHits(_playerBullets, _enemies, py, _hitEnemies);
 
         // Bonus pickup. BONUS.C:207 — `cur->x > playerx && cur->x < playerx+PW
         // && cur->y > playery && cur->y < playery+PH`. The bonus CENTER (cur->x,
@@ -1267,26 +1246,6 @@ public partial class WaveController : Node
     public int GetBaseDamage()
         => ComputeBaseDamage(GetEnemies().Select(
             e => (e.IsBoss, e.Y, e.HalfH, e.Hits, e.MaxHits)));
-
-    /// <summary>
-    /// Returns true iff a bullet with the given HitType can damage this enemy.
-    /// Mirrors the SHOTS.C SHOTS_Think `case lib->ht` branches:
-    ///   S_ALL / S_GRALL — damage anything (ground OR air)
-    ///   S_AIR           — air enemies only (FlightType not 3/4/5)
-    ///   S_GROUND        — ground enemies only (FlightType 3/4/5)
-    ///   S_GTILE         — only ground enemies (tiles handled separately)
-    ///   S_SUCK          — energy-grab path; not yet wired
-    /// </summary>
-    private static bool HitTypeMatches(HitType ht, EnemyLogic e) => ht switch
-    {
-        HitType.All    => true,
-        HitType.GrAll  => true,
-        HitType.Air    => !e.IsGround,
-        HitType.Ground => e.IsGround,
-        HitType.GTile  => e.IsGround,
-        HitType.Suck   => true,
-        _              => true,
-    };
 
     private void ApplyBodyCrashCollisions(int playerCx, int playerCy)
     {
