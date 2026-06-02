@@ -120,10 +120,7 @@ public partial class WaveController : Node
     private DemoReplay? _pendingDemoReplay;
     private DemoReplay? _demoReplay;
     private int _demoRecordIndex = 0;
-    private bool _demoB2Latch = false;
-    private bool _demoB3Latch = false;
-    private bool _inputB2Latch = false;
-    private bool _inputB3Latch = false;
+    private readonly PlayerButtonInput _buttonInput = new();
     private InputState? _testInteractiveInput;
     private readonly Queue<ObjType> _testSpecialSelects = new();
     private bool _debugDemoReplay = false;
@@ -521,8 +518,7 @@ public partial class WaveController : Node
         _pendingDemoReplay = null;
         _pendingDemoStartFrame = -1;
         _demoRecordIndex = 0;
-        _demoB2Latch = false;
-        _demoB3Latch = false;
+        _buttonInput.ResetDemoLatches();
 
         _waveNum = _demoReplay.Header.DemoWave + 1;
         SeedRngForWave(_demoReplay.Header.DemoWave, OS.GetEnvironment("RAPTOR_RNG_SEED_OVERRIDE"));
@@ -756,7 +752,7 @@ public partial class WaveController : Node
             if (_debugDemoReplay && _demoRecordIndex <= 40)
                 GD.Print($"demo tick fc={SimClock.Frame} rec={_demoRecordIndex - 1} px={frame.Px} py={frame.Py}");
             PlayerLogic.ApplyDemoFrame(frame.Px, frame.Py, frame.PlayerPic);
-            ApplyDemoButtons(frame);
+            _buttonInput.ApplyDemo(frame, Shooter, PlayerLogic, _weaponTargetEnemies, _enemies, _playerBullets, _shooterRng);
             Shooter.TickCooldowns();
             return;
         }
@@ -803,89 +799,12 @@ public partial class WaveController : Node
         // cooldowns), so the cooldown set this tick can't be cleared in the
         // same tick. C resets BUT_1=FALSE after firing — our edge model uses
         // the held state, which is what the demo records (b1 is a held flag).
-        ApplyLiveButtons(input.B1, input.B2, input.B3);
+        _buttonInput.ApplyLive(input.B1, input.B2, input.B3, Shooter, PlayerLogic, _waveActive,
+            _weaponTargetEnemies, _enemies, _playerBullets, _shooterRng);
 
         // SHOTS.C:1035-1040 — cooldown decrement once per game iter. Done at
         // the end of input so the fire above sees the C-state cur_shoot.
         Shooter.TickCooldowns();
-    }
-
-    private void ApplyLiveButtons(bool fireHeld, bool fireSpHeld, bool megaHeld)
-    {
-        int cx = PlayerLogic.X + 16;
-        int cy = PlayerLogic.Y + 16;
-
-        if (_waveActive && fireHeld)
-        {
-            var fired = Shooter.ApplyButton1(cx, cy, PlayerLogic.Pic, _weaponTargetEnemies, _shooterRng);
-            foreach (var b in fired) _playerBullets.Add(b);
-        }
-
-        LiveInputLogic.ApplySpecialCycle(Shooter, fireSpHeld, ref _inputB2Latch);
-
-        if (megaHeld)
-        {
-            if (!_inputB3Latch)
-            {
-                _inputB3Latch = true;
-                var fired = new List<BulletLogic>(1);
-                if (_waveActive
-                    && Shooter.MegaBombCount > 0
-                    && Shooter.Shoot(ObjType.MegaBomb, cx, cy, PlayerLogic.Pic, fired, _enemies, _shooterRng))
-                {
-                    Shooter.ConsumeMegaBomb();
-                    foreach (var b in fired) _playerBullets.Add(b);
-                }
-            }
-        }
-        else
-        {
-            _inputB3Latch = false;
-        }
-    }
-
-    private void ApplyDemoButtons(DemoReplay.Frame frame)
-    {
-        int cx = PlayerLogic.X + 16;
-        int cy = PlayerLogic.Y + 16;
-
-        if (frame.B1 != 0)
-        {
-            var fired = Shooter.ApplyButton1(cx, cy, PlayerLogic.Pic, _weaponTargetEnemies, _shooterRng);
-            foreach (var b in fired) _playerBullets.Add(b);
-        }
-
-        if (frame.B2 != 0)
-        {
-            if (!_demoB2Latch)
-            {
-                _demoB2Latch = true;
-                Shooter.CycleSpecial();
-            }
-        }
-        else
-        {
-            _demoB2Latch = false;
-        }
-
-        if (frame.B3 != 0)
-        {
-            if (!_demoB3Latch)
-            {
-                _demoB3Latch = true;
-                var fired = new List<BulletLogic>(1);
-                if (Shooter.MegaBombCount > 0
-                    && Shooter.Shoot(ObjType.MegaBomb, cx, cy, PlayerLogic.Pic, fired, _enemies, _shooterRng))
-                {
-                    Shooter.ConsumeMegaBomb();
-                    foreach (var b in fired) _playerBullets.Add(b);
-                }
-            }
-        }
-        else
-        {
-            _demoB3Latch = false;
-        }
     }
 
     internal void SetInteractiveInputForTest(InputState input)
