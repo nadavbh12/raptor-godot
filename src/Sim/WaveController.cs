@@ -305,20 +305,11 @@ public partial class WaveController : Node
     private int _tileyoff  = 200 - MAP_ONSCREEN * MAP_BLOCKSIZE;  // = -56
     private int _tiley     = 0;  // current spawn row: tilepos/MAP_COLS - 3
 
-    // On-screen tile state slice (MAP_ONSCREEN * MAP_COLS = 72 entries).
-    // Mirrors C's tspots[]. Rebuilt from _mapTiles + _flatLib in PhaseSpawn
-    // whenever the scroll crosses a row boundary; TileBomb / TileIsHit
-    // dispatches against this slice. Destructibility / Hits / Bounty are
-    // looked up by (MapTileEntry.FGame, MapTileEntry.Flats) in _flatLib.
-    private readonly List<TileState> _tileSlice = new();
-    private int _tileSliceTilePos = int.MinValue;
-    private int[]? _tileHitsByMapSpot;
-    private bool[]? _tileDeadByMapSpot;
-    private bool[]? _tileDestructibleByMapSpot;
-    private int[]? _tileBountyByMapSpot;
-    private readonly List<TileDelayExplosion> _tileDelayExplosions = new();
-    private FlatLibrary? _flatLib;
-    private record struct TileDelayExplosion(int MapSpot, int Frames);
+    // On-screen tile state slice + destructibility backing arrays live in the
+    // TileDamageState collaborator (mirrors C's tspots[] / hits[] / tdead[] etc.).
+    // Rebuilt from _mapTiles + flats in PhaseSpawn whenever the scroll crosses a
+    // row boundary; TileBomb / TileIsHit dispatches against the slice.
+    private readonly TileDamageState _tiles = new();
 
     // ── Map sprite list for spawning ──────────────────────────────────────────
     private List<MapSpriteEntry>? _mapSprites;
@@ -327,18 +318,7 @@ public partial class WaveController : Node
     /// <summary>Tile-grid data for the current wave (rows * cols entries, row-major).</summary>
     public IReadOnlyList<MapTileEntry>? MapTiles => _mapTiles;
 
-    public int RenderedFlatFor(int mapspot)
-    {
-        if (_mapTiles == null || mapspot < 0 || mapspot >= _mapTiles.Count)
-            return 0;
-
-        int flat = _mapTiles[mapspot].Flats;
-        if (_flatLib == null || _tileDeadByMapSpot == null ||
-            mapspot >= _tileDeadByMapSpot.Length || !_tileDeadByMapSpot[mapspot])
-            return flat;
-
-        return _flatLib.DestroyedFlatFor(flat);
-    }
+    public int RenderedFlatFor(int mapspot) => _tiles.RenderedFlatFor(_mapTiles, mapspot);
     /// <summary>Current scroll Y offset (mirrors C's tileyoff).</summary>
     public int TileYOff => _tileyoff;
     /// <summary>Current top-of-screen row in the tile grid (mirrors C's tilepos).</summary>
@@ -570,7 +550,7 @@ public partial class WaveController : Node
         _shotDoneAfterCollision.Clear();
         _pickedUpBonuses.Clear();
         _explosions.Clear();
-        _tileDelayExplosions.Clear();
+        _tiles.ResetForWave();
         _shieldHud.ResetForWave(PlayerLogic.Shield);
         _playerHit = false;
         _endWaveFlag = false;
@@ -586,12 +566,7 @@ public partial class WaveController : Node
         _tiley    = _tilepos / MAP_COLS - 3;             // = 139
         // Lazy-load the FLATSG1_ITM table on first wave (G1 only — DOS Raptor
         // shipped one campaign; the FLATS struct is mission-independent).
-        if (_flatLib == null)
-        {
-            string flatsPath = Path.Combine(_assetsRoot ?? "assets", "flats", "FLATSG1_ITM.json");
-            if (File.Exists(flatsPath))
-                _flatLib = FlatLibrary.LoadFromFile(flatsPath);
-        }
+        _tiles.LoadFlats(Path.Combine(_assetsRoot ?? "assets", "flats", "FLATSG1_ITM.json"));
         // Reset player position.
         PlayerLogic.Reset();
         // Reset weapon cooldowns; mirrors SHOTS_Init in RAP.C Init_Game.
@@ -610,9 +585,8 @@ public partial class WaveController : Node
         _mapSprites    = mapData.Sprites ?? new List<MapSpriteEntry>();
         _mapTiles      = mapData.Tiles   ?? new List<MapTileEntry>();
         _spawnIdx      = 0;
-        InitializeTileBacking();
-        _tileSliceTilePos = int.MinValue;
-        RebuildTileSlice();
+        _tiles.InitializeTileBacking(_mapTiles);
+        _tiles.RebuildTileSlice(_mapTiles, _tilepos, _tileyoff);
 
         GD.Print($"WaveController: loaded wave {waveNum}, {_mapSprites.Count} sprites, tiley={_tiley}");
 
@@ -812,8 +786,8 @@ public partial class WaveController : Node
     {
         if (_mapSprites == null || _slib == null || _endWaveFlag) return;
 
-        RefreshTileSliceForThink();
-        ProcessTileDelayExplosions();
+        _tiles.RefreshTileSliceForThink(_mapTiles, _tilepos, _tileyoff);
+        _tiles.ProcessTileDelayExplosions(AddTileExplosion);
 
         // This method combines Godot's spawn phase with C's TILE_Think scroll
         // advance. The collision tile slice above intentionally stays at the
@@ -829,165 +803,6 @@ public partial class WaveController : Node
             _tiley     = _tilepos / MAP_COLS - 3;
             if (_tilepos <= 0) _tilepos = 0;
         }
-    }
-
-    private void RefreshTileSliceForThink()
-    {
-        if (_tileSlice.Count == 0 || _tileSliceTilePos != _tilepos)
-        {
-            RebuildTileSlice();
-            return;
-        }
-
-        // C TILE_Think writes tspots using the current tileyoff, then advances
-        // tileyoff at the end of the same function. Later SHOTS_Think collides
-        // against those pre-scroll tspots, so update the collision slice at the
-        // start of PhaseSpawn and leave it unchanged after scrolling.
-        for (int i = 0; i < _tileSlice.Count; i++)
-            _tileSlice[i].ScreenY = _tileyoff + (i / MAP_COLS) * MAP_BLOCKSIZE;
-    }
-
-    /// <summary>
-    /// Rebuild the on-screen tile slice from _mapTiles, _tilepos, _tileyoff,
-    /// and _flatLib. Mirrors C TILE_Think's first pass (TILE.C:343-360) which
-    /// populates tspots[] with (mapspot, x, y, item) for each visible tile.
-    /// </summary>
-    private void RebuildTileSlice()
-    {
-        if (_tileSlice.Count == 0)
-        {
-            for (int i = 0; i < MAP_ONSCREEN * MAP_COLS; i++)
-                _tileSlice.Add(new TileState());
-        }
-        for (int row = 0; row < MAP_ONSCREEN; row++)
-        for (int col = 0; col < MAP_COLS;     col++)
-        {
-            int slot     = row * MAP_COLS + col;
-            int mapspot  = _tilepos + slot;
-            var t        = _tileSlice[slot];
-            t.MapSpot    = mapspot;
-            t.ScreenX    = MAP_LEFT + col * MAP_BLOCKSIZE;
-            t.ScreenY    = _tileyoff + row * MAP_BLOCKSIZE;
-            if (_mapTiles == null || mapspot < 0 || mapspot >= _mapTiles.Count ||
-                _flatLib == null || _tileHitsByMapSpot == null ||
-                _tileDeadByMapSpot == null || _tileDestructibleByMapSpot == null ||
-                _tileBountyByMapSpot == null)
-            {
-                t.IsDestructible = false; t.Hits = 1; t.Bounty = 0;
-                t.Dead = false;
-                continue;
-            }
-            t.IsDestructible = _tileDestructibleByMapSpot[mapspot];
-            t.Hits           = _tileHitsByMapSpot[mapspot];
-            t.Bounty         = _tileBountyByMapSpot[mapspot];
-            t.Dead           = _tileDeadByMapSpot[mapspot];
-        }
-        _tileSliceTilePos = _tilepos;
-    }
-
-    private void InitializeTileBacking()
-    {
-        int count = _mapTiles?.Count ?? 0;
-        _tileHitsByMapSpot = new int[count];
-        _tileDeadByMapSpot = new bool[count];
-        _tileDestructibleByMapSpot = new bool[count];
-        _tileBountyByMapSpot = new int[count];
-
-        if (_mapTiles == null || _flatLib == null) return;
-        for (int mapspot = 0; mapspot < _mapTiles.Count; mapspot++)
-        {
-            int flatIdx = _mapTiles[mapspot].Flats;
-            if (flatIdx < 0 || flatIdx >= _flatLib.Count)
-            {
-                _tileHitsByMapSpot[mapspot] = 1;
-                continue;
-            }
-
-            bool destructible = _flatLib.IsDestructible(flatIdx);
-            _tileDestructibleByMapSpot[mapspot] = destructible;
-            _tileHitsByMapSpot[mapspot] = _flatLib.HitsFor(flatIdx);
-            _tileBountyByMapSpot[mapspot] = _flatLib.BountyFor(flatIdx);
-        }
-    }
-
-    private void SyncTileSliceToBacking()
-    {
-        if (_tileHitsByMapSpot == null || _tileDeadByMapSpot == null) return;
-        foreach (var t in _tileSlice)
-        {
-            if (t.MapSpot < 0 || t.MapSpot >= _tileHitsByMapSpot.Length) continue;
-            _tileHitsByMapSpot[t.MapSpot] = t.Hits;
-            _tileDeadByMapSpot[t.MapSpot] = t.Dead;
-        }
-    }
-
-    private void RefreshTileSliceValuesFromBacking()
-    {
-        if (_tileHitsByMapSpot == null || _tileDeadByMapSpot == null) return;
-        foreach (var t in _tileSlice)
-        {
-            if (t.MapSpot < 0 || t.MapSpot >= _tileHitsByMapSpot.Length) continue;
-            t.Hits = _tileHitsByMapSpot[t.MapSpot];
-            t.Dead = _tileDeadByMapSpot[t.MapSpot];
-        }
-    }
-
-    private void ApplyTileExplosionDamage(int mapspot, int damage)
-    {
-        if (_tileHitsByMapSpot == null || _tileDeadByMapSpot == null ||
-            _tileDestructibleByMapSpot == null)
-            return;
-
-        int ix = mapspot % MAP_COLS;
-        ApplyTileExplosionNeighbor(mapspot - 1, ix - 1, damage);
-        ApplyTileExplosionNeighbor(mapspot - MAP_COLS, ix, damage);
-        ApplyTileExplosionNeighbor(mapspot + 1, ix + 1, damage);
-    }
-
-    private void ApplyTileExplosionNeighbor(int spot, int x, int damage)
-    {
-        if (_tileHitsByMapSpot == null || _tileDeadByMapSpot == null ||
-            _tileDestructibleByMapSpot == null)
-            return;
-        if (spot < 0 || spot >= _tileHitsByMapSpot.Length) return;
-        if (x < 0 || x >= MAP_COLS) return;
-        if (!_tileDestructibleByMapSpot[spot]) return;
-        if (_tileDeadByMapSpot[spot]) return;
-
-        int before = _tileHitsByMapSpot[spot];
-        _tileHitsByMapSpot[spot] -= damage;
-        TileDamageDispatcher.TraceMapSpot("splash", spot, -1, -1, damage, before,
-            _tileHitsByMapSpot[spot], _tileDeadByMapSpot[spot]);
-        if (before >= 0 && _tileHitsByMapSpot[spot] < 0)
-        {
-            _tileDeadByMapSpot[spot] = true;
-            SpawnTileExplosion(spot);
-            ApplyTileExplosionDamage(spot, damage: 5);
-            ScheduleTileDelayExplosion(spot);
-        }
-    }
-
-    private void ScheduleTileDelayExplosion(int mapspot)
-    {
-        _tileDelayExplosions.Add(new TileDelayExplosion(mapspot, 10));
-    }
-
-    private void ProcessTileDelayExplosions()
-    {
-        for (int i = 0; i < _tileDelayExplosions.Count; i++)
-        {
-            var td = _tileDelayExplosions[i];
-            if (td.Frames < 0)
-            {
-                ApplyTileExplosionDamage(td.MapSpot, damage: 20);
-                _tileDelayExplosions.RemoveAt(i);
-                i--;
-                continue;
-            }
-
-            _tileDelayExplosions[i] = td with { Frames = td.Frames - 1 };
-        }
-        RefreshTileSliceValuesFromBacking();
     }
 
     internal void PhaseMovement()
@@ -1166,7 +981,7 @@ public partial class WaveController : Node
         _hitEnemies.Clear();
         PlayerBulletCollisionDispatcher.TraceIter = _gameLoopIter;
         TileDamageDispatcher.TraceIter = _gameLoopIter;
-        var collision = PlayerBulletCollisionDispatcher.Collect(_playerBullets, _enemies, _tileSlice, MAP_COLS);
+        var collision = PlayerBulletCollisionDispatcher.Collect(_playerBullets, _enemies, _tiles.Slice, MAP_COLS);
         foreach (var (x, y) in collision.RandomSparkPositions)
         {
             int spark = PlayerShooter.NextRandom(_shooterRng, 2, "spark.hit_color");
@@ -1177,14 +992,14 @@ public partial class WaveController : Node
         foreach (var (x, y) in collision.BlueSparkPositions)
             AddExplosion(SparkBlueExpType, x, y);
         if (collision.TileBounty > 0) Score += (uint)collision.TileBounty;
-        SyncTileSliceToBacking();
+        _tiles.SyncTileSliceToBacking();
         foreach (int mapspot in collision.DestroyedTileMapSpots)
         {
-            SpawnTileExplosion(mapspot);
-            ApplyTileExplosionDamage(mapspot, damage: 5);
-            ScheduleTileDelayExplosion(mapspot);
+            _tiles.SpawnTileExplosion(mapspot, AddTileExplosion);
+            _tiles.ApplyTileExplosionDamage(mapspot, damage: 5, AddTileExplosion);
+            _tiles.ScheduleTileDelayExplosion(mapspot);
         }
-        RefreshTileSliceValuesFromBacking();
+        _tiles.RefreshTileSliceValuesFromBacking();
 
         // Beam-vs-enemy column damage. SHOTS.C:1068-1088 — for each VerticalBeam,
         // find the first enemy whose x range contains the beam X and whose
@@ -1292,10 +1107,10 @@ public partial class WaveController : Node
 
     private void HandleShotDone(BulletLogic b)
     {
-        var result = ShotDoneDispatcher.Dispatch(b, _enemyBullets, _enemies, _shooterRng, _tileSlice);
+        var result = ShotDoneDispatcher.Dispatch(b, _enemyBullets, _enemies, _shooterRng, _tiles.Slice);
         if (result.TileBounty > 0) Score += (uint)result.TileBounty;
         if (result.MegaBombDetonated) _megaFlash.Signal();
-        SyncTileSliceToBacking();
+        _tiles.SyncTileSliceToBacking();
     }
 
     private void ApplyBonusEffect(int objType)
@@ -1370,7 +1185,6 @@ public partial class WaveController : Node
     // C exptype constants used for cosmetic-only explosion events (SOURCE/MAP.H).
     internal const int ExpAirSmall1 = 0;  // EXP_AIRSMALL1 → EXPLO2_BLK
     internal const int ExpAirLarge  = 2;  // EXP_AIRLARGE → LGFLAK_BLK
-    private const int ExpGrdLarge  = 5;   // EXP_GRDLARGE → GEXPLO_BLK
     internal const int ExpAirSmall2 = 10; // EXP_AIRSMALL2 → SMFLAK_BLK
     internal const int ExpAirMed2   = 10; // A_MED_AIR_EXPLO2 uses SMFLAK_BLK in ANIMS.C.
 
@@ -1437,15 +1251,10 @@ public partial class WaveController : Node
     // enemy is removed during an end-wave — there is NO explosion/ANIMS gate.
     // RAP.C:1039-1046 then just counts down. Explosions keep ticking/rendering
     // during the fly-off; they never block the wave from ending.
-    private void SpawnTileExplosion(int mapspot)
-    {
-        foreach (var tile in _tileSlice)
-        {
-            if (tile.MapSpot != mapspot) continue;
-            AddExplosion(ExpGrdLarge, tile.ScreenX + 16, tile.ScreenY + 16);
-            return;
-        }
-    }
+
+    // Explosion sink handed to TileDamageState so the tile-destruction cascade
+    // can spawn ground explosions without owning the explosion list.
+    private void AddTileExplosion(int expType, int x, int y) => AddExplosion(expType, x, y);
 
     private void TraceBonus(string eventName, BonusLogic b)
     {
