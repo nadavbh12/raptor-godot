@@ -31,6 +31,7 @@ public partial class DebugRenderer : Node2D
     private int _lastDrawnEbullets = 0;
     private readonly HudRenderer _hudRenderer = new();
     private readonly MenuRenderer _menuRenderer = new();
+    private readonly TileRenderer _tileRenderer = new();
     private readonly ViewEffects _effects = new();
     private int _lastSpawnIter = -1;
     // Megabomb white-out flash: GameLoopIter at which detonation fired, and the
@@ -106,8 +107,6 @@ public partial class DebugRenderer : Node2D
     };
     private readonly Dictionary<(string, int), Texture2D?> _blkCache = new();
     private string? _blkRoot;
-    private readonly Dictionary<int, Texture2D?> _tileCache = new();
-    private string? _tilesRoot;
     private Texture2D? _enemyBulletTex;
     private Texture2D? _playerBulletTex;
     private readonly Dictionary<(string Family, int Frame), Texture2D?> _playerBulletFrames = new();
@@ -145,7 +144,6 @@ public partial class DebugRenderer : Node2D
 
         BuildSpriteIndex();
         _agxRoot = ProjectSettings.GlobalizePath("res://assets/agx");
-        _tilesRoot = ProjectSettings.GlobalizePath("res://assets/tiles");
         // Bullet sprites: first frame of each animated _BLK sequence.
         // ESHOT.C ESHOT_Init: enemy "ES_ATPLAYER/ATDOWN/ANGLELEFT/ANGLERIGHT"
         // bullets all use cur->item = ESHOT_BLK. Player forward gun uses NMSHOT_BLK
@@ -266,27 +264,6 @@ public partial class DebugRenderer : Node2D
         // General case: a frame sequence of length (num_frames + rewind*k)
         // doesn't repeat cleanly — approximate with modulo on num_frames.
         return step % meta.NumFrames;
-    }
-
-    /// <summary>
-    /// Load tile graphic for the given (game-index, flats-index) pair.
-    /// game=0 → tiles/g1/NNNN.png (mirrors C's TILE_Init: titems[i] = startflat[fgame] + flats).
-    /// Returns null (cached) if the file is missing.
-    /// </summary>
-    private Texture2D? LoadTile(int game, int flats)
-    {
-        int key = (game << 16) | (flats & 0xffff);
-        if (_tileCache.TryGetValue(key, out var cached)) return cached;
-        if (_tilesRoot == null) return null;
-        string path = Path.Combine(_tilesRoot, $"g{game + 1}", $"{flats:D4}.png");
-        Texture2D? tex = null;
-        if (File.Exists(path))
-        {
-            var img = Image.LoadFromFile(path);
-            if (img != null) tex = ImageTexture.CreateFromImage(img);
-        }
-        _tileCache[key] = tex;  // cache misses too — avoid retrying every frame
-        return tex;
     }
 
     /// <summary>
@@ -466,41 +443,6 @@ public partial class DebugRenderer : Node2D
     private int _burstRemaining = 0;
     private int _burstFrameOffset = 0;
 
-    /// <summary>
-    /// Render the scrolling tile background. Mirrors C's TILE_Think layout:
-    ///   for loopy in 0..MAP_ONSCREEN, y starting at tileyoff:
-    ///     for loopx in 0..MAP_COLS, x starting at MAP_LEFT:
-    ///       draw titems[mapspot] at (x, y)
-    /// titems[mapspot] = startflat[fgame] + flats — we resolve that via
-    /// LoadTile(fgame, flats) which reads assets/tiles/g{fgame+1}/{flats:D4}.png.
-    /// </summary>
-    private void DrawTileMap()
-    {
-        if (_wave?.MapTiles == null) return;
-        var tiles = _wave.MapTiles;
-        int cols  = _wave.MapCols;
-        int rows  = _wave.MapRows;
-        int onscr = _wave.MapOnScreen;
-        int bs    = _wave.MapBlockSize;
-        int left  = _wave.MapLeftPx;
-
-        int y       = _wave.TileYOff;
-        int mapspot = _wave.TilePos;
-
-        for (int ly = 0; ly < onscr; ly++, y += bs)
-        {
-            int x = left;
-            for (int lx = 0; lx < cols; lx++, x += bs, mapspot++)
-            {
-                if (mapspot < 0 || mapspot >= tiles.Count) continue;
-                var t = tiles[mapspot];
-                int flats = _wave.RenderedFlatFor(mapspot);
-                var tex = LoadTile(t.FGame, flats);
-                if (tex != null) DrawTexture(tex, new Vector2(x, y));
-            }
-        }
-    }
-
     public override void _Draw()
     {
         DrawRect(new Rect2(0, 0, 320, 200), new Color(0, 0, 0, 1));
@@ -528,7 +470,7 @@ public partial class DebugRenderer : Node2D
         }
 
         _flameQuads.Clear();
-        DrawTileMap();
+        _tileRenderer.DrawTileMap(this, _wave);
 
         var px = _wave.PlayerLogic.X;
         var py = _wave.PlayerLogic.Y;
