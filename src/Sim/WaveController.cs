@@ -301,9 +301,11 @@ public partial class WaveController : Node
     private const int MAP_BLOCKSIZE  = 32;
     private const int MAP_LEFT       = 16;
 
-    private int _tilepos   = (MAP_ROWS - MAP_ONSCREEN) * MAP_COLS;
-    private int _tileyoff  = 200 - MAP_ONSCREEN * MAP_BLOCKSIZE;  // = -56
-    private int _tiley     = 0;  // current spawn row: tilepos/MAP_COLS - 3
+    // The scroll cursor (tilepos/tileyoff/tiley) and the enemy-spawn scheduling
+    // live in the MapSpawnScroller collaborator. WaveController drives it in
+    // phase order; scroll/spawn state are byte-exact with the original code.
+    private readonly MapSpawnScroller _scroller =
+        new(MAP_ROWS, MAP_ONSCREEN, MAP_COLS, MAP_BLOCKSIZE, MAP_LEFT);
 
     // On-screen tile state slice + destructibility backing arrays live in the
     // TileDamageState collaborator (mirrors C's tspots[] / hits[] / tdead[] etc.).
@@ -312,7 +314,8 @@ public partial class WaveController : Node
     private readonly TileDamageState _tiles = new();
 
     // ── Map sprite list for spawning ──────────────────────────────────────────
-    private List<MapSpriteEntry>? _mapSprites;
+    // The sprite list + spawn cursor live in MapSpawnScroller; tile-grid data
+    // stays here (read by the View and the tile-damage collaborator).
     private List<MapTileEntry>?   _mapTiles;
 
     /// <summary>Tile-grid data for the current wave (rows * cols entries, row-major).</summary>
@@ -320,9 +323,9 @@ public partial class WaveController : Node
 
     public int RenderedFlatFor(int mapspot) => _tiles.RenderedFlatFor(_mapTiles, mapspot);
     /// <summary>Current scroll Y offset (mirrors C's tileyoff).</summary>
-    public int TileYOff => _tileyoff;
+    public int TileYOff => _scroller.TileYOff;
     /// <summary>Current top-of-screen row in the tile grid (mirrors C's tilepos).</summary>
-    public int TilePos  => _tilepos;
+    public int TilePos  => _scroller.TilePos;
     /// <summary>
     /// Whether the tile map is advancing this tick (mirrors C's scroll_flag,
     /// TILE.C:240/279/472). In C scroll_flag starts TRUE and goes FALSE only at
@@ -338,7 +341,6 @@ public partial class WaveController : Node
     public int MapBlockSize  => MAP_BLOCKSIZE;
     public int MapLeftPx     => MAP_LEFT;
     private SpriteMetaLibrary?    _slib;
-    private int                   _spawnIdx = 0;   // index into _mapSprites
     private bool                  _endWaveFlag = false;
     private readonly PlayerDeathSequence _playerDeath = new();
     private readonly EndWaveSequencer _endWave = new();
@@ -561,9 +563,7 @@ public partial class WaveController : Node
         _gameLoopIter = 0;
 
         // Reset scroll to start position (mirrors TILE_Init in C).
-        _tilepos  = (MAP_ROWS - MAP_ONSCREEN) * MAP_COLS;
-        _tileyoff = 200 - MAP_ONSCREEN * MAP_BLOCKSIZE;  // -56
-        _tiley    = _tilepos / MAP_COLS - 3;             // = 139
+        _scroller.ResetForWave();
         // Lazy-load the FLATSG1_ITM table on first wave (G1 only — DOS Raptor
         // shipped one campaign; the FLATS struct is mission-independent).
         _tiles.LoadFlats(Path.Combine(_assetsRoot ?? "assets", "flats", "FLATSG1_ITM.json"));
@@ -582,13 +582,13 @@ public partial class WaveController : Node
         // Load map sprite list.
         string mapPath = MazeLevelLoader.WaveMapPath(_assetsRoot ?? "assets", waveNum);
         var mapData    = MazeLevelLoader.Load(mapPath);
-        _mapSprites    = mapData.Sprites ?? new List<MapSpriteEntry>();
+        var mapSprites = mapData.Sprites ?? new List<MapSpriteEntry>();
         _mapTiles      = mapData.Tiles   ?? new List<MapTileEntry>();
-        _spawnIdx      = 0;
+        _scroller.SetSprites(mapSprites);
         _tiles.InitializeTileBacking(_mapTiles);
-        _tiles.RebuildTileSlice(_mapTiles, _tilepos, _tileyoff);
+        _tiles.RebuildTileSlice(_mapTiles, _scroller.TilePos, _scroller.TileYOff);
 
-        GD.Print($"WaveController: loaded wave {waveNum}, {_mapSprites.Count} sprites, tiley={_tiley}");
+        GD.Print($"WaveController: loaded wave {waveNum}, {mapSprites.Count} sprites, tiley={_scroller.TileY}");
 
         // Immediately spawn enemies that are on-screen at game start (tiley=139).
         // In the C version, ENEMY_Clear() sets cur_enemy=csprite (index 0) and
@@ -612,61 +612,10 @@ public partial class WaveController : Node
 
     private void DoInitialSpawn()
     {
-        SpawnForTiley(_tiley);
-    }
-
-    /// <summary>
-    /// Spawn all enemies whose y matches tiley, processing linked groups.
-    /// Mirrors ENEMY.C ENEMY_DoSprites() while/for loop.
-    /// </summary>
-    private void SpawnForTiley(int tiley)
-    {
-        if (_mapSprites == null || _slib == null) return;
-        while (_spawnIdx < _mapSprites.Count && !_endWaveFlag)
-        {
-            var sprite = _mapSprites[_spawnIdx];
-            if (sprite.Y != tiley) break;
-
-            for (;;)
-            {
-                if (_spawnIdx >= _mapSprites.Count)
-                {
-                    _endWaveFlag = true;
-                    break;
-                }
-                var cur = _mapSprites[_spawnIdx];
-                int oldLink = cur.Link;
-
-                // Spawn this enemy only if it passes difficulty check.
-                // Mirrors: if (cur_enemy->level != EB_NOT_USED) ENEMY_Add(cur_enemy).
-                if (ShouldSpawn(cur) && _slib.Count > cur.Slib && cur.Slib >= 0)
-                {
-                    var meta = _slib.Get(cur.Slib);
-                    // C ENEMY_Add (ENEMY.C lines 393-400):
-                    //   new->y = tileyoff - (tiley-y)*32 - 97;
-                    //   new->x = sprite.x*32 + MAP_LEFT;
-                    //   new->x += 16; new->y += 16;
-                    //   new->x -= hlx;  new->y -= hly;
-                    // sprite->x/y is the sprite TOP-LEFT after these shifts.
-                    // For SHIP01G1 (hlx=16=MAP_BLOCKSIZE/2), x cancels to
-                    // `sprite.x*32 + MAP_LEFT` — what we already compute. For Y,
-                    // hly=12 != 16 so we owe `+16 - hly = +4`. Generalised:
-                    int spawnX = cur.X * MAP_BLOCKSIZE + MAP_LEFT
-                                 + MAP_BLOCKSIZE / 2 - meta.HalfX;
-                    int mapY   = _tileyoff - ((tiley - cur.Y) * MAP_BLOCKSIZE) - 97
-                                 + MAP_BLOCKSIZE / 2 - meta.HalfY;
-                    var enemy = new EnemyLogic(meta, spawnX, mapY);
-                    if (_bossLowHp > 0 && enemy.IsBoss) enemy.DebugClampHits(_bossLowHp);
-                    _enemies.Add(enemy);
-                }
-
-                _spawnIdx++;
-                if (_spawnIdx >= _mapSprites.Count) { _endWaveFlag = true; break; }
-                // link==-1 (EMPTY) or ==1 → end of group
-                if (oldLink == -1 || oldLink == 1) break;
-                // link==0 → continue group (next sprite is part of this group, regardless of y)
-            }
-        }
+        // The spawn loop (ENEMY_DoSprites) lives in MapSpawnScroller; it returns
+        // whether the sprite list was exhausted, which sets _endWaveFlag here.
+        if (_scroller.SpawnDueEnemies(_slib, _enemies, ShouldSpawn, _bossLowHp))
+            _endWaveFlag = true;
     }
 
     public override void _PhysicsProcess(double _)
@@ -784,25 +733,19 @@ public partial class WaveController : Node
 
     internal void PhaseSpawn()
     {
-        if (_mapSprites == null || _slib == null || _endWaveFlag) return;
+        if (!_scroller.HasSprites || _slib == null || _endWaveFlag) return;
 
-        _tiles.RefreshTileSliceForThink(_mapTiles, _tilepos, _tileyoff);
+        _tiles.RefreshTileSliceForThink(_mapTiles, _scroller.TilePos, _scroller.TileYOff);
         _tiles.ProcessTileDelayExplosions(AddTileExplosion);
 
         // This method combines Godot's spawn phase with C's TILE_Think scroll
         // advance. The collision tile slice above intentionally stays at the
-        // pre-scroll tspots for the current SHOTS pass; _tilepos/_tileyoff are
-        // advanced here for subsequent spawning/scroll state.
-        SpawnForTiley(_tiley);
+        // pre-scroll tspots for the current SHOTS pass; the scroll cursor is
+        // advanced after spawning for subsequent spawning/scroll state.
+        if (_scroller.SpawnDueEnemies(_slib, _enemies, ShouldSpawn, _bossLowHp))
+            _endWaveFlag = true;
 
-        _tileyoff++;
-        if (_tileyoff > 0)
-        {
-            _tileyoff -= MAP_BLOCKSIZE;
-            _tilepos  -= MAP_COLS;
-            _tiley     = _tilepos / MAP_COLS - 3;
-            if (_tilepos <= 0) _tilepos = 0;
-        }
+        _scroller.AdvanceScroll();
     }
 
     internal void PhaseMovement()

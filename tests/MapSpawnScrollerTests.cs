@@ -1,0 +1,226 @@
+using System.Collections.Generic;
+using Raptor.Sim;
+using Raptor.Sim.Enemy;
+using Raptor.Sim.MazeLevel;
+using Xunit;
+
+namespace Raptor.Tests;
+
+/// <summary>
+/// Unit coverage for the MapSpawnScroller collaborator extracted from
+/// WaveController (E12). These pin the parity-fragile scroll arithmetic and
+/// enemy-spawn geometry; the full L1-L4 parity gate covers the rest.
+/// </summary>
+public class MapSpawnScrollerTests
+{
+    // Same MAP_* values WaveController constructs the scroller with.
+    private const int MapRows      = 150;
+    private const int MapOnScreen  = 8;
+    private const int MapCols      = 9;
+    private const int MapBlockSize = 32;
+    private const int MapLeft      = 16;
+
+    private static MapSpawnScroller New()
+        => new(MapRows, MapOnScreen, MapCols, MapBlockSize, MapLeft);
+
+    private static SpriteMeta Meta(int w, int h, int bossFlag = 0) => new()
+    {
+        IName    = "TEST",
+        Hits     = 1,
+        Width    = w,
+        Height   = h,
+        BossFlag = bossFlag,
+    };
+
+    private static MapSpriteEntry Sprite(int x, int y, int slib, int level, int link) => new()
+    {
+        X = x, Y = y, Slib = slib, Level = level, Link = link,
+    };
+
+    // ── Scroll cursor init (TILE_Init) ────────────────────────────────────────
+
+    [Fact]
+    public void ResetForWave_InitsCursorToCStartValues()
+    {
+        var s = New();
+        s.ResetForWave();
+
+        // tilepos = (150-8)*9 = 1278; tileyoff = 200 - 8*32 = -56; tiley = 1278/9 - 3 = 139.
+        Assert.Equal((MapRows - MapOnScreen) * MapCols, s.TilePos);   // 1278
+        Assert.Equal(-56, s.TileYOff);
+        Assert.Equal(s.TilePos / MapCols - 3, s.TileY);               // 139
+        Assert.Equal(139, s.TileY);
+    }
+
+    // ── AdvanceScroll arithmetic ──────────────────────────────────────────────
+
+    [Fact]
+    public void AdvanceScroll_BelowZero_OnlyIncrementsTileYOff()
+    {
+        var s = New();
+        s.ResetForWave();   // tileyoff = -56
+        int posBefore  = s.TilePos;
+        int tileyBefore = s.TileY;
+
+        s.AdvanceScroll();
+
+        Assert.Equal(-55, s.TileYOff);     // tileyoff++
+        Assert.Equal(posBefore, s.TilePos);   // no row crossing yet
+        Assert.Equal(tileyBefore, s.TileY);
+    }
+
+    [Fact]
+    public void AdvanceScroll_CrossesRowBoundary_StepsTileposAndRecomputesTiley()
+    {
+        var s = New();
+        s.ResetForWave();   // tileyoff = -56, tilepos = 1278, tiley = 139
+
+        // 56 ticks bring tileyoff from -56 to 0 (still not > 0, no crossing).
+        for (int i = 0; i < 56; i++) s.AdvanceScroll();
+        Assert.Equal(0, s.TileYOff);
+        Assert.Equal(1278, s.TilePos);
+        Assert.Equal(139, s.TileY);
+
+        // The 57th tick: tileyoff++ → 1 (> 0) → wrap.
+        s.AdvanceScroll();
+        Assert.Equal(1 - MapBlockSize, s.TileYOff);  // 1 - 32 = -31
+        Assert.Equal(1278 - MapCols, s.TilePos);     // 1269
+        Assert.Equal((1278 - MapCols) / MapCols - 3, s.TileY);  // 1269/9 - 3 = 141 - 3 = 138
+        Assert.Equal(138, s.TileY);
+    }
+
+    [Fact]
+    public void AdvanceScroll_ClampsTileposAtZero()
+    {
+        var s = New();
+        s.ResetForWave();
+        // Drive far past the end of the map; tilepos must clamp at 0 and stay there.
+        for (int i = 0; i < 100000; i++) s.AdvanceScroll();
+        Assert.Equal(0, s.TilePos);
+        // After the clamp, tilepos stays 0, but tiley is recomputed BEFORE the
+        // clamp from the negative tilepos (-9): tiley = -9/9 - 3 = -4. (Once
+        // tilepos has overshot, every further crossing recomputes -4.)
+        Assert.Equal(-4, s.TileY);
+    }
+
+    // ── Spawn geometry (spawnX / mapY) ────────────────────────────────────────
+
+    [Fact]
+    public void SpawnDueEnemies_ComputesByteExactGeometry()
+    {
+        var s = New();
+        s.ResetForWave();   // tileyoff = -56, tiley = 139
+        // SHIP01G1-like: 32x24 → HalfX=16, HalfY=12.
+        var slib = SpriteMetaLibrary.FromList(new[] { Meta(32, 24) });
+        // One sprite at the current spawn row (y == tiley == 139), link=1 (end of group).
+        s.SetSprites(new List<MapSpriteEntry> { Sprite(x: 3, y: 139, slib: 0, level: 4, link: 1) });
+
+        var enemies = new List<EnemyLogic>();
+        bool exhausted = s.SpawnDueEnemies(slib, enemies, _ => true, bossLowHp: 0);
+
+        Assert.True(exhausted);              // single sprite consumed → list exhausted
+        Assert.Single(enemies);
+        // spawnX = 3*32 + 16 + 16 - 16 = 112;  mapY = -56 - (139-139)*32 - 97 + 16 - 12 = -149.
+        Assert.Equal(3 * MapBlockSize + MapLeft + MapBlockSize / 2 - 16, enemies[0].X);  // 112
+        Assert.Equal(112, enemies[0].X);
+        Assert.Equal(-56 - 97 + MapBlockSize / 2 - 12, enemies[0].Y);                    // -149
+        Assert.Equal(-149, enemies[0].Y);
+    }
+
+    [Fact]
+    public void SpawnDueEnemies_OnlySpawnsSpritesOnCurrentRow()
+    {
+        var s = New();
+        s.ResetForWave();   // tiley = 139
+        var slib = SpriteMetaLibrary.FromList(new[] { Meta(32, 24) });
+        // First sprite is on a future (lower) row → nothing spawns this call.
+        s.SetSprites(new List<MapSpriteEntry> { Sprite(x: 0, y: 100, slib: 0, level: 4, link: 1) });
+
+        var enemies = new List<EnemyLogic>();
+        bool exhausted = s.SpawnDueEnemies(slib, enemies, _ => true, bossLowHp: 0);
+
+        Assert.False(exhausted);     // cursor stalls on the not-yet-due sprite
+        Assert.Empty(enemies);
+    }
+
+    [Fact]
+    public void SpawnDueEnemies_DifficultyGateSkipsSpawnButStillAdvancesCursor()
+    {
+        var s = New();
+        s.ResetForWave();
+        var slib = SpriteMetaLibrary.FromList(new[] { Meta(32, 24) });
+        s.SetSprites(new List<MapSpriteEntry> { Sprite(x: 0, y: 139, slib: 0, level: 4, link: 1) });
+
+        var enemies = new List<EnemyLogic>();
+        // Gate rejects everything → no enemy added, but the sprite is consumed,
+        // so the list is exhausted (mirrors the original loop's cursor advance).
+        bool exhausted = s.SpawnDueEnemies(slib, enemies, _ => false, bossLowHp: 0);
+
+        Assert.True(exhausted);
+        Assert.Empty(enemies);
+    }
+
+    // ── Link-group iteration (link==0 continues the group across rows) ─────────
+
+    [Fact]
+    public void SpawnDueEnemies_LinkZeroContinuesGroupAcrossRows()
+    {
+        var s = New();
+        s.ResetForWave();   // tiley = 139
+        var slib = SpriteMetaLibrary.FromList(new[] { Meta(32, 24) });
+        // Sprite 0 is on the current row with link==0 → the next sprite is part of
+        // the same group and spawns regardless of its (different) y. Sprite 1 has
+        // link==1 → ends the group.
+        s.SetSprites(new List<MapSpriteEntry>
+        {
+            Sprite(x: 0, y: 139, slib: 0, level: 4, link: 0),
+            Sprite(x: 1, y:  50, slib: 0, level: 4, link: 1),
+        });
+
+        var enemies = new List<EnemyLogic>();
+        bool exhausted = s.SpawnDueEnemies(slib, enemies, _ => true, bossLowHp: 0);
+
+        Assert.True(exhausted);            // both consumed → list exhausted
+        Assert.Equal(2, enemies.Count);    // grouped spawn ignores the y mismatch
+    }
+
+    [Fact]
+    public void SpawnDueEnemies_LinkOneEndsGroup_LeavesNextRowUnspawned()
+    {
+        var s = New();
+        s.ResetForWave();   // tiley = 139
+        var slib = SpriteMetaLibrary.FromList(new[] { Meta(32, 24) });
+        // Sprite 0: current row, link==1 → group ends after it. Sprite 1 is on a
+        // different (future) row, so the outer while breaks → it stays unspawned.
+        s.SetSprites(new List<MapSpriteEntry>
+        {
+            Sprite(x: 0, y: 139, slib: 0, level: 4, link: 1),
+            Sprite(x: 1, y:  50, slib: 0, level: 4, link: 1),
+        });
+
+        var enemies = new List<EnemyLogic>();
+        bool exhausted = s.SpawnDueEnemies(slib, enemies, _ => true, bossLowHp: 0);
+
+        Assert.False(exhausted);           // sprite 1 still pending
+        Assert.Single(enemies);
+    }
+
+    [Fact]
+    public void SpawnDueEnemies_BossLowHpClampsBossHits()
+    {
+        var s = New();
+        s.ResetForWave();
+        // Boss meta with many hits; clamp to 2.
+        var bossMeta = Meta(64, 64, bossFlag: 1);
+        bossMeta.Hits = 999;
+        var slib = SpriteMetaLibrary.FromList(new[] { bossMeta });
+        s.SetSprites(new List<MapSpriteEntry> { Sprite(x: 0, y: 139, slib: 0, level: 4, link: 1) });
+
+        var enemies = new List<EnemyLogic>();
+        s.SpawnDueEnemies(slib, enemies, _ => true, bossLowHp: 2);
+
+        Assert.Single(enemies);
+        Assert.True(enemies[0].IsBoss);
+        Assert.Equal(2, enemies[0].Hits);
+    }
+}
