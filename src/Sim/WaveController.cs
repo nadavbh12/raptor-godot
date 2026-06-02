@@ -116,10 +116,7 @@ public partial class WaveController : Node
     // becomes active and iter 0 runs.
     private int  _pendingGameEnterFrame = -1;
     private int  _pendingGameNum = 0;
-    private int  _pendingDemoStartFrame = -1;
-    private DemoReplay? _pendingDemoReplay;
-    private DemoReplay? _demoReplay;
-    private int _demoRecordIndex = 0;
+    private readonly DemoReplayController _demo = new();
     private readonly PlayerButtonInput _buttonInput = new();
     private InputState? _testInteractiveInput;
     private readonly Queue<ObjType> _testSpecialSelects = new();
@@ -274,7 +271,7 @@ public partial class WaveController : Node
     public IReadOnlyList<Explosion>   GetExplosions()    => _explosions;
     public IReadOnlyList<BonusLogic>  GetBonuses()       => _bonuses;
     public bool DrawPlayer { get; private set; } = true;
-    public bool GameplayVisualActive => _waveActive || _pendingDemoStartFrame >= 0;
+    public bool GameplayVisualActive => _waveActive || _demo.PendingScheduled;
 
     internal static int AnimationStartIterForSpawn(int currentGameLoopIter) => currentGameLoopIter + 1;
     internal static int AnimationAge(int currentGameLoopIter, int startIter) => currentGameLoopIter - startIter;
@@ -430,7 +427,7 @@ public partial class WaveController : Node
             _emitter.GetEbullets = () => _enemyBullets.Count;
             _emitter.GetGameIter = () => GameLoopIter;
             _emitter.GetGameAnchorFrame = () => _gameEnterFc;
-            _emitter.GetDemoGameNum = () => _demoReplay?.Header.DemoGame ?? -1;
+            _emitter.GetDemoGameNum = () => _demo.Replay?.Header.DemoGame ?? -1;
             _emitter.GetMenuDemoEmitSequence = () => MenuDemoEmitSequence;
         }
     }
@@ -439,8 +436,8 @@ public partial class WaveController : Node
     {
         get
         {
-            if (_pendingDemoStartFrame >= 0) return -1;
-            if (_demoReplay != null) return _demoRecordIndex;
+            if (_demo.PendingScheduled) return -1;
+            if (_demo.Active) return _demo.RecordIndex;
             return int.MinValue;
         }
     }
@@ -506,24 +503,20 @@ public partial class WaveController : Node
 
     public void StartDemoPlayback(DemoReplay replay, int currentFrame)
     {
-        _pendingDemoReplay = replay;
-        _pendingDemoStartFrame = currentFrame + DemoLoadCompFrames;
+        _demo.Schedule(replay, currentFrame + DemoLoadCompFrames);
     }
 
     private void ApplyPendingDemoStart()
     {
-        if (_pendingDemoReplay == null) return;
+        if (!_demo.PendingScheduled) return;
 
-        _demoReplay = _pendingDemoReplay;
-        _pendingDemoReplay = null;
-        _pendingDemoStartFrame = -1;
-        _demoRecordIndex = 0;
+        var replay = _demo.Begin();
         _buttonInput.ResetDemoLatches();
 
-        _waveNum = _demoReplay.Header.DemoWave + 1;
-        SeedRngForWave(_demoReplay.Header.DemoWave, OS.GetEnvironment("RAPTOR_RNG_SEED_OVERRIDE"));
+        _waveNum = replay.Header.DemoWave + 1;
+        SeedRngForWave(replay.Header.DemoWave, OS.GetEnvironment("RAPTOR_RNG_SEED_OVERRIDE"));
         LoadWave(_waveNum);
-        SetupDemoPlayer(_demoReplay.Header.DemoGame);
+        SetupDemoPlayer(replay.Header.DemoGame);
         _gameEnterFc = SimClock.Frame;
         _waveActive = true;
         if (_debugDemoReplay)
@@ -706,7 +699,7 @@ public partial class WaveController : Node
     {
         if (_pendingGameEnterFrame >= 0 && SimClock.Frame >= _pendingGameEnterFrame)
             ApplyPendingGameEnter();
-        if (_pendingDemoStartFrame >= 0 && SimClock.Frame >= _pendingDemoStartFrame)
+        if (_demo.ShouldBegin(SimClock.Frame))
             ApplyPendingDemoStart();
         if (_playerDeath.ConsumeSentinel())
         {
@@ -720,7 +713,7 @@ public partial class WaveController : Node
         // runs before GFX_FadeIn). After iter 0, hold for FadeInHoldFrames
         // frames to mirror C's blocking palette fade-in. Then run at strict
         // 3 fc/iter (the C steady-state cadence confirmed by position dumps).
-        int fadeHoldFrames = _demoReplay != null ? DemoFadeInHoldFrames : FadeInHoldFrames;
+        int fadeHoldFrames = _demo.Active ? DemoFadeInHoldFrames : FadeInHoldFrames;
         if (SimClock.Frame - _gameEnterFc < fadeHoldFrames) return;
 
         _subTick++;
@@ -739,18 +732,16 @@ public partial class WaveController : Node
         // View-only / parity-inert (DebugRenderer muzzle-flash cosmetics).
         Shooter.ClearMuzzles();
 
-        if (_demoReplay != null)
+        if (_demo.Active)
         {
-            if (_demoRecordIndex >= _demoReplay.Records.Count)
+            if (!_demo.TryNextFrame(out var frame))
             {
-                _demoReplay = null;
                 _waveActive = false;
                 return;
             }
 
-            var frame = _demoReplay.Records[_demoRecordIndex++];
-            if (_debugDemoReplay && _demoRecordIndex <= 40)
-                GD.Print($"demo tick fc={SimClock.Frame} rec={_demoRecordIndex - 1} px={frame.Px} py={frame.Py}");
+            if (_debugDemoReplay && _demo.RecordIndex <= 40)
+                GD.Print($"demo tick fc={SimClock.Frame} rec={_demo.RecordIndex - 1} px={frame.Px} py={frame.Py}");
             PlayerLogic.ApplyDemoFrame(frame.Px, frame.Py, frame.PlayerPic);
             _buttonInput.ApplyDemo(frame, Shooter, PlayerLogic, _weaponTargetEnemies, _enemies, _playerBullets, _shooterRng);
             Shooter.TickCooldowns();
@@ -1542,7 +1533,7 @@ public partial class WaveController : Node
             AnimationAge(currentIter, x.StartIter) >= AnimFramesFor(x.ExpType));
 
         var endWave = _endWave.Tick(
-            _waveActive, _demoReplay != null, _endWaveFlag,
+            _waveActive, _demo.Active, _endWaveFlag,
             PlayerLogic.Alive, PlayerLogic.X,
             _enemies.Exists(e => e.Alive || e.PendingRemovalDump));
         if (endWave.ForcedDx != 0 || endWave.ForcedDy != 0)
