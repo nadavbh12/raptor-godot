@@ -426,11 +426,12 @@ public partial class WaveController : Node
 
         _assetsRoot = ProjectSettings.GlobalizePath("res://assets");
         _debugDemoReplay = OS.GetEnvironment("RAPTOR_DEBUG_DEMO") == "1";
-        _godmode = OS.GetEnvironment("RAPTOR_GODMODE") == "1";
-        int.TryParse(OS.GetEnvironment("RAPTOR_BOSS_LOWHP"), out _bossLowHp);
-        _forceSecret = OS.GetEnvironment("RAPTOR_FORCE_SECRET") == "1";
+        var capture = CaptureHooks.Read(OS.GetEnvironment);
+        _godmode = capture.Godmode;
+        _bossLowHp = capture.BossLowHp;
+        _forceSecret = capture.ForceSecret;
         _grantTypes.Clear();
-        _grantTypes.AddRange(ParseGrant(OS.GetEnvironment("RAPTOR_GRANT")));
+        _grantTypes.AddRange(capture.Grants);
 
         var menuController = GetNodeOrNull<MenuController>("../MenuController");
         if (menuController != null)
@@ -471,25 +472,6 @@ public partial class WaveController : Node
             if (_pendingDemoStartFrame >= 0) return -1;
             if (_demoReplay != null) return _demoRecordIndex;
             return int.MinValue;
-        }
-    }
-
-    /// <summary>
-    /// Parse the RAPTOR_GRANT capture env (comma/space/semicolon list of item
-    /// names) into the ObjTypes to grant. Unknown names are ignored. Pure and
-    /// testable; returns empty for null/blank (the parity-inert default).
-    /// </summary>
-    internal static IEnumerable<ObjType> ParseGrant(string? env)
-    {
-        if (string.IsNullOrWhiteSpace(env)) yield break;
-        foreach (var raw in env.Split(new[] { ',', ' ', ';' }, StringSplitOptions.RemoveEmptyEntries))
-        {
-            switch (raw.Trim().ToLowerInvariant())
-            {
-                case "detect":      yield return ObjType.Detect;      break;
-                case "supershield": yield return ObjType.SuperShield; break;
-                case "megabomb":    yield return ObjType.MegaBomb;    break;
-            }
         }
     }
 

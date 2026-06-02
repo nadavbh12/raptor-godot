@@ -13,7 +13,7 @@ namespace Raptor.Tests;
 /// </summary>
 public class CaptureHooksTests
 {
-    // ── RAPTOR_GRANT name parsing (WaveController.ParseGrant) ──────────────────
+    // ── RAPTOR_GRANT name parsing (CaptureHooks.ParseGrant) ──────────────────
 
     [Theory]
     [InlineData(null)]
@@ -22,13 +22,13 @@ public class CaptureHooksTests
     [InlineData("nonsense,foo")]
     public void ParseGrant_returns_empty_for_blank_or_unknown(string? env)
     {
-        Assert.Empty(WaveController.ParseGrant(env));
+        Assert.Empty(CaptureHooks.ParseGrant(env));
     }
 
     [Fact]
     public void ParseGrant_maps_known_names_case_insensitively()
     {
-        var got = WaveController.ParseGrant("Detect, SUPERSHIELD ; megabomb").ToList();
+        var got = CaptureHooks.ParseGrant("Detect, SUPERSHIELD ; megabomb").ToList();
         Assert.Equal(
             new[] { ObjType.Detect, ObjType.SuperShield, ObjType.MegaBomb },
             got);
@@ -37,8 +37,38 @@ public class CaptureHooksTests
     [Fact]
     public void ParseGrant_ignores_unknown_but_keeps_known()
     {
-        var got = WaveController.ParseGrant("detect,turret,megabomb").ToList();
+        var got = CaptureHooks.ParseGrant("detect,turret,megabomb").ToList();
         Assert.Equal(new[] { ObjType.Detect, ObjType.MegaBomb }, got);
+    }
+
+    // ── CaptureHooks.Read env → Config mapping ─────────────────────────────────
+
+    [Fact]
+    public void Read_is_all_off_when_env_blank()
+    {
+        var cfg = CaptureHooks.Read(_ => "");
+        Assert.False(cfg.Godmode);
+        Assert.Equal(0, cfg.BossLowHp);
+        Assert.False(cfg.ForceSecret);
+        Assert.Empty(cfg.Grants);
+    }
+
+    [Fact]
+    public void Read_maps_each_capture_env()
+    {
+        string Env(string k) => k switch
+        {
+            "RAPTOR_GODMODE"      => "1",
+            "RAPTOR_BOSS_LOWHP"   => "40",
+            "RAPTOR_FORCE_SECRET" => "1",
+            "RAPTOR_GRANT"        => "detect,megabomb",
+            _ => "",
+        };
+        var cfg = CaptureHooks.Read(Env);
+        Assert.True(cfg.Godmode);
+        Assert.Equal(40, cfg.BossLowHp);
+        Assert.True(cfg.ForceSecret);
+        Assert.Equal(new[] { ObjType.Detect, ObjType.MegaBomb }, cfg.Grants);
     }
 
     // ── RAPTOR_BOSS_LOWHP clamp (EnemyLogic.DebugClampHits) ────────────────────
