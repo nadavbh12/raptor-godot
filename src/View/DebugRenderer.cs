@@ -29,8 +29,7 @@ public partial class DebugRenderer : Node2D
     private int _lastDrawnEnemies = 0;
     private int _lastDrawnPbullets = 0;
     private int _lastDrawnEbullets = 0;
-    private readonly HudScannerIndicator.State _scannerState = new();
-    private int _lastScannerFrame = -1;
+    private readonly HudRenderer _hudRenderer = new();
     private readonly ViewEffects _effects = new();
     private int _lastSpawnIter = -1;
     // Megabomb white-out flash: GameLoopIter at which detonation fired, and the
@@ -691,13 +690,7 @@ public partial class DebugRenderer : Node2D
         //  the player ship, to mirror C's ANIMS_DisplaySky → ship → DisplayHigh
         //  z-order — the ship occludes the inner half of the gun flash. See
         //  SpawnTickEffects()/DrawExplosions()/DrawViewEffects() in DrawScene.)
-        DrawScoreHud();
-        DrawShieldHud();
-        DrawCurrentWeaponHud();
-        DrawMegaBombHud();
-        DrawSuperShieldHud();
-        DrawScannerHud();
-        DrawWarningHud();
+        _hudRenderer.Draw(this, _wave, LoadSprite, _digitTex);
 
         // Bottom debug overlay is only useful for visual-parity debugging;
         // it intrudes on the rendered scene in screenshots. Set
@@ -1698,138 +1691,6 @@ public partial class DebugRenderer : Node2D
                 _flameQuads.Add((new Rect2(bx, topY + row, width, 1), col));
             }
         }
-    }
-
-    /// <summary>
-    /// Draw the "$NNNNNNNN" score readout. Mirrors RAP.C lines 661-662:
-    ///   sprintf(temp, "%08u", plr.score);
-    ///   RAP_PrintNum(119, MAP_TOP, temp);
-    /// RAP_PrintNum draws the $ sprite (numbers[10]) at (x, y) then steps +9
-    /// pixels, then each digit advances +8 pixels.
-    /// </summary>
-    private void DrawScoreHud()
-    {
-        if (_wave == null) return;
-        const int MapTop = 2;  // SOURCE/MAP.H
-        int x = 119;
-        // "$" prefix.
-        if (_digitTex[10] != null) DrawTexture(_digitTex[10]!, new Vector2(x, MapTop));
-        x += 9;
-        string score = _wave.Score.ToString("D8");
-        foreach (char c in score)
-        {
-            int d = c - '0';
-            if (d >= 0 && d <= 9 && _digitTex[d] != null)
-                DrawTexture(_digitTex[d]!, new Vector2(x, MapTop));
-            x += 8;
-        }
-    }
-
-    private void DrawShieldHud()
-    {
-        if (_wave == null) return;
-        const int MapRight = 320 - 16;  // SOURCE/MAP.H
-        foreach (var segment in HudShieldBar.Build(MapRight + 4, _wave.PlayerLogic.Shield))
-        {
-            DrawRect(new Rect2(segment.X, segment.Y, segment.Width, segment.Height),
-                ShieldPaletteColor(segment.PaletteIndex));
-        }
-    }
-
-    private static Color ShieldPaletteColor(int paletteIndex)
-    {
-        if (paletteIndex == 0) return new Color(0, 0, 0, 1);
-        var rgb = HudPalette.Color(paletteIndex);
-        return new Color(rgb.R / 255f, rgb.G / 255f, rgb.B / 255f, 1);
-    }
-
-    private void DrawCurrentWeaponHud()
-    {
-        if (_wave?.Inventory.EquippedSpecial is not ObjType weapon) return;
-        const int MapTop = 2;           // SOURCE/MAP.H
-        const int MapRight = 320 - 16;  // SOURCE/MAP.H
-        string spriteName = HudWeaponIcon.SpriteNameFor(weapon);
-        if (!_spritePaths.TryGetValue(spriteName, out string? path)) return;
-        var tex = LoadSpriteFromPath(path);
-        if (tex != null)
-            DrawTexture(tex, new Vector2(MapRight - 18, MapTop));
-    }
-
-    private void DrawMegaBombHud()
-    {
-        if (_wave == null) return;
-        int megaBombCount = _wave.Inventory.GetAmt(ObjType.MegaBomb);
-        if (megaBombCount <= 0) return;
-        if (!_spritePaths.TryGetValue("SMBOMB_PIC", out string? path)) return;
-        var tex = LoadSpriteFromPath(path);
-        if (tex == null) return;
-        foreach (var pos in HudMegaBombIndicator.Build(megaBombCount))
-            DrawTexture(tex, new Vector2(pos.X, pos.Y));
-    }
-
-    private void DrawSuperShieldHud()
-    {
-        if (_wave == null) return;
-        // One icon per super-shield CHARGE (C OBJECTS.C:665 counts discrete objects).
-        // The port stores super-shield as a single point buffer, so convert points
-        // → charges = ceil(points / per-charge). per-charge = SuperShield StartCnt.
-        int points = _wave.Inventory.GetAmt(ObjType.SuperShield);
-        int count = HudSuperShieldIndicator.ChargeCount(
-            points, Raptor.Sim.ObjLib.Of(ObjType.SuperShield).StartCnt);
-        if (count <= 0) return;
-        var tex = LoadSprite("SMSHIELD_PIC");
-        if (tex == null) return;
-        foreach (var p in HudSuperShieldIndicator.Build(count))
-            DrawTexture(tex, new Vector2(p.X, p.Y));
-    }
-
-    private void DrawScannerHud()
-    {
-        if (_wave == null || !_wave.HasSecretsDetector) return;
-        int dmg = _wave.GetBaseDamage();
-        if (dmg > 0)
-        {
-            foreach (var b in HudScannerIndicator.BuildDamage(dmg))
-                DrawRect(new Rect2(b.X, b.Y, b.W, b.H), ScannerPaletteColor(b.PaletteIndex));
-        }
-        else
-        {
-            foreach (var line in HudScannerIndicator.BuildIdle(_scannerState.CurrentDpos))
-                DrawRect(new Rect2(line.X, line.Y, 1, line.Height),
-                    ScannerPaletteColor(line.PaletteIndex));
-        }
-        if (_lastScannerFrame != SimClock.Frame)
-        {
-            _scannerState.AfterSimTick();
-            _lastScannerFrame = SimClock.Frame;
-        }
-        else
-        {
-            _scannerState.AfterRenderFrame();
-        }
-    }
-
-    private void DrawWarningHud()
-    {
-        if (_wave == null) return;
-        if (!_wave.ShieldLowWarningVisible) return;
-        if (_wave.SystemDamageWarningVisible && _spritePaths.TryGetValue("WEPDEST_PIC", out string? damagePath))
-        {
-            var damageTex = LoadSpriteFromPath(damagePath);
-            if (damageTex != null)
-                DrawTexture(damageTex, new Vector2(HudWarning.CenterX((int)damageTex.GetWidth()), HudWarning.SystemDamageY));
-        }
-
-        if (!_spritePaths.TryGetValue("SHLDLOW_PIC", out string? path)) return;
-        var tex = LoadSpriteFromPath(path);
-        if (tex == null) return;
-        DrawTexture(tex, new Vector2(HudWarning.CenterX((int)tex.GetWidth()), HudWarning.MapBottom));
-    }
-
-    private static Color ScannerPaletteColor(int paletteIndex)
-    {
-        var rgb = HudPalette.Color(paletteIndex);
-        return new Color(rgb.R / 255f, rgb.G / 255f, rgb.B / 255f, 1);
     }
 
     private Texture2D? LoadPlayerBulletTexture(ObjType weapon, int frameCounter)
