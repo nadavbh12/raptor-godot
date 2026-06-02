@@ -367,7 +367,7 @@ public partial class WaveController : Node
     private int                   _spawnIdx = 0;   // index into _mapSprites
     private bool                  _endWaveFlag = false;
     private bool                  _missionCompleteNotified = false;
-    private int                   _playerDeathCountdown = -1;
+    private readonly PlayerDeathSequence _playerDeath = new();
     // End-of-wave fly-off countdown. -1 = inactive. When the wave ends and no
     // enemies/explosions remain, this counts down from EndWaveSequence.Duration
     // (60). The player ship glides up by 4 px/iter (and centers horizontally)
@@ -592,7 +592,7 @@ public partial class WaveController : Node
         _playerHit = false;
         _endWaveFlag = false;
         _missionCompleteNotified = false;
-        _playerDeathCountdown = -1;
+        _playerDeath.Reset();
         _endWaveCountdown = -1;
         DrawPlayer = true;
         _subTick = 0;
@@ -719,9 +719,8 @@ public partial class WaveController : Node
             ApplyPendingGameEnter();
         if (_pendingDemoStartFrame >= 0 && SimClock.Frame >= _pendingDemoStartFrame)
             ApplyPendingDemoStart();
-        if (_playerDeathCountdown == -2)
+        if (_playerDeath.ConsumeSentinel())
         {
-            _playerDeathCountdown = -1;
             _waveActive = false;
             _menu?.PlayerDied(SimClock.Frame);
             return;
@@ -1504,12 +1503,9 @@ public partial class WaveController : Node
 
         if (_playerWasAliveAtCollisionStart && !PlayerLogic.Alive)
         {
-            _playerDeathCountdown = EndDuration;
+            _playerDeath.Trigger();
         }
     }
-
-    internal const int EndDuration = 20 * 3;
-    internal const int EndExplode = 24;
 
     // C exptype constants used for cosmetic-only explosion events (SOURCE/MAP.H).
     internal const int ExpAirSmall1 = 0;  // EXP_AIRSMALL1 → EXPLO2_BLK
@@ -1519,38 +1515,6 @@ public partial class WaveController : Node
     internal const int ExpAirSmall2 = 10; // EXP_AIRSMALL2 → SMFLAK_BLK
     internal const int ExpAirMed2   = 10; // A_MED_AIR_EXPLO2 uses SMFLAK_BLK in ANIMS.C.
     private const int ItemBuy6ObjType = 23;
-
-    internal readonly record struct DeathExplosion(int ExpType, int X, int Y);
-
-    internal static List<DeathExplosion> BuildPlayerDeathExplosions(
-        int playerX,
-        int playerY,
-        int countdown,
-        Random rng)
-    {
-        var explosions = new List<DeathExplosion>
-        {
-            new(ExpAirSmall1, playerX + PlayerShooter.NextRandom(rng, 32, "death.med.x"),
-                playerY + PlayerShooter.NextRandom(rng, 32, "death.med.y")),
-            new(ExpAirSmall2, playerX + PlayerShooter.NextRandom(rng, 32, "death.small.x"),
-                playerY + PlayerShooter.NextRandom(rng, 32, "death.small.y")),
-        };
-
-        if (countdown == EndExplode)
-        {
-            explosions.Add(new DeathExplosion(ExpAirLarge, playerX + 16, playerY + 16));
-            for (int i = 0; i < (PlayerLogic.SpriteWidth * PlayerLogic.SpriteHeight) / 2; i++)
-            {
-                int x = playerX - PlayerLogic.SpriteWidth / 2
-                        + PlayerShooter.NextRandom(rng, PlayerLogic.SpriteWidth * 2, "death.burst.x");
-                int y = playerY - PlayerLogic.SpriteHeight / 2
-                        + PlayerShooter.NextRandom(rng, PlayerLogic.SpriteHeight * 2, "death.burst.y");
-                explosions.Add(new DeathExplosion((i & 1) != 0 ? ExpAirLarge : ExpAirMed2, x, y));
-            }
-        }
-
-        return explosions;
-    }
 
     // Spawn explosion(s) at the enemy's death position. Mirrors ENEMY.C:1066-1115
     // — primary explosion at (x+hlx, y+hly), and for EXP_AIRLARGE the C code
@@ -1796,46 +1760,27 @@ public partial class WaveController : Node
     internal void PhaseHud()
     {
         // ShieldHudController owns the shield-recharge counter, palette-stuff RNG,
-        // and low-shield warning. WaveController keeps phase-order control and
-        // still sequences ProcessPlayerDeathExplosions (death/end-wave territory)
-        // between the wave's initial-skip frame and the main tick, as before.
+        // and low-shield warning; PlayerDeathSequence owns the death countdown.
+        // WaveController keeps phase-order control: it runs the death tick between
+        // the wave's initial-skip frame and the main shield tick, as before.
         if (_shieldHud.TickSkipInitial(PlayerLogic, _curPlayerDiff,
-                deathActive: _playerDeathCountdown >= 0,
+                deathActive: _playerDeath.Active,
                 endWaveActive: _endWaveCountdown >= 0))
             return;
 
-        ProcessPlayerDeathExplosions();
+        if (_playerDeath.Active)
+        {
+            _shooterRng ??= WaveRng.NewShooterRng(Rng.Seed);
+            var death = _playerDeath.Tick(PlayerLogic.X, PlayerLogic.Y, _shooterRng);
+            foreach (var e in death.Explosions)
+                AddExplosion(e.ExpType, e.X, e.Y);
+            if (death.HidePlayer) DrawPlayer = false;
+        }
 
         _shieldHud.Tick(PlayerLogic, Inventory, _curPlayerDiff,
-            deathActive: _playerDeathCountdown >= 0,
+            deathActive: _playerDeath.Active,
             endWaveActive: _endWaveCountdown >= 0,
             gameLoopIter: _gameLoopIter, shooterRng: _shooterRng);
-    }
-
-    private void ProcessPlayerDeathExplosions()
-    {
-        if (_playerDeathCountdown < 0) return;
-
-        _shooterRng ??= WaveRng.NewShooterRng(Rng.Seed);
-        foreach (var explosion in BuildPlayerDeathExplosions(
-            PlayerLogic.X,
-            PlayerLogic.Y,
-            _playerDeathCountdown,
-            _shooterRng))
-        {
-            AddExplosion(explosion.ExpType, explosion.X, explosion.Y);
-        }
-
-        if (_playerDeathCountdown == EndExplode)
-            DrawPlayer = false;
-
-        if (_playerDeathCountdown == 0)
-        {
-            _playerDeathCountdown = -2;
-            return;
-        }
-
-        _playerDeathCountdown--;
     }
 
     // ── Internal scheduler ────────────────────────────────────────────────────

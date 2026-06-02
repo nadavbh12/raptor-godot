@@ -260,10 +260,10 @@ public class WaveControllerTests
     {
         var rng = new System.Random(1234);
 
-        var explosions = WaveController.BuildPlayerDeathExplosions(
+        var explosions = PlayerDeathSequence.BuildExplosions(
             PlayerLogic.InitX,
             PlayerLogic.InitY,
-            WaveController.EndDuration,
+            PlayerDeathSequence.EndDuration,
             rng);
 
         Assert.Equal(2, explosions.Count);
@@ -281,10 +281,10 @@ public class WaveControllerTests
     {
         var rng = new System.Random(1234);
 
-        var explosions = WaveController.BuildPlayerDeathExplosions(
+        var explosions = PlayerDeathSequence.BuildExplosions(
             PlayerLogic.InitX,
             PlayerLogic.InitY,
-            WaveController.EndExplode,
+            PlayerDeathSequence.EndExplode,
             rng);
 
         Assert.Equal(515, explosions.Count);
@@ -304,7 +304,7 @@ public class WaveControllerTests
         Assert.Equal(256, burstMed2);
     }
 
-    private static int Count(IReadOnlyList<WaveController.DeathExplosion> explosions, int expType)
+    private static int Count(IReadOnlyList<PlayerDeathSequence.DeathExplosion> explosions, int expType)
     {
         int count = 0;
         foreach (var e in explosions)
