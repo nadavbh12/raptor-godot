@@ -43,23 +43,33 @@ public class WaveControllerTests
     public void Default_seed_is_1024_times_wave_num()
     {
         // Verify deterministic per-wave seed formula: seed = 1024 * waveNum.
-        Assert.Equal(2048ul, WavePhaseScheduler.ComputeSeed(2));
-        Assert.Equal(1024ul, WavePhaseScheduler.ComputeSeed(1));
-        Assert.Equal(5120ul, WavePhaseScheduler.ComputeSeed(5));
+        Assert.Equal(2048ul, WaveRng.ComputeSeed(2));
+        Assert.Equal(1024ul, WaveRng.ComputeSeed(1));
+        Assert.Equal(5120ul, WaveRng.ComputeSeed(5));
     }
 
     [Fact]
     public void Seed_override_string_is_applied_when_parseable()
     {
         // When a seed override is provided, ComputeSeed returns it instead.
-        Assert.Equal(9999ul, WavePhaseScheduler.ComputeSeed(2, "9999"));
+        Assert.Equal(9999ul, WaveRng.ComputeSeed(2, "9999"));
     }
 
     [Fact]
     public void Empty_seed_override_falls_back_to_default()
     {
-        Assert.Equal(2048ul, WavePhaseScheduler.ComputeSeed(2, ""));
-        Assert.Equal(2048ul, WavePhaseScheduler.ComputeSeed(2, null));
+        Assert.Equal(2048ul, WaveRng.ComputeSeed(2, ""));
+        Assert.Equal(2048ul, WaveRng.ComputeSeed(2, null));
+    }
+
+    [Fact]
+    public void NewShooterRng_is_deterministic_for_a_given_seed()
+    {
+        // Same Godot seed → identical shooter RNG stream (replay-stable scatter/picks).
+        var a = WaveRng.NewShooterRng(1024);
+        var b = WaveRng.NewShooterRng(1024);
+        for (int i = 0; i < 8; i++)
+            Assert.Equal(a.Next(100), b.Next(100));
     }
 
     [Fact]

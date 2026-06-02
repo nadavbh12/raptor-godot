@@ -27,18 +27,6 @@ namespace Raptor.Sim;
 /// </summary>
 internal class WavePhaseScheduler
 {
-    /// <summary>
-    /// Computes the deterministic per-wave seed.
-    /// Returns the parsed seedOverride if non-null/non-empty and parseable as int;
-    /// otherwise returns 1024 * waveNum.
-    /// </summary>
-    public static ulong ComputeSeed(int waveNum, string? seedOverride = null)
-    {
-        if (!string.IsNullOrEmpty(seedOverride) && int.TryParse(seedOverride, out int seed))
-            return (ulong)seed;
-        return (ulong)(1024 * waveNum);
-    }
-
     /// <summary>Runs one full per-tick phase cycle. Calls virtual phase methods in spec order.</summary>
     public void Tick()
     {
@@ -417,7 +405,7 @@ public partial class WaveController : Node
 
     public void SeedRngForWave(int waveNum, string? seedOverride = null)
     {
-        Rng.Seed = WavePhaseScheduler.ComputeSeed(waveNum, seedOverride);
+        Rng.Seed = WaveRng.ComputeSeed(waveNum, seedOverride);
     }
 
     public override void _Ready()
@@ -639,7 +627,7 @@ public partial class WaveController : Node
         Shooter.Reset();
         // Seed PlayerShooter RNG deterministically off the wave seed so
         // DUMB_MISSLE scatter and MINI_GUN picks are replay-stable.
-        _shooterRng = new LegacyRandom((int)(Rng.Seed & 0x7FFFFFFFu));
+        _shooterRng = WaveRng.NewShooterRng(Rng.Seed);
 
         // Load sprite metadata library.
         string slibPath = Path.Combine(_assetsRoot ?? "assets", "sprites_meta", "SPRITE1_ITM.json");
@@ -1893,7 +1881,7 @@ public partial class WaveController : Node
     {
         if (_playerDeathCountdown < 0) return;
 
-        _shooterRng ??= new LegacyRandom((int)(Rng.Seed & 0x7FFFFFFFu));
+        _shooterRng ??= WaveRng.NewShooterRng(Rng.Seed);
         foreach (var explosion in BuildPlayerDeathExplosions(
             PlayerLogic.X,
             PlayerLogic.Y,
