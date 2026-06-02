@@ -1401,9 +1401,7 @@ public partial class WaveController : Node
             if (wasAlive && !e.Alive)
             {
                 Score += (uint)e.Meta.Money;
-                ConsumeEnemyDeathSoundRandom();
-                SpawnExplosion(e);
-                SpawnBonusFor(e);
+                ApplyEnemyDeathEffects(e);
             }
         }
 
@@ -1504,31 +1502,8 @@ public partial class WaveController : Node
     internal const int ExpAirSmall1 = 0;  // EXP_AIRSMALL1 → EXPLO2_BLK
     internal const int ExpAirLarge  = 2;  // EXP_AIRLARGE → LGFLAK_BLK
     private const int ExpGrdLarge  = 5;   // EXP_GRDLARGE → GEXPLO_BLK
-    private const int ExpEnergy    = 8;   // EXP_ENERGY → NRGBANG_BLK + S_ITEMBUY6 bonus
     internal const int ExpAirSmall2 = 10; // EXP_AIRSMALL2 → SMFLAK_BLK
     internal const int ExpAirMed2   = 10; // A_MED_AIR_EXPLO2 uses SMFLAK_BLK in ANIMS.C.
-    private const int ItemBuy6ObjType = 23;
-
-    // Spawn explosion(s) at the enemy's death position. Mirrors ENEMY.C:1066-1115
-    // — primary explosion at (x+hlx, y+hly), and for EXP_AIRLARGE the C code
-    // also fires (width/16 * height/16) medium explosions at random offsets
-    // inside the sprite bounds. We use a deterministic pattern (no RNG) so
-    // we never consume sim entropy.
-    //
-    // ENEMY.C:1154-1155 ALSO drops a BONUS if the sprite's lib->bonus field
-    // is set. That spawn happens here for cohesion: any path that called
-    // SpawnExplosion also wants the C drop side-effect.
-    private const int ExpAirLargeCode = 2;  // EXP_AIRLARGE (SOURCE/MAP.H)
-    internal static int BonusSpawnXFromEnemyX(int enemyX) => enemyX + 16; // BONUS_Add adds MAP_LEFT.
-    internal static int? BonusForExplosionType(int expType) => expType == ExpEnergy ? ItemBuy6ObjType : null;
-
-    private void ConsumeEnemyDeathSoundRandom()
-    {
-        // ENEMY.C plays SND_3DPatch(FX_AIREXPLO, ...) before dispatching the
-        // explosion animation. FX_AIREXPLO has random pitch, so this consumes
-        // the shared rand() stream even when audio output is muted.
-        PlayerShooter.NextRandom(_shooterRng, 40, "sound3d.fx_airexplo");
-    }
 
     private void ProcessPendingEnemyRemovalsForParity()
     {
@@ -1541,9 +1516,7 @@ public partial class WaveController : Node
         {
             if (e.Alive || !e.PendingRemovalDump) continue;
             Score += (uint)e.Meta.Money;
-            ConsumeEnemyDeathSoundRandom();
-            SpawnExplosion(e);
-            SpawnBonusFor(e);
+            ApplyEnemyDeathEffects(e);
             e.ClearPendingRemovalDump();
         }
     }
@@ -1605,22 +1578,6 @@ public partial class WaveController : Node
         }
     }
 
-    private void SpawnBonusFor(EnemyLogic e)
-    {
-        if (e.Meta.Bonus < 0) return;
-        SpawnBonus(e.Meta.Bonus, e.X, e.Y);
-    }
-
-    private void SpawnBonus(int objType, int enemyX, int enemyY)
-    {
-        // C: BONUS_Add(type, sprite->x, sprite->y), then BONUS_Add stores
-        // cur->x = x + MAP_LEFT. The bonus X is therefore enemy x + 16.
-        int initialPos = PlayerShooter.NextRandom(_shooterRng, 16, "bonus.pos");
-        var bonus = new BonusLogic(objType, BonusSpawnXFromEnemyX(enemyX), enemyY, initialPos);
-        _bonuses.Add(bonus);
-        TraceBonus("add", bonus);
-    }
-
     private void TraceBonus(string eventName, BonusLogic b)
     {
         OnBonusTrace?.Invoke(BonusTraceLine(eventName, b));
@@ -1634,35 +1591,16 @@ public partial class WaveController : Node
         return string.Create(System.Globalization.CultureInfo.InvariantCulture,
             $"i={GameLoopIter} event={eventName} type={b.ObjType} x={b.X} y={b.Y} bx={bx} by={by} pos={b.Pos} frame={b.Frame} glow={b.GlowFrame} d={(b.DisplayAsPickedUpMoney ? 1 : 0)} cnt={b.PickedUpMoneyCountdown} money={(Bonus.BonusEffectDispatcher.IsMoneyBonus(b.ObjType) ? 1 : 0)} px={PlayerLogic.X} py={PlayerLogic.Y}");
     }
-    private void SpawnExplosion(EnemyLogic e)
+    private void ApplyEnemyDeathEffects(EnemyLogic e)
     {
-        int cx = e.X + e.Meta.HalfX;
-        int cy = e.Y + e.Meta.HalfY;
-        int startIter = AnimationStartIterForSpawn(_gameLoopIter);
-        AddExplosion(e.Meta.ExpType, cx, cy);
-        if (BonusForExplosionType(e.Meta.ExpType) is { } bonusType)
-            SpawnBonus(bonusType, e.X, e.Y);
-        if (e.Meta.ExpType == ExpAirLargeCode)
+        var fx = EnemyDeathEffects.Build(e, _shooterRng, AnimationStartIterForSpawn(_gameLoopIter));
+        foreach (var ex in fx.Explosions)
+            AddExplosion(ex.ExpType, ex.X, ex.Y, ex.StartDelayIters);
+        foreach (var b in fx.Bonuses)
         {
-            int w = e.Meta.Width;
-            int h = e.Meta.Height;
-            int count = (w >> 4) * (h >> 4);
-            // Deterministic pseudo-random offsets so successive explosions land
-            // at distinct positions inside the sprite. Mixing hash uses prime
-            // multipliers — no RNG state mutated.
-            uint hash = (uint)(e.X * 73856093 ^ e.Y * 19349663 ^ startIter * 83492791);
-            for (int i = 0; i < count; i++)
-            {
-                hash = hash * 1103515245u + 12345u;
-                int ox = (int)((hash >> 8) % (uint)System.Math.Max(1, w));
-                hash = hash * 1103515245u + 12345u;
-                int oy = (int)((hash >> 8) % (uint)System.Math.Max(1, h));
-                int t = (i & 1) == 1 ? 1 /* EXP_AIRMED → A_MED_AIR_EXPLO */
-                                     : 10 /* EXP_AIRSMALL2 → A_MED_AIR_EXPLO2 */;
-                // Stagger start iteration slightly so the cascade doesn't appear
-                // all at once (matches C's per-loop ANIMS_StartAnim spacing).
-                AddExplosion(t, e.X + ox, e.Y + oy, i % 4);
-            }
+            var bonus = new BonusLogic(b.ObjType, b.X, b.Y, b.InitialPos);
+            _bonuses.Add(bonus);
+            TraceBonus("add", bonus);
         }
     }
 

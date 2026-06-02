@@ -175,15 +175,15 @@ public class WaveControllerTests
     [Fact]
     public void Exp_energy_enemy_death_drops_itembuy6_money_bonus()
     {
-        Assert.Equal(23, WaveController.BonusForExplosionType(8));
-        Assert.Null(WaveController.BonusForExplosionType(2));
+        Assert.Equal(23, EnemyDeathEffects.BonusForExplosionType(8));
+        Assert.Null(EnemyDeathEffects.BonusForExplosionType(2));
     }
 
     [Fact]
     public void Enemy_bonus_spawn_x_includes_c_map_left_offset()
     {
         // C ENEMY.C passes sprite->x into BONUS_Add; BONUS_Add stores x + MAP_LEFT.
-        Assert.Equal(160, WaveController.BonusSpawnXFromEnemyX(144));
+        Assert.Equal(160, EnemyDeathEffects.BonusSpawnXFromEnemyX(144));
     }
 
     [Fact]
