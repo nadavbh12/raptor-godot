@@ -136,8 +136,6 @@ public partial class WaveController : Node
     private int _bossLowHp = 0;                          // RAPTOR_BOSS_LOWHP: clamp boss hits at spawn
     private bool _forceSecret = false;                   // RAPTOR_FORCE_SECRET: unlock secret-tier enemies (ES_LASER)
     private readonly List<ObjType> _grantTypes = new();  // RAPTOR_GRANT: items to grant per wave
-    private int _paletteStuffCnt = 0;
-    private bool _skipInitialPaletteStuff = false;
 
     // Fired right after _gameLoopIter advances; PositionDumper subscribes to
     // emit at iter ends, mirroring C's parity_tick semantics.
@@ -294,16 +292,9 @@ public partial class WaveController : Node
     private bool _playerWasAliveAtCollisionStart;
 
     // ── Shield recharge (OBJS_Think in C) ────────────────────────────────────
-    // CHARGE_SHIELD = 24*4 = 96. When think_cnt > 96, heal 1 shield.
-    // curplr_diff < DIFF_3 enables recharge.
-    private const int ChargeShield = 96;
-    private const int ShieldLow = 10;
-    private int _thinkCnt = 0;
-    private int _oldShieldForLowLoss = -1;
-    private readonly View.HudWarning.State _hudWarningState = new();
-    public bool ShieldLowWarningVisible { get; private set; }
-    public bool SystemDamageWarningVisible { get; private set; }
-    private static readonly Lazy<StreamWriter?> ShieldTrace = new(OpenShieldTrace);
+    private readonly ShieldHudController _shieldHud = new();
+    public bool ShieldLowWarningVisible => _shieldHud.ShieldLowVisible;
+    public bool SystemDamageWarningVisible => _shieldHud.SystemDamageVisible;
 
     // ── Map scroll state (mirrors C's TILE.C) ─────────────────────────────────
     // tilepos starts at (MAP_ROWS - MAP_ONSCREEN) * MAP_COLS = 142 * 9 = 1278.
@@ -578,7 +569,7 @@ public partial class WaveController : Node
         // the Inventory energy slot, so setting it before Clear() would be wiped.
         // The demo loadout grants no energy slot, so SetShield creates it (via Load).
         PlayerLogic.SetShield(PlayerLogic.MaxShield);
-        _oldShieldForLowLoss = PlayerLogic.Shield;
+        _shieldHud.SyncOldShield(PlayerLogic.Shield);
     }
 
     /// <summary>
@@ -597,9 +588,7 @@ public partial class WaveController : Node
         _pickedUpBonuses.Clear();
         _explosions.Clear();
         _tileDelayExplosions.Clear();
-        _paletteStuffCnt = 0;
-        _skipInitialPaletteStuff = true;
-        _oldShieldForLowLoss = PlayerLogic.Shield;
+        _shieldHud.ResetForWave(PlayerLogic.Shield);
         _playerHit = false;
         _endWaveFlag = false;
         _missionCompleteNotified = false;
@@ -1789,27 +1778,6 @@ public partial class WaveController : Node
     }
 
     /// <summary>
-    /// Pure-C# shield-recharge step (mirrors OBJS_Think, OBJECTS.C:1361-1368).
-    /// think_cnt increments and, on crossing CHARGE_SHIELD, resets to 0; the
-    /// heal itself fires only when the end sequence is inactive
-    /// (startendwave == EMPTY) so the ship cannot recharge — or revive — during
-    /// the death-explosion countdown or the end-of-wave fly-off.
-    /// </summary>
-    internal static (int thinkCnt, bool heal) ShieldRechargeStep(
-        int thinkCnt, int diff, int chargeShield,
-        bool deathActive, bool endWaveActive)
-    {
-        thinkCnt++;
-        bool heal = false;
-        if (diff < 3 && thinkCnt > chargeShield)
-        {
-            thinkCnt = 0;
-            if (!deathActive && !endWaveActive) heal = true;
-        }
-        return (thinkCnt, heal);
-    }
-
-    /// <summary>
     /// Pure-C# port of the pre-drain gates in OBJS_SubEnergy (OBJECTS.C:1227-1235):
     /// damage is suppressed entirely during the end-wave fly-off
     /// (startendwave != EMPTY), and halved for amounts &gt; 1 in training mode
@@ -1827,54 +1795,21 @@ public partial class WaveController : Node
 
     internal void PhaseHud()
     {
-        if (_skipInitialPaletteStuff)
-        {
-            _skipInitialPaletteStuff = false;
-            // The skip mirrors C NOT drawing RAP_PaletteStuff's RNG on the
-            // wave's first HUD pass — but C's OBJS_Think still runs that frame,
-            // advancing think_cnt (the shield-recharge counter) every game loop
-            // (OBJECTS.C:1361; skipped only on OBJS_Use). Dropping it here left
-            // Godot's recharge 1 tick behind C, surfacing as a 1-bucket shield
-            // transient (death_wave2 @ iter 1260). Advance it here too.
-            var (skipTc, skipHeal) = ShieldRechargeStep(
-                _thinkCnt, _curPlayerDiff, ChargeShield,
+        // ShieldHudController owns the shield-recharge counter, palette-stuff RNG,
+        // and low-shield warning. WaveController keeps phase-order control and
+        // still sequences ProcessPlayerDeathExplosions (death/end-wave territory)
+        // between the wave's initial-skip frame and the main tick, as before.
+        if (_shieldHud.TickSkipInitial(PlayerLogic, _curPlayerDiff,
                 deathActive: _playerDeathCountdown >= 0,
-                endWaveActive: _endWaveCountdown >= 0);
-            _thinkCnt = skipTc;
-            if (skipHeal) PlayerLogic.Heal(1);
+                endWaveActive: _endWaveCountdown >= 0))
             return;
-        }
 
         ProcessPlayerDeathExplosions();
 
-        // RAP_PaletteStuff() consumes random(3) only on alternating calls
-        // (`if (cnt & 1)`). It is visual, but C shares rand() with weapons.
-        if ((_paletteStuffCnt & 1) != 0)
-            PlayerShooter.NextRandom(_shooterRng, 3, "palette.stuff");
-        _paletteStuffCnt++;
-
-        // Shield recharge (mirrors OBJS_Think in OBJECTS.C).
-        // CHARGE_SHIELD = 96. Every 97 game loops, heal 1 shield.
-        // Only on curplr_diff < DIFF_3.
-        var (newThinkCnt, heal) = ShieldRechargeStep(
-            _thinkCnt, _curPlayerDiff, ChargeShield,
+        _shieldHud.Tick(PlayerLogic, Inventory, _curPlayerDiff,
             deathActive: _playerDeathCountdown >= 0,
-            endWaveActive: _endWaveCountdown >= 0);
-        _thinkCnt = newThinkCnt;
-        if (heal) PlayerLogic.Heal(1);
-
-        bool systemDamaged = false;
-        if (_oldShieldForLowLoss >= 0
-            && PlayerLogic.Shield <= ShieldLow
-            && PlayerLogic.Shield < _oldShieldForLowLoss)
-        {
-            systemDamaged = Inventory.LoseObj();
-        }
-        _hudWarningState.Tick(PlayerLogic.Shield, _gameLoopIter, systemDamaged);
-        ShieldLowWarningVisible = _hudWarningState.ShieldLowVisible;
-        SystemDamageWarningVisible = _hudWarningState.SystemDamageVisible;
-        TraceShield();
-        _oldShieldForLowLoss = PlayerLogic.Shield;
+            endWaveActive: _endWaveCountdown >= 0,
+            gameLoopIter: _gameLoopIter, shooterRng: _shooterRng);
     }
 
     private void ProcessPlayerDeathExplosions()
@@ -1901,22 +1836,6 @@ public partial class WaveController : Node
         }
 
         _playerDeathCountdown--;
-    }
-
-    private void TraceShield()
-    {
-        var trace = ShieldTrace.Value;
-        if (trace == null) return;
-        trace.WriteLine(string.Format(CultureInfo.InvariantCulture,
-            "i={0} shield={1} old={2}", _gameLoopIter, PlayerLogic.Shield, _oldShieldForLowLoss));
-        trace.Flush();
-    }
-
-    private static StreamWriter? OpenShieldTrace()
-    {
-        string? path = System.Environment.GetEnvironmentVariable("RAPTOR_SHIELD_TRACE");
-        if (string.IsNullOrWhiteSpace(path)) return null;
-        return new StreamWriter(path) { AutoFlush = true };
     }
 
     // ── Internal scheduler ────────────────────────────────────────────────────

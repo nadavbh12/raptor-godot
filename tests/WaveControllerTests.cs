@@ -104,7 +104,7 @@ public class WaveControllerTests
         const int charge = 96;
 
         // Normal play: heals when think_cnt crosses CHARGE_SHIELD, resets to 0.
-        var (tc, heal) = WaveController.ShieldRechargeStep(
+        var (tc, heal) = ShieldHudController.ShieldRechargeStep(
             charge, diff: 0, charge, deathActive: false, endWaveActive: false);
         Assert.Equal(0, tc);
         Assert.True(heal);
@@ -112,24 +112,24 @@ public class WaveControllerTests
         // OBJECTS.C:1365 — during the death-explosion countdown the heal is
         // suppressed (startendwave != EMPTY) so a recharge cannot revive a dead
         // ship. think_cnt still resets, matching OBJS_Think.
-        (tc, heal) = WaveController.ShieldRechargeStep(
+        (tc, heal) = ShieldHudController.ShieldRechargeStep(
             charge, diff: 0, charge, deathActive: true, endWaveActive: false);
         Assert.Equal(0, tc);
         Assert.False(heal);
 
         // Same suppression during the end-of-wave fly-off.
-        (_, heal) = WaveController.ShieldRechargeStep(
+        (_, heal) = ShieldHudController.ShieldRechargeStep(
             charge, diff: 0, charge, deathActive: false, endWaveActive: true);
         Assert.False(heal);
 
         // Below threshold: just increments.
-        (tc, heal) = WaveController.ShieldRechargeStep(
+        (tc, heal) = ShieldHudController.ShieldRechargeStep(
             10, diff: 0, charge, deathActive: false, endWaveActive: false);
         Assert.Equal(11, tc);
         Assert.False(heal);
 
         // High difficulty (diff >= 3) never heals (existing behavior preserved).
-        (_, heal) = WaveController.ShieldRechargeStep(
+        (_, heal) = ShieldHudController.ShieldRechargeStep(
             charge, diff: 3, charge, deathActive: false, endWaveActive: false);
         Assert.False(heal);
     }
