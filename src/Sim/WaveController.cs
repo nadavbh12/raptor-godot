@@ -278,6 +278,7 @@ public partial class WaveController : Node
 
     // ── Collision scratch ─────────────────────────────────────────────────────
     private readonly List<(EnemyLogic enemy, int dmg)> _hitEnemies = new();
+    private readonly List<CollisionDetection.EnemyBulletHit> _enemyBulletHits = new();
     private readonly List<BulletLogic> _shotDoneAfterCollision = new();
     private bool _playerHit;
     private int  _playerHitDmg;
@@ -907,9 +908,9 @@ public partial class WaveController : Node
         // the kill + per-bullet damage + impact flash in hit order so the
         // side-effect/RNG sequence is unchanged. Mirror ESHOT.C:521 flash
         // (A_SMALL_AIR_EXPLO at shot->x/y) wherever a bullet clips the player.
-        var enemyBulletHits = new List<CollisionDetection.EnemyBulletHit>();
-        CollisionDetection.CollectEnemyBulletHits(_enemyBullets, px, py, playerHw, playerHh, enemyBulletHits);
-        foreach (var hit in enemyBulletHits)
+        _enemyBulletHits.Clear();
+        CollisionDetection.CollectEnemyBulletHits(_enemyBullets, px, py, playerHw, playerHh, _enemyBulletHits);
+        foreach (var hit in _enemyBulletHits)
         {
             hit.Bullet.Kill();
             _playerHit = true;
