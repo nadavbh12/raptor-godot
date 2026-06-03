@@ -1026,6 +1026,8 @@ public partial class WaveController : Node
             int bodyDmg = e.Meta.BodyCrashDamage;
             ApplyPlayerDamage(bodyDmg);
             AddExplosion(ExpAirSmall2, PlayerLogic.X + 16, PlayerLogic.Y + 16);
+            // ENEMY.C:1117 plays SND_Patch(FX_CRASH) on body contact. No-op in headless.
+            SoundEmitter.Emit("sound.fx_crash", PlayerLogic.X + 16, PlayerLogic.Y + 16);
             if (wasAlive && !e.Alive)
             {
                 Score += (uint)e.Meta.Money;
@@ -1083,6 +1085,11 @@ public partial class WaveController : Node
         // Apply player damage from enemy bullets.
         if (_playerHit && _playerHitDmg > 0)
         {
+            // OBJS_Damage plays FX_SHIT under super shield, else FX_HIT
+            // (OBJECTS.C:1240/1254); it returns early (no sound) during the
+            // end-wave fly-off (OBJECTS.C:1229). No-op in headless.
+            if (!_endWave.Active)
+                SoundEmitter.Emit(Inventory.IsEquip(ObjType.SuperShield) ? "sound.fx_shit" : "sound.fx_hit");
             ApplyPlayerDamage(_playerHitDmg);
         }
 
@@ -1124,6 +1131,10 @@ public partial class WaveController : Node
 
         if (_playerWasAliveAtCollisionStart && !PlayerLogic.Alive)
         {
+            // RAP.C:581-582 plays FX_AIREXPLO + FX_AIREXPLO2 when the ship blows
+            // up at END_EXPLODE. No-op in headless.
+            SoundEmitter.Emit("sound3d.fx_airexplo",  PlayerLogic.X + 16, PlayerLogic.Y + 16);
+            SoundEmitter.Emit("sound3d.fx_airexplo2", PlayerLogic.X + 16, PlayerLogic.Y + 16);
             _playerDeath.Trigger();
         }
     }
@@ -1256,6 +1267,10 @@ public partial class WaveController : Node
             _waveActive, _demo.Active, _endWaveFlag,
             PlayerLogic.Alive, PlayerLogic.X,
             _enemies.Exists(e => e.Alive || e.PendingRemovalDump));
+        // RAP.C:601-604 plays SND_Patch(FX_FLYBY) the frame the countdown reaches
+        // END_FLYOFF (shield > 0). The counter passes through FlyOff exactly once.
+        if (PlayerLogic.Alive && _endWave.Countdown == EndWaveSequence.FlyOff)
+            SoundEmitter.Emit("sound.fx_flyby");
         if (endWave.ForcedDx != 0 || endWave.ForcedDy != 0)
             PlayerLogic.ApplyForcedMove(endWave.ForcedDx, endWave.ForcedDy);
         if (endWave.MissionComplete)

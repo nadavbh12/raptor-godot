@@ -36,8 +36,17 @@ internal sealed class SfxBank
             ["sound3d.fx_enemymissle"] = "MISSLE_FX",  // FX_ENEMYMISSLE
             ["sound3d.fx_enemyplasma"] = "ESHOT_FX",   // FX_ENEMYPLASMA → ESHOT_FX (FX.C:432)
             ["sound3d.fx_coconut"]     = "ESHOT_FX",   // no FX_COCONUT — fall back to enemy shot
-            // Explosions — ENEMY.C:1126 SND_3DPatch(FX_AIREXPLO).
+            // Explosions — ENEMY.C:1126 SND_3DPatch(FX_AIREXPLO); RAP.C:581-582
+            // plays FX_AIREXPLO + FX_AIREXPLO2 when the player ship blows up.
             ["sound3d.fx_airexplo"]    = "EXPLO_FX",   // FX_AIREXPLO
+            ["sound3d.fx_airexplo2"]   = "EXPLO2_FX",  // FX_AIREXPLO2 (player death)
+            // Player damage — OBJECTS.C:1240/1254 (OBJS_Damage).
+            ["sound.fx_shit"]          = "HIT_FX",     // FX_SHIT  (hit while super-shielded)
+            ["sound.fx_hit"]           = "GUN_FX",     // FX_HIT   (normal shield hit)
+            // Enemy body-crash — ENEMY.C:1117 SND_Patch(FX_CRASH).
+            ["sound.fx_crash"]         = "CRASH_FX",   // FX_CRASH
+            // End-wave fly-off — RAP.C:604 SND_Patch(FX_FLYBY).
+            ["sound.fx_flyby"]         = "FLYBY_FX",   // FX_FLYBY
         };
 
     private readonly string _soundsRoot;
