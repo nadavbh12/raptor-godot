@@ -11,6 +11,11 @@ namespace Raptor.View;
 /// </summary>
 internal sealed class ShadowRenderer
 {
+    // Shadow blend alphas (mirrors the C SHADOW_Draw darkening). internal so the
+    // view-tuning test (BonusSpriteTests) can pin the ground value.
+    private  const float SkyShadowAlpha    = 0.3f;
+    internal const float GroundShadowAlpha = 0.45f;
+
     // Flat-silhouette shadow textures, keyed by source Texture2D. Each is a
     // black image whose alpha tracks the source sprite's mask, replicating the
     // C SHADOW_Draw behaviour where shadows are solid dark patches with no
@@ -42,7 +47,7 @@ internal sealed class ShadowRenderer
         // 6-step palette light table to the underlying screen pixels — a flat
         // dark silhouette is the closest approximation without a shader.
         var shadowTex = GetOrCreateShadow(tex);
-        canvas.DrawTextureRect(shadowTex, rect, false, new Color(1, 1, 1, 0.3f));
+        canvas.DrawTextureRect(shadowTex, rect, false, new Color(1, 1, 1, SkyShadowAlpha));
     }
 
     /// <summary>
@@ -53,7 +58,7 @@ internal sealed class ShadowRenderer
     public void DrawGroundShadow(CanvasItem canvas, Texture2D tex, int x, int y)
     {
         var shadowTex = GetOrCreateShadow(tex);
-        canvas.DrawTexture(shadowTex, new Vector2(x - 3, y + 4), new Color(1, 1, 1, DebugRenderer.GroundShadowAlpha));
+        canvas.DrawTexture(shadowTex, new Vector2(x - 3, y + 4), new Color(1, 1, 1, GroundShadowAlpha));
     }
 
     /// <summary>

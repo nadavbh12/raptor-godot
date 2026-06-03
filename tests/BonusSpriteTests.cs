@@ -39,6 +39,6 @@ public class BonusSpriteTests
     [Fact]
     public void Ground_vehicle_shadow_alpha_is_darker_than_previous_tuning()
     {
-        Assert.Equal(0.45f, DebugRenderer.GroundShadowAlpha);
+        Assert.Equal(0.45f, ShadowRenderer.GroundShadowAlpha);
     }
 }

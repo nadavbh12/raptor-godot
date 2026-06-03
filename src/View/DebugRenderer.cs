@@ -12,7 +12,6 @@ namespace Raptor.View;
 
 public partial class DebugRenderer : Node2D
 {
-    internal const float GroundShadowAlpha = 0.45f;
 
     private WaveController? _wave;
     private MenuStateMachine? _menu;
