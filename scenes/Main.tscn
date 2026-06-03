@@ -1,4 +1,4 @@
-[gd_scene load_steps=11 format=3 uid="uid://main_scene"]
+[gd_scene load_steps=12 format=3 uid="uid://main_scene"]
 
 [ext_resource type="Script" path="res://src/Test/ParityEmitter.cs" id="1_parity"]
 [ext_resource type="Script" path="res://src/Sim/MenuController.cs" id="2_menu"]
@@ -9,6 +9,7 @@
 [ext_resource type="Script" path="res://src/Test/BulletDumper.cs" id="7_bull"]
 [ext_resource type="Script" path="res://src/Test/BonusDumper.cs" id="8_bonus"]
 [ext_resource type="Script" path="res://src/Sim/InteractiveInputController.cs" id="9_input"]
+[ext_resource type="Script" path="res://src/View/AudioController.cs" id="10_audio"]
 
 [node name="Main" type="Node2D"]
 
@@ -38,3 +39,6 @@ script = ExtResource("7_bull")
 
 [node name="BonusDumper" type="Node" parent="."]
 script = ExtResource("8_bonus")
+
+[node name="AudioController" type="Node" parent="."]
+script = ExtResource("10_audio")

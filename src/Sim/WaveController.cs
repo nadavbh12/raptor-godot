@@ -1106,6 +1106,8 @@ public partial class WaveController : Node
         foreach (var b in _pickedUpBonuses)
         {
             TraceBonus("pickup", b);
+            // BONUS.C:246 plays SND_Patch(FX_BONUS) on pickup; no-op in headless.
+            SoundEmitter.Emit("sound.fx_bonus");
             ApplyBonusEffect(b.ObjType);
             if (Bonus.BonusEffectDispatcher.IsMoneyBonus(b.ObjType))
             {
@@ -1189,6 +1191,8 @@ public partial class WaveController : Node
             _ => "sound3d.fx_enemyshot",
         };
         PlayerShooter.NextRandom(rng, 40, label);
+        // ESHOT.C plays SND_3DPatch here; forward to the View (no-op in headless).
+        SoundEmitter.Emit(label);
     }
 
     // ENEMY.C:391-392 arms startendwave = END_DURATION the instant the last
@@ -1216,6 +1220,10 @@ public partial class WaveController : Node
     private void ApplyEnemyDeathEffects(EnemyLogic e)
     {
         var fx = EnemyDeathEffects.Build(e, _shooterRng, AnimationStartIterForSpawn(_gameLoopIter));
+        // ENEMY.C:1126 plays SND_3DPatch(FX_AIREXPLO) once per death; forward to
+        // the View (no-op in headless). EnemyDeathEffects.Build stays a pure
+        // builder — the playback side-effect lives here at the apply site.
+        SoundEmitter.Emit("sound3d.fx_airexplo", e.X, e.Y);
         foreach (var ex in fx.Explosions)
             AddExplosion(ex.ExpType, ex.X, ex.Y, ex.StartDelayIters);
         foreach (var b in fx.Bonuses)

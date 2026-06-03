@@ -625,7 +625,10 @@ public sealed class PlayerShooter
         // stays documented. (Enemy positional SND_3DPatch DOES draw and is handled
         // separately in WaveController.ConsumeEnemyShotSoundRandomForParity.)
         _ = rng;
-        _ = label;
+        // C's SND_Patch plays the weapon clip at this point (only the RNG pitch
+        // draw is skipped, above, for parity). Forward the label to the View's
+        // audio sink — a no-op in headless/parity runs (SoundEmitter.Sink null).
+        SoundEmitter.Emit(label);
     }
 
     private static StreamWriter? OpenRngTrace()
