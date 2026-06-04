@@ -39,8 +39,11 @@ for mid in "$MUSIC"/*.mid; do
     name="$(basename "$mid" .mid)"
     cp "$mid" "/tmp/$name.mid"
     "$BIN" "/tmp/$name.mid" -w -nl -vm 4 --emu-nuked-opl2 "$APOGEE_BANK" >/dev/null 2>&1
+    # loudnorm brings every track to a consistent ~-16 LUFS so music sits at a
+    # steady, audible level under the (much louder, unnormalized) SFX.
     ffmpeg -y -hide_banner -loglevel error \
-        -i "/tmp/$name.mid.wav" -c:a vorbis -strict experimental -q:a 5 \
+        -i "/tmp/$name.mid.wav" -af loudnorm=I=-16:TP=-1.5:LRA=11 \
+        -c:a vorbis -strict experimental -q:a 5 \
         "$MUSIC/$name.ogg"
     rm -f "/tmp/$name.mid" "/tmp/$name.mid.wav"
     echo "  rendered $name.ogg"
