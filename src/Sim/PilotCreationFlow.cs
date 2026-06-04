@@ -41,6 +41,14 @@ internal sealed class PilotCreationFlow
 
     public int Step => _step;
     public int DifficultyFieldId => _difficultyFieldId;
+
+    /// <summary>
+    /// The DIFF value (0..3) chosen at the last accepted difficulty dialog,
+    /// captured BEFORE <see cref="_difficultyFieldId"/> is reset for the next
+    /// pilot. OnPilotCreated reads this — reading the live field instead gives
+    /// the reset default (3→VETERAN) regardless of the choice.
+    /// </summary>
+    public int AcceptedDiff { get; private set; } = 2;   // DIFF_2 (VETERAN) default
     public string PilotName { get; private set; } = "";
     public string Callsign { get; private set; } = "";
 
@@ -147,6 +155,9 @@ internal sealed class PilotCreationFlow
                 }
                 // Difficulty accepted → enter HANGAR (with fade delay).
                 // C: hangto defaults to HANGTOSTORE → pos=1 (SUPPLIES) on first entry.
+                // Capture the choice (ASKDIFF field 1..4 → DIFF_0..3) BEFORE the
+                // field is reset below, so OnPilotCreated can apply it.
+                AcceptedDiff = _difficultyFieldId - 1;
                 _step = 0;
                 _difficultyFieldId = 3;
                 return Result.Confirm;

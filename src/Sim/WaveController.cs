@@ -473,10 +473,10 @@ public partial class WaveController : Node
         // where SetShield is deliberately ordered AFTER Clear()).
         Inventory.Clear();
         Inventory.SeedNewPilot();
-        // Apply the chosen difficulty (ASKDIFF field 1..4 → DIFF_0..DIFF_3;
-        // default VETERAN/field 3 → DIFF_2). Previously unwired, so a pilot ran
-        // at the DIFF_2 default regardless of the ROOKIE/etc. selection.
-        SetPlayerDiff((_menu?.DifficultyFieldId ?? 3) - 1);
+        // Apply the chosen difficulty. Read AcceptedPilotDiff (captured at accept
+        // time), NOT the live DifficultyFieldId — the latter is reset to 3
+        // (VETERAN) before this fires, which silently forced every pilot to DIFF_2.
+        SetPlayerDiff(_menu?.AcceptedPilotDiff ?? 2);
         GD.Print($"WaveController: pilot created, score={Score}, shield={PlayerLogic.Shield}, diff={_curPlayerDiff}");
     }
 
@@ -495,6 +495,10 @@ public partial class WaveController : Node
         _waveNum = ResolveStartWave(OS.GetEnvironment("RAPTOR_START_WAVE"), _pendingGameNum + 1);
         SeedRngForWave(_waveNum, OS.GetEnvironment("RAPTOR_RNG_SEED_OVERRIDE"));
         LoadWave(_waveNum);
+        // RAPTOR_FORCE_DIFF: validation hook to force the player difficulty (0..3)
+        // for headless enemy-count checks. Parity-inert (env unset in all scenarios).
+        if (int.TryParse(OS.GetEnvironment("RAPTOR_FORCE_DIFF"), out int forcedDiff) && forcedDiff >= 0)
+            SetPlayerDiff(forcedDiff);
         _pendingGameEnterFrame = SimClock.Frame + LoadCompFrames;
     }
 

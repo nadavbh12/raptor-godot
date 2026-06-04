@@ -150,6 +150,10 @@ public sealed class MenuStateMachine
     /// diff, etc. to active game state.</summary>
     public event System.Action<PilotSaveSummary>? OnPilotLoaded;
     public int DifficultyFieldId => _pilotCreate.DifficultyFieldId;
+
+    /// <summary>The DIFF (0..3) chosen at the last accepted difficulty dialog
+    /// (captured before the field resets). Read by OnPilotCreated.</summary>
+    public int AcceptedPilotDiff => _pilotCreate.AcceptedDiff;
     public int HangarPosition => _hangar.Position;
     public bool InSectorSelect => _inSectorSelect;
     public bool InOptions => _options.Active;
