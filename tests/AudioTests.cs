@@ -47,4 +47,17 @@ public class AudioTests
     [Fact]
     public void Parse_rejects_non_riff_input()
         => Assert.Throws<FormatException>(() => WavData.Parse(new byte[] { 1, 2, 3, 4 }));
+
+    [Fact]
+    public void Every_midi_track_has_a_rendered_ogg()
+    {
+        string music = Path.Combine(Path.GetDirectoryName(SoundsDir())!, "music");
+        var mids = Directory.GetFiles(music, "*.mid");
+        Assert.NotEmpty(mids);
+        foreach (var mid in mids)
+        {
+            string ogg = Path.ChangeExtension(mid, ".ogg");
+            Assert.True(File.Exists(ogg), $"missing OPL2 render: {Path.GetFileName(ogg)}");
+        }
+    }
 }

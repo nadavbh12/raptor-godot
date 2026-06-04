@@ -273,6 +273,10 @@ public partial class WaveController : Node
     public bool DrawPlayer { get; private set; } = true;
     public bool GameplayVisualActive => _waveActive || _demo.PendingScheduled;
 
+    /// <summary>Current 1-based wave number (read-only; used by the View's music
+    /// selection). Parity-inert — exposes existing state, mutates nothing.</summary>
+    public int WaveNum => _waveNum;
+
     internal static int AnimationStartIterForSpawn(int currentGameLoopIter) => currentGameLoopIter + 1;
     internal static int AnimationAge(int currentGameLoopIter, int startIter) => currentGameLoopIter - startIter;
 
