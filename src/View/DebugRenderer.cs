@@ -644,7 +644,6 @@ public partial class DebugRenderer : Node2D
         // Megabomb white-out flash sits over everything (HUD included), matching
         // C's full-screen GFX_FadeOut after detonation.
         DrawMegaBombFlash();
-        DrawWaveFadeIn();
         RecordDrawnState();
     }
 
@@ -662,21 +661,6 @@ public partial class DebugRenderer : Node2D
         // White-out toward (63,60,60)/63 ≈ (1,0.95,0.95), strongest at age 0, easing out.
         float t = 1f - (age / (float)MegaFadeFrames);
         DrawRect(new Rect2(0, 0, 320, 200), new Color(1f, 0.95f, 0.95f, MegaFadeMaxAlpha * t));
-    }
-
-    /// <summary>
-    /// Full-screen black fade-in at mission start. The sim holds the game tick for
-    /// FadeInHoldFrames to mirror C's blocking GFX_FadeIn (which fades the palette
-    /// up from black); we render that as a black quad whose alpha eases 1 -> 0 so
-    /// the screen fades in instead of sitting empty. Parity-inert: driven purely by
-    /// WaveController.FadeInAlpha (read-only).
-    /// </summary>
-    private void DrawWaveFadeIn()
-    {
-        if (_wave == null) return;
-        float a = _wave.FadeInAlpha;
-        if (a <= 0f) return;
-        DrawRect(new Rect2(0, 0, 320, 200), new Color(0, 0, 0, a));
     }
 
     private void RecordDrawnState()
