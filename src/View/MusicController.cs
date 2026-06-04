@@ -42,7 +42,8 @@ public partial class MusicController : Node
             return;
 
         _musicRoot = ProjectSettings.GlobalizePath("res://assets/music");
-        _player = new AudioStreamPlayer();
+        AudioBus.Ensure("Music");
+        _player = new AudioStreamPlayer { Bus = "Music" };
         AddChild(_player);
 
         _wave = GetNodeOrNull<WaveController>("../WaveController");
@@ -55,6 +56,9 @@ public partial class MusicController : Node
     {
         if (_player == null)
             return;
+
+        // Drive the Music bus from the in-game options "music volume" slider.
+        AudioBus.SetVolume("Music", _menu?.OptionMusicVolume ?? 127, 0f);
 
         string? want = DesiredTrack();
         if (want == _current)

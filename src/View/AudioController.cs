@@ -18,10 +18,14 @@ namespace Raptor.View;
 public partial class AudioController : Node
 {
     private const int PoolSize = 16;
+    // SFX sit this far below digital full at slider max, so the rapid gun (peaks
+    // near 0 dBFS) doesn't blast. The options FX slider scales below this.
+    private const float SfxTrimDb = -6f;
 
     private SfxBank? _bank;
     private AudioStreamPlayer[] _players = Array.Empty<AudioStreamPlayer>();
     private int _next;
+    private MenuStateMachine? _menu;
 
     public override void _Ready()
     {
@@ -33,14 +37,25 @@ public partial class AudioController : Node
 
         _bank = new SfxBank(ProjectSettings.GlobalizePath("res://assets/sounds"));
 
+        AudioBus.Ensure("SFX");
         _players = new AudioStreamPlayer[PoolSize];
         for (int i = 0; i < PoolSize; i++)
         {
-            _players[i] = new AudioStreamPlayer();
+            _players[i] = new AudioStreamPlayer { Bus = "SFX" };
             AddChild(_players[i]);
         }
 
+        var menu = GetNodeOrNull<MenuController>("../MenuController");
+        if (menu != null)
+            _menu = menu.Menu;
+
         SoundEmitter.Sink = Play;
+    }
+
+    public override void _Process(double delta)
+    {
+        // Drive the SFX bus from the in-game options "sound FX volume" slider.
+        AudioBus.SetVolume("SFX", _menu?.OptionFxVolume ?? 127, SfxTrimDb);
     }
 
     public override void _ExitTree()
