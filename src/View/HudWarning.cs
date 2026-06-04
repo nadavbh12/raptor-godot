@@ -15,6 +15,20 @@ internal static class HudWarning
         public bool ShieldLowVisible { get; private set; }
         public bool SystemDamageVisible { get; private set; }
 
+        /// <summary>
+        /// Clear the warning to its fresh-wave state. Called on wave/mission load
+        /// (ShieldHudController.ResetForWave) so a low-shield warning from the
+        /// previous life doesn't linger on-screen through the start-of-wave fade-in
+        /// hold (when PhaseHud — and thus Tick — isn't running).
+        /// </summary>
+        public void Reset()
+        {
+            _blinkFlag = true;
+            _damageBlinksRemaining = 0;
+            ShieldLowVisible = false;
+            SystemDamageVisible = false;
+        }
+
         public void Tick(int shield, int gameLoopIter, bool systemDamaged)
         {
             if (shield > ShieldLowThreshold)

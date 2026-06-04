@@ -43,6 +43,10 @@ internal sealed class ShieldHudController
         _paletteStuffCnt = 0;
         _skipInitialPaletteStuff = true;
         _oldShieldForLowLoss = currentShield;
+        // Clear any low-shield warning left over from the previous life, so it
+        // doesn't linger on-screen through the start-of-wave fade-in hold (during
+        // which PhaseHud — and thus the warning's Tick — does not run).
+        _hudWarningState.Reset();
     }
 
     /// <summary>Re-baseline the low-loss comparator (demo player setup).</summary>
