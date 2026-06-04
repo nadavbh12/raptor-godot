@@ -277,6 +277,24 @@ public partial class WaveController : Node
     /// selection). Parity-inert — exposes existing state, mutates nothing.</summary>
     public int WaveNum => _waveNum;
 
+    /// <summary>
+    /// Black-overlay alpha for the mission-start fade-in: 1 (full black) at game
+    /// enter, easing to 0 across the FadeInHoldFrames hold that mirrors C's
+    /// blocking GFX_FadeIn, then 0. Lets the View render the fade C does in the
+    /// palette (the sim only holds the tick during it). Read-only / parity-inert.
+    /// </summary>
+    public float FadeInAlpha
+    {
+        get
+        {
+            if (!_waveActive) return 0f;
+            int held = SimClock.Frame - _gameEnterFc;
+            int holdFrames = _demo.Active ? DemoFadeInHoldFrames : FadeInHoldFrames;
+            if (held < 0 || held >= holdFrames) return 0f;
+            return 1f - (held / (float)holdFrames);
+        }
+    }
+
     internal static int AnimationStartIterForSpawn(int currentGameLoopIter) => currentGameLoopIter + 1;
     internal static int AnimationAge(int currentGameLoopIter, int startIter) => currentGameLoopIter - startIter;
 
