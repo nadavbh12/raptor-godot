@@ -486,6 +486,15 @@ public partial class WaveController : Node
         // Concrete setup happens in _PhysicsProcess once the deferred frame
         // arrives. See LoadCompFrames docs for the C-side rationale.
         _pendingGameNum = gameNum;
+        // Load the wave NOW — LoadWave does a full state reset (clears the
+        // previous game's enemies/bullets/etc. and loads the new map), so during
+        // the LoadComp wait the View renders the NEW mission's terrain instead of
+        // the previous game's frozen state. Activation (iter 0) stays deferred:
+        // nothing ticks or draws RNG until ApplyPendingGameEnter, so the gameplay
+        // and parity timing are unchanged.
+        _waveNum = ResolveStartWave(OS.GetEnvironment("RAPTOR_START_WAVE"), _pendingGameNum + 1);
+        SeedRngForWave(_waveNum, OS.GetEnvironment("RAPTOR_RNG_SEED_OVERRIDE"));
+        LoadWave(_waveNum);
         _pendingGameEnterFrame = SimClock.Frame + LoadCompFrames;
     }
 
@@ -506,9 +515,8 @@ public partial class WaveController : Node
     /// </summary>
     private void ApplyPendingGameEnter()
     {
-        _waveNum    = ResolveStartWave(OS.GetEnvironment("RAPTOR_START_WAVE"), _pendingGameNum + 1);  // gameNum is 0-based; wave files are 1-based.
-        SeedRngForWave(_waveNum, OS.GetEnvironment("RAPTOR_RNG_SEED_OVERRIDE"));
-        LoadWave(_waveNum);
+        // The wave was already loaded in OnGameEnter (so its terrain renders
+        // during the LoadComp wait). Now activate it and run iter 0.
         _gameEnterFc = SimClock.Frame;
         _waveActive  = true;
         _pendingGameEnterFrame = -1;
