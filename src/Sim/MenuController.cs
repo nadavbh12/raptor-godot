@@ -54,6 +54,11 @@ public partial class MenuController : Node
             Menu.OnPilotLoaded += pilot =>
             {
                 wave.SetScore(pilot.Score);
+                // Apply the pilot's saved per-episode difficulty (was unwired, so a
+                // loaded pilot also defaulted to DIFF_2 regardless of how it was made).
+                int g = pilot.CurGame;
+                if (g < 0) g = 0; else if (g >= pilot.Diff.Length) g = pilot.Diff.Length - 1;
+                wave.SetPlayerDiff(pilot.Diff[g]);
                 // Load from the exact file the summary was read from (pilot.FilePath),
                 // not a re-derived path — LoadAll's directory resolution (RAPTOR_SAVE_DIR,
                 // sibling probe, etc.) may differ from PilotSaveDirectory.

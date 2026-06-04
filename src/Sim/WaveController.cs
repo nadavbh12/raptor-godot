@@ -220,6 +220,36 @@ public partial class WaveController : Node
     private int _curPlayerDiff = 2;
 
     /// <summary>
+    /// Enemy-spawn level mask for a player difficulty (DIFF_0..DIFF_3). Mirrors
+    /// RAP_SetPlayerDiff (LOADSAVE.C): DIFF_0/1 → EASY tier only, DIFF_2 →
+    /// EASY|MED, DIFF_3 → EASY|MED|HARD. Pure/static for testability.
+    /// </summary>
+    internal static int SpawnMaskForDiff(int diff) => diff switch
+    {
+        <= 1 => EB_EASY_LEVEL,                               // DIFF_0 (train), DIFF_1 (rookie)
+        >= 3 => EB_EASY_LEVEL | EB_MED_LEVEL | EB_HARD_LEVEL, // DIFF_3 (elite)
+        _    => EB_EASY_LEVEL | EB_MED_LEVEL,                 // DIFF_2 (veteran)
+    };
+
+    /// <summary>
+    /// Apply a player difficulty (DIFF_0..DIFF_3) to gameplay — the player
+    /// damage/recharge tier (<see cref="_curPlayerDiff"/>) and the enemy-spawn
+    /// level mask (<see cref="_curDiff"/>). Mirrors RAP_SetPlayerDiff. Called from
+    /// the new-pilot (selected) and load-pilot (saved) paths; the secret-tier OR
+    /// is applied separately at game-enter, so it is not re-added here.
+    ///
+    /// Parity note: the parity scenarios accept the default VETERAN selection
+    /// (DIFF_2), so they keep _curPlayerDiff=2 / _curDiff=24 — identical to the
+    /// field defaults above — and parity is unaffected.
+    /// </summary>
+    public void SetPlayerDiff(int diff)
+    {
+        if (diff < 0) diff = 0; else if (diff > 3) diff = 3;
+        _curPlayerDiff = diff;
+        _curDiff = SpawnMaskForDiff(diff);
+    }
+
+    /// <summary>
     /// Maps a raw CSPRITE.level value to the corresponding EB_ bitmask.
     /// Mirrors the switch in ENEMY_LoadSprites (LOADSAVE.C RAP_SetPlayerDiff).
     /// </summary>
@@ -461,7 +491,11 @@ public partial class WaveController : Node
         // where SetShield is deliberately ordered AFTER Clear()).
         Inventory.Clear();
         Inventory.SeedNewPilot();
-        GD.Print($"WaveController: pilot created, score={Score}, shield={PlayerLogic.Shield}");
+        // Apply the chosen difficulty (ASKDIFF field 1..4 → DIFF_0..DIFF_3;
+        // default VETERAN/field 3 → DIFF_2). Previously unwired, so a pilot ran
+        // at the DIFF_2 default regardless of the ROOKIE/etc. selection.
+        SetPlayerDiff((_menu?.DifficultyFieldId ?? 3) - 1);
+        GD.Print($"WaveController: pilot created, score={Score}, shield={PlayerLogic.Shield}, diff={_curPlayerDiff}");
     }
 
     private void OnGameEnter(int gameNum)
