@@ -439,6 +439,16 @@ public partial class DebugRenderer : Node2D
     {
         DrawRect(new Rect2(0, 0, 320, 200), new Color(0, 0, 0, 1));
 
+        // Post-sector-select LoadComp wait: the original shows the mission
+        // briefing (LOADCOMP window) here, not the playfield. Render it and bail
+        // before the menu/playfield branches. Parity-inert (View-only).
+        if (_wave != null && _wave.InLoadCompBriefing)
+        {
+            DrawLoadCompBriefing();
+            RecordDrawnState();
+            return;
+        }
+
         if (_menu != null && ShouldDrawMenuOverlayForState(
             _interactiveUi,
             _menu.InGame,
@@ -644,6 +654,14 @@ public partial class DebugRenderer : Node2D
         // Megabomb white-out flash sits over everything (HUD included), matching
         // C's full-screen GFX_FadeOut after detonation.
         DrawMegaBombFlash();
+
+        // Mission-start fade-in: fade the playfield (HUD included) up from black
+        // across C's post-iter-0 GFX_FadeIn(64) hold. Parity-inert: driven by a
+        // SimClock-derived signal, touches no sim state.
+        float missionFadeBlack = _wave.MissionFadeInBlackAlpha;
+        if (missionFadeBlack > 0f)
+            DrawRect(new Rect2(0, 0, 320, 200), new Color(0, 0, 0, missionFadeBlack));
+
         RecordDrawnState();
     }
 
@@ -691,6 +709,41 @@ public partial class DebugRenderer : Node2D
         bool gameplayVisualActive)
     {
         return interactiveUi && !menuInGame && !gameplayVisualActive;
+    }
+
+    /// <summary>
+    /// Mission briefing shown during the LoadComp wait (LOADCOMP_SWD): SHIPCOMP_PIC
+    /// chrome + the SCREEN_PIC inner display ("APPROACHING DESTINATION" + status
+    /// bars) + status lights and buttons, with the dynamic SECTOR / WAVE text
+    /// filled in (C sets these via SWD_SetFieldText). The G1 campaign is BRAVO
+    /// SECTOR. Parity-inert — View-only, mirrors C's WIN_ShowWindow(LOADCOMP_SWD).
+    /// </summary>
+    private void DrawLoadCompBriefing()
+    {
+        var swd = LoadSwd("LOADCOMP_SWD");
+        if (swd == null) return;
+        SwdRenderer.Draw(_swdHost, swd, selectedFieldId: -1);
+
+        // Field 9 SECTOR, field 10 WAVE (FONT2_FNT). C fills these per mission.
+        var sector = swd.Fields[9];
+        DrawDosFont("BRAVO SECTOR",
+            swd.Window.X + sector.X, swd.Window.Y + sector.Y,
+            sector.FontName, sector.FontBaseColor);
+
+        var wave = swd.Fields[10];
+        DrawDosFont($"WAVE {_wave!.WaveNum}",
+            swd.Window.X + wave.X, swd.Window.Y + wave.Y,
+            wave.FontName, wave.FontBaseColor);
+
+        // Loading bar: C's WIN_SetLoadLevel fills the LCOMP_LEVEL field with
+        // GFX_ColorBox(g_x, g_y, lx*level/100 + 1, g_ly, 85) as RAP_LoadMap loads
+        // (WINDOWS.C:1655-1658). Our load is synchronous, so fill it across the
+        // deferral via LoadCompProgress. Color 85 is the DOS palette's orange.
+        _palette ??= BitmapFont.LoadPalette("res://assets/fonts/palette.json");
+        var level = swd.Fields[11];
+        int barW = (int)(level.Lx * _wave!.LoadCompProgress) + 1;
+        DrawRect(new Rect2(swd.Window.X + level.X, swd.Window.Y + level.Y, barW, level.Ly),
+                 _palette[85]);
     }
 
     private void DrawStoreOverlay(StoreLogic store)
@@ -1012,8 +1065,13 @@ public partial class DebugRenderer : Node2D
         if (_wave == null || _wave.GameLoopIter == _lastSpawnIter) return;
         _lastSpawnIter = _wave.GameLoopIter;
         int spawnIter = _wave.GameLoopIter;
+        // GUNSTR_BLK is C's only playerflag anim (ANIMS.C:208) — it rides with the
+        // jet. Store the muzzle as an offset from the player; DrawViewEffects adds
+        // the live player position back so it tracks strafing instead of lagging.
+        int pmx = _wave.PlayerLogic.X, pmy = _wave.PlayerLogic.Y;
         foreach (var m in _wave.MuzzlesThisTick)
-            _effects.Spawn("GUNSTR_BLK", totalFrames: 4, x: m.X, y: m.Y, spawnIter: spawnIter, ground: false);
+            _effects.Spawn("GUNSTR_BLK", totalFrames: 4, x: m.X - pmx, y: m.Y - pmy,
+                           spawnIter: spawnIter, ground: false, followPlayer: true);
         // Megabomb detonation: consume the one-shot sim signal exactly once per
         // tick, start the white-out flash, and spawn the SHIPGLOW_BLK glow. Mirrors
         // C SHOTS.C:1273-1274 startfadeflag + A_SUPER_SHIELD + RAP.C:1127 fade.
@@ -1042,7 +1100,10 @@ public partial class DebugRenderer : Node2D
         {
             var tex = LoadBlkFrame(e.Family, e.Frame);
             if (tex == null) continue;
-            DrawTexture(tex, new Vector2(e.X - (int)tex.GetWidth() / 2, e.Y - (int)tex.GetHeight() / 2));
+            // FollowPlayer anims store an offset from the player; re-anchor to the
+            // live position so the muzzle flash tracks the jet (C's playerflag).
+            var (ex, ey) = ViewEffects.ResolvePos(e, _wave.PlayerLogic.X, _wave.PlayerLogic.Y);
+            DrawTexture(tex, new Vector2(ex - (int)tex.GetWidth() / 2, ey - (int)tex.GetHeight() / 2));
         }
     }
 

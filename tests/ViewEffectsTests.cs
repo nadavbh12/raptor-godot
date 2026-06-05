@@ -59,4 +59,31 @@ public class ViewEffectsTests
         fx.Clear();
         Assert.Equal(0, fx.Count);
     }
+
+    // Explosions / smoke / sparks (playerflag=FALSE in C) keep their absolute
+    // spawn position regardless of where the player moves.
+    [Fact]
+    public void Non_follow_anim_keeps_absolute_position()
+    {
+        var a = new ViewEffects.ActiveAnim("GEXPLO_BLK", Frame: 0, X: 100, Y: 50,
+                                           Ground: false, FollowPlayer: false);
+        Assert.Equal((100, 50), ViewEffects.ResolvePos(a, playerX: 999, playerY: 7));
+    }
+
+    // Regression for the "muzzle flash lags when strafing" bug: GUNSTR_BLK is C's
+    // only playerflag anim (ANIMS.C:208) — it must re-anchor to the LIVE player
+    // position each frame (player + stored gun offset), not stay fixed at the
+    // spawn point. Gun offset is 8px here; the flash must always render at
+    // playerX + 8 as the jet strafes.
+    [Theory]
+    [InlineData(144, 152)]  // spawn frame: player at 144 -> flash at 152
+    [InlineData(150, 158)]  // strafed right 6 -> flash follows
+    [InlineData(120, 128)]  // strafed left 24 -> flash follows
+    public void Muzzle_flash_follows_player_x(int playerX, int expectedDrawX)
+    {
+        var muzzle = new ViewEffects.ActiveAnim("GUNSTR_BLK", Frame: 0, X: 8, Y: 0,
+                                                Ground: false, FollowPlayer: true);
+        var (rx, _) = ViewEffects.ResolvePos(muzzle, playerX, playerY: 100);
+        Assert.Equal(expectedDrawX, rx);
+    }
 }

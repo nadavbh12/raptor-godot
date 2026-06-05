@@ -1,0 +1,45 @@
+# Mission-start visual regression (Godot pixel-exact snapshot).
+#
+# Navigates into Mission 1, then dumps the FROZEN frames the existing parity
+# tests never look at: the LOADCOMP briefing with the loading bar at three fill
+# levels, and the terrain fade-in. These are bit-exact run to run, so
+# tests/check_mission_start_visual.sh compares each label pixel-exact (320x200)
+# against a committed golden. (Scrolling/firing gameplay frames vary run to run
+# from delta-driven cosmetics and are covered by L2 + the muzzle unit test.) Nav
+# is copied from dosraptor's mission_start.txt up to the sector-confirm Return.
+wait 60
+key Return
+wait 100
+key T
+wait 5
+key E
+wait 5
+key S
+wait 5
+key T
+wait 5
+key Return
+wait 30
+key T
+wait 5
+key 1
+wait 5
+key Return
+wait 400
+key Return
+wait 600
+key Down
+wait 100
+key Return
+wait 700
+key Return
+# --- sector confirmed: OnGameEnter -> LoadComp deferral (107f) -> fade hold (131f) ---
+wait 30
+dump briefing_bar_low
+wait 40
+dump briefing_bar_mid
+wait 25
+dump briefing_bar_high
+wait 80
+dump fade_mid
+quit

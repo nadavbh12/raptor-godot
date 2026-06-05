@@ -307,6 +307,52 @@ public partial class WaveController : Node
     /// selection). Parity-inert — exposes existing state, mutates nothing.</summary>
     public int WaveNum => _waveNum;
 
+    /// <summary>
+    /// True during the post-sector-select LoadComp wait (before the wave
+    /// activates), when the original renders the mission briefing (LOADCOMP
+    /// window: "APPROACHING DESTINATION / &lt;sector&gt; / WAVE n") rather than the
+    /// playfield. View-only signal; demo playback never enters this window
+    /// (it uses a separate schedule). Parity-inert.
+    /// </summary>
+    public bool InLoadCompBriefing => _pendingGameEnterFrame >= 0;
+
+    /// <summary>
+    /// Progress (0..1) of the LoadComp briefing's loading bar. C's WIN_SetLoadLevel
+    /// fills the LCOMP_LEVEL field as RAP_LoadMap loads; our load is synchronous,
+    /// so the View fills the bar cosmetically across the parity-locked deferral.
+    /// 0 at the deferral start, ramping to ~1 as activation approaches. Deterministic
+    /// (SimClock-based); mutates no sim state.
+    /// </summary>
+    public float LoadCompProgress
+    {
+        get
+        {
+            if (_pendingGameEnterFrame < 0) return 0f;
+            int elapsed = LoadCompFrames - (_pendingGameEnterFrame - SimClock.Frame);
+            float p = elapsed / (float)LoadCompFrames;
+            return p < 0f ? 0f : (p > 1f ? 1f : p);
+        }
+    }
+
+    /// <summary>
+    /// Opacity (0..1) of the mission-start fade-in black overlay. C runs
+    /// GFX_FadeIn(64) right after iter 0, blocking the loop for FadeInHoldFrames;
+    /// we mirror that by fading the playfield up from black across the hold —
+    /// 1 (full black) at the activation frame, ramping linearly to 0 when the
+    /// world unfreezes. Deterministic (SimClock-based); mutates no sim state.
+    /// </summary>
+    public float MissionFadeInBlackAlpha
+    {
+        get
+        {
+            if (!_waveActive) return 0f;
+            int hold = _demo.Active ? DemoFadeInHoldFrames : FadeInHoldFrames;
+            int age = SimClock.Frame - _gameEnterFc;
+            if (age < 0 || age >= hold) return 0f;
+            return 1f - age / (float)hold;
+        }
+    }
+
     internal static int AnimationStartIterForSpawn(int currentGameLoopIter) => currentGameLoopIter + 1;
     internal static int AnimationAge(int currentGameLoopIter, int startIter) => currentGameLoopIter - startIter;
 

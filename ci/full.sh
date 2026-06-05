@@ -73,4 +73,33 @@ else
 fi
 
 echo
+echo "==> mission-start dead-screen guard (headed)"
+# Regression guard for the mission-start dead screen (#1/#4). Headed (renders),
+# so on a display-less box the script self-reports exit 2 = inconclusive, which
+# we treat as a skip rather than a failure. exit 1 = the dead screen is back.
+ms_rc=0
+"$ROOT/tests/check_mission_start_terrain.sh" || ms_rc=$?
+if [[ $ms_rc -eq 2 ]]; then
+    echo "[ci/full] skipped: mission-start guard inconclusive (needs a real display)"
+elif [[ $ms_rc -ne 0 ]]; then
+    echo "[ci/full] FAIL: mission-start dead-screen guard"
+    exit 1
+fi
+
+echo
+echo "==> mission-start visual regression (headed, pixel-exact)"
+# Pixel-exact snapshot of the View frames the other gates can't see: the LOADCOMP
+# briefing, the loading bar fill levels, the terrain fade-in, and a strafe-fire
+# muzzle frame. Catches View regressions L2 (sim state) and the fuzzy menu-pixel
+# test miss. exit 2 = inconclusive (no display) -> skip; exit 1 = real regression.
+vis_rc=0
+"$ROOT/tests/check_mission_start_visual.sh" || vis_rc=$?
+if [[ $vis_rc -eq 2 ]]; then
+    echo "[ci/full] skipped: mission-start visual regression inconclusive (needs a real display)"
+elif [[ $vis_rc -ne 0 ]]; then
+    echo "[ci/full] FAIL: mission-start visual regression"
+    exit 1
+fi
+
+echo
 echo "[ci/full] PASS"
