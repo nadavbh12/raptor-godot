@@ -60,16 +60,36 @@ for script in death_wave1 death_wave2 death_wave4 death_wave5 \
     run_step "L2 parity: $script" "$ROOT/tests/run_l2a.sh" "$script"
 done
 
+echo
+echo "==> menu pixel parity (committed goldens, static menus)"
+# The static menu screens are at parity (<1.2% vs C); lock them in unconditionally
+# against committed C goldens (tests/parity/c_menu_goldens) so they can't silently
+# drift. Gameplay frames are intentionally excluded: they scroll, so C-vs-Godot
+# pixel comparison is meaningless (~50% mismatch from misalignment) — gameplay is
+# covered by L2 sim-state parity instead. Headed: exit 2 = no display (skip),
+# exit 1 = a static menu diverged past the 3% budget.
+mpc_rc=0
+env C_CAPTURE_ROOT="$ROOT/tests/parity/c_menu_goldens" \
+    SCRIPTS="mission_start" \
+    LABELS_mission_start="02_hangar_supplies 03_hangar_mission 04_sector_select" \
+    MAX_MISMATCH_PCT=3 \
+    OUT_ROOT="$(mktemp -d)" \
+    "$ROOT/tests/run_menu_pixel_parity.sh" || mpc_rc=$?
+if [[ $mpc_rc -eq 2 ]]; then
+    echo "[ci/full] skipped: menu pixel parity inconclusive (needs a real display)"
+elif [[ $mpc_rc -ne 0 ]]; then
+    echo "[ci/full] FAIL: menu pixel parity (a static menu diverged from C)"
+    exit 1
+fi
+
+# Optional broader run (more scripts, looser budget) against an external C
+# capture root — opt-in via MENU_C_CAPTURE_ROOT.
 if [[ -n "${MENU_C_CAPTURE_ROOT:-}" ]]; then
-    run_step "menu pixel parity" env \
+    run_step "menu pixel parity (full, external goldens)" env \
         C_CAPTURE_ROOT="$MENU_C_CAPTURE_ROOT" \
         SCRIPTS="${MENU_PIXEL_SCRIPTS:-new_mission mission_start}" \
         MAX_MISMATCH_PCT="${MENU_MAX_MISMATCH_PCT:-20}" \
         "$ROOT/tests/run_menu_pixel_parity.sh"
-else
-    echo
-    echo "==> menu pixel parity"
-    echo "[ci/full] skipped: set MENU_C_CAPTURE_ROOT to a reusable C capture root to enable this check"
 fi
 
 echo
