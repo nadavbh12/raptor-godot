@@ -170,27 +170,36 @@ internal sealed class TileDamageState
         }
     }
 
-    public void ApplyTileExplosionDamage(int mapspot, int damage, Action<int, int, int> addExplosion)
+    /// <summary>
+    /// Splash damage to the left/up/right neighbors of <paramref name="mapspot"/>.
+    /// Returns the total <c>money[mapspot]</c> bounty of tiles destroyed by this
+    /// splash (and its recursive chain). Mirrors C, where TILE_Think awards
+    /// money for EVERY tile reaching hits&lt;0 (TILE.C:386-398), not just the
+    /// directly-shot one — so explosion-chain-destroyed tiles pay out too.
+    /// </summary>
+    public int ApplyTileExplosionDamage(int mapspot, int damage, Action<int, int, int> addExplosion)
     {
         if (_tileHitsByMapSpot == null || _tileDeadByMapSpot == null ||
             _tileDestructibleByMapSpot == null)
-            return;
+            return 0;
 
         int ix = mapspot % MAP_COLS;
-        ApplyTileExplosionNeighbor(mapspot - 1, ix - 1, damage, addExplosion);
-        ApplyTileExplosionNeighbor(mapspot - MAP_COLS, ix, damage, addExplosion);
-        ApplyTileExplosionNeighbor(mapspot + 1, ix + 1, damage, addExplosion);
+        int bounty = 0;
+        bounty += ApplyTileExplosionNeighbor(mapspot - 1, ix - 1, damage, addExplosion);
+        bounty += ApplyTileExplosionNeighbor(mapspot - MAP_COLS, ix, damage, addExplosion);
+        bounty += ApplyTileExplosionNeighbor(mapspot + 1, ix + 1, damage, addExplosion);
+        return bounty;
     }
 
-    private void ApplyTileExplosionNeighbor(int spot, int x, int damage, Action<int, int, int> addExplosion)
+    private int ApplyTileExplosionNeighbor(int spot, int x, int damage, Action<int, int, int> addExplosion)
     {
         if (_tileHitsByMapSpot == null || _tileDeadByMapSpot == null ||
-            _tileDestructibleByMapSpot == null)
-            return;
-        if (spot < 0 || spot >= _tileHitsByMapSpot.Length) return;
-        if (x < 0 || x >= MAP_COLS) return;
-        if (!_tileDestructibleByMapSpot[spot]) return;
-        if (_tileDeadByMapSpot[spot]) return;
+            _tileDestructibleByMapSpot == null || _tileBountyByMapSpot == null)
+            return 0;
+        if (spot < 0 || spot >= _tileHitsByMapSpot.Length) return 0;
+        if (x < 0 || x >= MAP_COLS) return 0;
+        if (!_tileDestructibleByMapSpot[spot]) return 0;
+        if (_tileDeadByMapSpot[spot]) return 0;
 
         int before = _tileHitsByMapSpot[spot];
         _tileHitsByMapSpot[spot] -= damage;
@@ -199,10 +208,15 @@ internal sealed class TileDamageState
         if (before >= 0 && _tileHitsByMapSpot[spot] < 0)
         {
             _tileDeadByMapSpot[spot] = true;
+            // C TILE_Think awards money[mapspot] for any tile reaching hits<0,
+            // regardless of whether a bullet or the explosion chain killed it.
+            int bounty = _tileBountyByMapSpot[spot];
             SpawnTileExplosion(spot, addExplosion);
-            ApplyTileExplosionDamage(spot, damage: 5, addExplosion);
+            bounty += ApplyTileExplosionDamage(spot, damage: 5, addExplosion);
             ScheduleTileDelayExplosion(spot);
+            return bounty;
         }
+        return 0;
     }
 
     public void ScheduleTileDelayExplosion(int mapspot)
@@ -210,14 +224,17 @@ internal sealed class TileDamageState
         _tileDelayExplosions.Add(new TileDelayExplosion(mapspot, 10));
     }
 
-    public void ProcessTileDelayExplosions(Action<int, int, int> addExplosion)
+    /// <summary>Returns the total bounty of tiles destroyed by any delayed blasts
+    /// that fired this call (see <see cref="ApplyTileExplosionDamage"/>).</summary>
+    public int ProcessTileDelayExplosions(Action<int, int, int> addExplosion)
     {
+        int bounty = 0;
         for (int i = 0; i < _tileDelayExplosions.Count; i++)
         {
             var td = _tileDelayExplosions[i];
             if (td.Frames < 0)
             {
-                ApplyTileExplosionDamage(td.MapSpot, damage: 20, addExplosion);
+                bounty += ApplyTileExplosionDamage(td.MapSpot, damage: 20, addExplosion);
                 _tileDelayExplosions.RemoveAt(i);
                 i--;
                 continue;
@@ -226,6 +243,7 @@ internal sealed class TileDamageState
             _tileDelayExplosions[i] = td with { Frames = td.Frames - 1 };
         }
         RefreshTileSliceValuesFromBacking();
+        return bounty;
     }
 
     public void SpawnTileExplosion(int mapspot, Action<int, int, int> addExplosion)

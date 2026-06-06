@@ -70,6 +70,27 @@ public class TileDamageStateTests
     }
 
     [Fact]
+    public void Explosion_chain_destroyed_tiles_award_bounty_like_C_TILE_Think()
+    {
+        // C TILE_Think (TILE.C:386-398) awards money[mapspot] for EVERY tile that
+        // reaches hits<0 && !tdead — including tiles destroyed by the explosion
+        // chain / delayed blast, not just the directly-shot tile. Godot previously
+        // awarded bounty only on direct DispatchHit, so a contiguous structure
+        // (the wave-1 bridge) destroyed mostly by the chain scored ~0. The cascade
+        // must return the total bounty of all tiles it destroys.
+        var (tiles, _, exps) = BuildState(count: 27, hits: 1, bounty: 50);
+        void Add(int e, int x, int y) => exps.Add((e, x, y));
+
+        int bounty = tiles.ApplyTileExplosionDamage(mapspot: 10, damage: 20, Add);
+
+        tiles.RefreshTileSliceValuesFromBacking();
+        int dead = 0;
+        foreach (var t in tiles.Slice) if (t.Dead) dead++;
+        Assert.True(dead > 1, "the chain should destroy multiple tiles");
+        Assert.Equal(dead * 50, bounty);   // every chain-destroyed tile pays bounty
+    }
+
+    [Fact]
     public void Delay_fuse_fires_after_ten_frame_countdown()
     {
         var (tiles, mapTiles, exps) = BuildState(count: 27, hits: 1, bounty: 0);

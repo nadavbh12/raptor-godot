@@ -919,7 +919,7 @@ public partial class WaveController : Node
         if (!_scroller.HasSprites || _slib == null || _endWaveFlag) return;
 
         _tiles.RefreshTileSliceForThink(_mapTiles, _scroller.TilePos, _scroller.TileYOff);
-        _tiles.ProcessTileDelayExplosions(AddTileExplosion);
+        Score += (uint)_tiles.ProcessTileDelayExplosions(AddTileExplosion);
 
         // This method combines Godot's spawn phase with C's TILE_Think scroll
         // advance. The collision tile slice above intentionally stays at the
@@ -1122,7 +1122,9 @@ public partial class WaveController : Node
         foreach (int mapspot in collision.DestroyedTileMapSpots)
         {
             _tiles.SpawnTileExplosion(mapspot, AddTileExplosion);
-            _tiles.ApplyTileExplosionDamage(mapspot, damage: 5, AddTileExplosion);
+            // Tiles destroyed by the explosion chain also pay bounty (C TILE_Think
+            // awards money for any tile reaching hits<0, not just direct hits).
+            Score += (uint)_tiles.ApplyTileExplosionDamage(mapspot, damage: 5, AddTileExplosion);
             _tiles.ScheduleTileDelayExplosion(mapspot);
         }
         _tiles.RefreshTileSliceValuesFromBacking();
