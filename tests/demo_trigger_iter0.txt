@@ -1,0 +1,8 @@
+# Short headless demo-replay trigger for the iter-0 enemy-count check.
+# Press D to start RAPTOR_DEMO_PATH playback, wait long enough for the demo to
+# begin (frame 60 + DemoLoadCompFrames=78 = 138) and emit the iter-0 parity
+# checkpoint, then quit. We only need iter 0, so this stays short.
+wait 60
+key D
+wait 400
+quit

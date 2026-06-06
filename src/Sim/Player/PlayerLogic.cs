@@ -9,12 +9,17 @@ public sealed class PlayerLogic
     // PLAYERINITX = 160 - (PLAYERWIDTH/2) = 160 - 16 = 144 (from SOURCE/PUBLIC.H).
     public const int InitX = 144;
     public const int InitY = 160;
-    public const int SpriteWidth = 32;
-    public const int SpriteHeight = 32;
-    public const int MinX = 16;
-    public const int MaxX = 304 - SpriteWidth;
-    public const int MinY = 0;
-    public const int MaxY = 200 - SpriteHeight;
+    public const int SpriteWidth = 32;   // PLAYERWIDTH
+    public const int SpriteHeight = 32;  // PLAYERHEIGHT
+    // Player-position clamps — C SOURCE/PUBLIC.H + INPUT.C:844-866 (IPT_MovePlayer).
+    // X is bounded by PLAYERMINX..PLAYERMAXX on the sprite's left/right edges; Y by
+    // MINPLAYERY..MAXPLAYERY on the top-left corner (NOT screen-height − sprite).
+    // These are the authoritative gameplay bounds; using screen-gutter values (16 /
+    // 304−32 / 200−32) diverged from the C goldens once the ship rode an edge.
+    public const int MinX = 5;                   // PLAYERMINX
+    public const int MaxX = 314 - SpriteWidth;   // PLAYERMAXX(314) − PLAYERWIDTH = 282
+    public const int MinY = 0;                   // MINPLAYERY
+    public const int MaxY = 160;                 // MAXPLAYERY
     public const int VelocityPerTick = 4;
 
     // C INPUT.C:17-18 — acceleration ramp caps. When a direction key is held,
@@ -182,6 +187,16 @@ public sealed class PlayerLogic
             _gAddY /= 2;
         }
 
+        ApplyMoveAndBank();
+    }
+
+    /// <summary>
+    /// Apply the current per-iter delta (_gAddX/_gAddY) to position with bounds
+    /// clamping, then update the banking Pic — mirrors INPUT.C:814-866. Shared by
+    /// <see cref="Tick"/> (ramp-driven) and <see cref="TickDelta"/> (delta-driven).
+    /// </summary>
+    private void ApplyMoveAndBank()
+    {
         int newX = X + _gAddX;
         int newY = Y + _gAddY;
         if (newX < MinX) { newX = MinX; _gAddX = 0; }
@@ -207,5 +222,18 @@ public sealed class PlayerLogic
             else if (Pic < BasePic) Pic++;
         }
         _oldX = X;
+    }
+
+    /// <summary>
+    /// Replay fallback: apply a recorded per-iter movement delta (C g_addx/g_addy)
+    /// directly, bypassing the input ramp. Used when a v2 demo carries no
+    /// directional-key data (the player flew on mouse/joystick), so movement still
+    /// reproduces exactly and device-independently. px/py stay the parity oracle.
+    /// </summary>
+    public void TickDelta(int gax, int gay)
+    {
+        _gAddX = gax;
+        _gAddY = gay;
+        ApplyMoveAndBank();
     }
 }

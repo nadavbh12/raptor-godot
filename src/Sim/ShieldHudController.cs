@@ -59,12 +59,13 @@ internal sealed class ShieldHudController
     /// (a 1-bucket shield transient, death_wave2 @ iter 1260). Returns true if this
     /// was the skip frame, in which case the caller returns without the main tick.
     /// </summary>
-    public bool TickSkipInitial(PlayerLogic player, int curPlayerDiff, bool deathActive, bool endWaveActive)
+    public bool TickSkipInitial(PlayerLogic player, int curPlayerDiff, bool deathActive,
+                                bool endWaveActive, bool objUsed)
     {
         if (!_skipInitialPaletteStuff) return false;
         _skipInitialPaletteStuff = false;
         var (skipTc, skipHeal) = ShieldRechargeStep(
-            _thinkCnt, curPlayerDiff, ChargeShield, deathActive, endWaveActive);
+            _thinkCnt, curPlayerDiff, ChargeShield, deathActive, endWaveActive, objUsed);
         _thinkCnt = skipTc;
         if (skipHeal) player.Heal(1);
         return true;
@@ -72,7 +73,8 @@ internal sealed class ShieldHudController
 
     /// <summary>Per-tick palette-stuff RNG, shield recharge, and low-shield warning.</summary>
     public void Tick(PlayerLogic player, Inventory inventory, int curPlayerDiff,
-                     bool deathActive, bool endWaveActive, int gameLoopIter, Random? shooterRng)
+                     bool deathActive, bool endWaveActive, int gameLoopIter, Random? shooterRng,
+                     bool objUsed)
     {
         // RAP_PaletteStuff() consumes random(3) only on alternating calls
         // (`if (cnt & 1)`). It is visual, but C shares rand() with weapons.
@@ -83,7 +85,7 @@ internal sealed class ShieldHudController
         // Shield recharge (mirrors OBJS_Think in OBJECTS.C). CHARGE_SHIELD = 96.
         // Every 97 game loops, heal 1 shield. Only on curplr_diff < DIFF_3.
         var (newThinkCnt, heal) = ShieldRechargeStep(
-            _thinkCnt, curPlayerDiff, ChargeShield, deathActive, endWaveActive);
+            _thinkCnt, curPlayerDiff, ChargeShield, deathActive, endWaveActive, objUsed);
         _thinkCnt = newThinkCnt;
         if (heal) player.Heal(1);
 
@@ -108,11 +110,18 @@ internal sealed class ShieldHudController
     /// </summary>
     public static (int thinkCnt, bool heal) ShieldRechargeStep(
         int thinkCnt, int diff, int chargeShield,
-        bool deathActive, bool endWaveActive)
+        bool deathActive, bool endWaveActive, bool objUsed)
     {
+        // C OBJS_Think: `if (curplr_diff >= DIFF_3) return;` — elite never recharges.
+        if (diff >= 3) return (thinkCnt, false);
+        // C OBJS_Use set think_cnt=0 + objuse_flag; OBJS_Think then consumes the flag
+        // and returns WITHOUT incrementing (OBJECTS.C:1393-1397). Net: any iter the
+        // player uses a weapon (e.g. holding fire → OBJS_Use(FORWARD_GUNS)) resets
+        // the recharge counter and cannot heal — so a firing player barely recharges.
+        if (objUsed) return (0, false);
         thinkCnt++;
         bool heal = false;
-        if (diff < 3 && thinkCnt > chargeShield)
+        if (thinkCnt > chargeShield)
         {
             thinkCnt = 0;
             if (!deathActive && !endWaveActive) heal = true;

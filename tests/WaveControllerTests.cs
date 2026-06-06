@@ -105,7 +105,7 @@ public class WaveControllerTests
 
         // Normal play: heals when think_cnt crosses CHARGE_SHIELD, resets to 0.
         var (tc, heal) = ShieldHudController.ShieldRechargeStep(
-            charge, diff: 0, charge, deathActive: false, endWaveActive: false);
+            charge, diff: 0, charge, deathActive: false, endWaveActive: false, objUsed: false);
         Assert.Equal(0, tc);
         Assert.True(heal);
 
@@ -113,24 +113,53 @@ public class WaveControllerTests
         // suppressed (startendwave != EMPTY) so a recharge cannot revive a dead
         // ship. think_cnt still resets, matching OBJS_Think.
         (tc, heal) = ShieldHudController.ShieldRechargeStep(
-            charge, diff: 0, charge, deathActive: true, endWaveActive: false);
+            charge, diff: 0, charge, deathActive: true, endWaveActive: false, objUsed: false);
         Assert.Equal(0, tc);
         Assert.False(heal);
 
         // Same suppression during the end-of-wave fly-off.
         (_, heal) = ShieldHudController.ShieldRechargeStep(
-            charge, diff: 0, charge, deathActive: false, endWaveActive: true);
+            charge, diff: 0, charge, deathActive: false, endWaveActive: true, objUsed: false);
         Assert.False(heal);
 
         // Below threshold: just increments.
         (tc, heal) = ShieldHudController.ShieldRechargeStep(
-            10, diff: 0, charge, deathActive: false, endWaveActive: false);
+            10, diff: 0, charge, deathActive: false, endWaveActive: false, objUsed: false);
         Assert.Equal(11, tc);
         Assert.False(heal);
 
         // High difficulty (diff >= 3) never heals (existing behavior preserved).
         (_, heal) = ShieldHudController.ShieldRechargeStep(
-            charge, diff: 3, charge, deathActive: false, endWaveActive: false);
+            charge, diff: 3, charge, deathActive: false, endWaveActive: false, objUsed: false);
+        Assert.False(heal);
+    }
+
+    [Fact]
+    public void Shield_recharge_is_suppressed_while_firing_objuse()
+    {
+        // C OBJS_Use (firing FORWARD_GUNS while BUT_1 held, RAP.C:1005-1013) sets
+        // objuse_flag=TRUE and think_cnt=0; OBJS_Think (OBJECTS.C:1393-1397) then
+        // consumes the flag and returns WITHOUT incrementing — so an iter the
+        // player fires resets the recharge counter and cannot heal.
+        const int charge = 96;
+
+        // On the tick that WOULD cross CHARGE_SHIELD, firing suppresses the heal
+        // and resets the counter to 0.
+        var (tc, heal) = ShieldHudController.ShieldRechargeStep(
+            charge, diff: 1, charge, deathActive: false, endWaveActive: false, objUsed: true);
+        Assert.Equal(0, tc);
+        Assert.False(heal);
+
+        // Same counter, NOT firing → it crosses and heals (the contrast case).
+        (tc, heal) = ShieldHudController.ShieldRechargeStep(
+            charge, diff: 1, charge, deathActive: false, endWaveActive: false, objUsed: false);
+        Assert.Equal(0, tc);
+        Assert.True(heal);
+
+        // Mid-counter firing also resets to 0 (continuous fire keeps it pinned low).
+        (tc, heal) = ShieldHudController.ShieldRechargeStep(
+            40, diff: 1, charge, deathActive: false, endWaveActive: false, objUsed: true);
+        Assert.Equal(0, tc);
         Assert.False(heal);
     }
 

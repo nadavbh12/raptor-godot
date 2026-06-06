@@ -1,0 +1,7 @@
+# Headless demo-replay trigger. Press D to start RAPTOR_DEMO_PATH playback, wait
+# for the whole wave to replay (Godot is ~3 sim-frames/iter), then quit. The
+# benchmark harness regenerates this with a per-wave wait; 16000 covers ~5000 iters.
+wait 60
+key D
+wait 16000
+quit

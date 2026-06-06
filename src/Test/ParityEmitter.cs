@@ -48,6 +48,10 @@ internal class ParityEmitWorker : IDisposable
     public Func<int>?  GetGameAnchorFrame { get; set; }
     public Func<int>?  GetDemoGameNum { get; set; }
     public Func<int>?  GetMenuDemoEmitSequence { get; set; }
+    /// <summary>FNV-1a obj_hash over the live player inventory. Wired by
+    /// WaveController to Inventory.ComputeObjHash; null in stub/menu-less
+    /// contexts, where Emit falls back to the empty-list basis.</summary>
+    public Func<ulong>? GetObjHash { get; set; }
 
     // Iter-bucket size for in-game emission. Must match parity.c's ITER_BUCKET.
     // 18 iters ≈ 70 fc in C-time at C's variable ~3.89 fc/iter cadence.
@@ -240,13 +244,15 @@ internal class ParityEmitWorker : IDisposable
         eb = Math.Clamp(eb, 0, 64);
         sh = Math.Clamp(sh, 0, 100);
 
-        // obj_hash: emit FNV offset basis (empty list) — advisory field only.
-        const string ObjHash = "cbf29ce484222325";
+        // obj_hash: real FNV-1a over the live player inventory when wired (matches
+        // C compute_obj_hash, parity.c:160). Falls back to the empty-list basis in
+        // stub/menu-less contexts. Formatted "%016llx"-style (16 lowercase hex).
+        ulong oh = GetObjHash != null ? GetObjHash() : 0xcbf29ce484222325UL;
 
         // InvariantCulture: keeps negative ints (e.g. iter=-1 for menus) from
         // getting a U+200E LRM inserted on RTL-aware locales, which would
         // otherwise break the JSON parser in the comparator.
-        var line = string.Create(CultureInfo.InvariantCulture, $"{{\"fc\":{fc},\"iter\":{iter},\"win\":\"{win}\",\"player_x\":{px},\"player_y\":{py},\"score\":{sc},\"shield\":{sh},\"enemies\":{en},\"pbullets\":{pb},\"ebullets\":{eb},\"obj_hash\":\"{ObjHash}\"}}");
+        var line = string.Create(CultureInfo.InvariantCulture, $"{{\"fc\":{fc},\"iter\":{iter},\"win\":\"{win}\",\"player_x\":{px},\"player_y\":{py},\"score\":{sc},\"shield\":{sh},\"enemies\":{en},\"pbullets\":{pb},\"ebullets\":{eb},\"obj_hash\":\"{oh:x16}\"}}");
         _out!.WriteLine(line);
     }
 
@@ -284,6 +290,7 @@ public partial class ParityEmitter : Node
     public Func<int>?  GetGameAnchorFrame { get => _worker.GetGameAnchorFrame; set => _worker.GetGameAnchorFrame = value; }
     public Func<int>?  GetDemoGameNum { get => _worker.GetDemoGameNum; set => _worker.GetDemoGameNum = value; }
     public Func<int>?  GetMenuDemoEmitSequence { get => _worker.GetMenuDemoEmitSequence; set => _worker.GetMenuDemoEmitSequence = value; }
+    public Func<ulong>? GetObjHash { get => _worker.GetObjHash; set => _worker.GetObjHash = value; }
 
     // Legacy stub fields (used when Menu is null).
     public string WinState { get => _worker.WinState; set => _worker.WinState = value; }

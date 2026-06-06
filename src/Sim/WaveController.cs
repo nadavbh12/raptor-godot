@@ -121,12 +121,22 @@ public partial class WaveController : Node
     private InputState? _testInteractiveInput;
     private readonly Queue<ObjType> _testSpecialSelects = new();
     private bool _debugDemoReplay = false;
+    // Exact-parity replay (v2 demos): recompute movement from recorded input
+    // instead of forcing px/py. _demoUseDirs = drive the input ramp from the
+    // directional keys; false = apply the recorded g_addx/g_addy delta directly
+    // (set when the recording carries no key data — mouse/joystick play).
+    private bool _demoExactReplay = false;
+    private bool _demoUseDirs = false;
     // ── Capture/test-only hooks (env-gated, OFF by default → parity-inert) ──
     // Used only by the cosmetic visual-capture harness to force states that are
     // unreachable in the parity scenarios (reaching late-wave bosses, owning
     // detect/super-shield/megabomb, a low-health boss). None of these envs are
     // set by the 12-scenario L2a gate, so the default code path is unchanged.
     private bool _godmode = false;                       // RAPTOR_GODMODE: player invuln
+    // C objuse_flag: set when the player uses an owned object this iter (firing the
+    // always-owned forward guns, or a megabomb). PhaseInput sets it; PhaseHud's
+    // shield recharge consumes it (OBJS_Think skips the recharge tick when set).
+    private bool _objUsedThisIter = false;
     private int _bossLowHp = 0;                          // RAPTOR_BOSS_LOWHP: clamp boss hits at spawn
     private bool _forceSecret = false;                   // RAPTOR_FORCE_SECRET: unlock secret-tier enemies (ES_LASER)
     private readonly List<ObjType> _grantTypes = new();  // RAPTOR_GRANT: items to grant per wave
@@ -248,6 +258,16 @@ public partial class WaveController : Node
         _curPlayerDiff = diff;
         _curDiff = SpawnMaskForDiff(diff);
     }
+
+    /// <summary>
+    /// The player difficulty a demo replay begins at. Applied BEFORE LoadWave so
+    /// the iter-0 spawn is filtered by the correct mask — mirroring C, where
+    /// RAP_SetPlayerDiff() runs before RAP_LoadMap() (INPUT.C:70 then :270).
+    /// v2 demos carry the recorded loadout difficulty; legacy demos (no snapshot)
+    /// run at DIFF_3, since C's DEMO_MakePlayer sets plr.diff = DIFF_3 (INPUT.C:64-71).
+    /// </summary>
+    internal static int DemoStartDiff(DemoReplay.LoadoutData? loadout) =>
+        loadout?.Diff ?? 3;
 
     /// <summary>
     /// Maps a raw CSPRITE.level value to the corresponding EB_ bitmask.
@@ -492,6 +512,7 @@ public partial class WaveController : Node
             _emitter.GetGameAnchorFrame = () => _gameEnterFc;
             _emitter.GetDemoGameNum = () => _demo.Replay?.Header.DemoGame ?? -1;
             _emitter.GetMenuDemoEmitSequence = () => MenuDemoEmitSequence;
+            _emitter.GetObjHash = () => Inventory.ComputeObjHash();
         }
     }
 
@@ -592,10 +613,19 @@ public partial class WaveController : Node
         var replay = _demo.Begin();
         _buttonInput.ResetDemoLatches();
 
+        // v2 (exact-parity) demos recompute movement; legacy demos force position.
+        _demoExactReplay = replay.Header.V >= 2;
+        _demoUseDirs = _demoExactReplay && AnyDirectionalInput(replay);
+
         _waveNum = replay.Header.DemoWave + 1;
         SeedRngForWave(replay.Header.DemoWave, OS.GetEnvironment("RAPTOR_RNG_SEED_OVERRIDE"));
+        // Establish difficulty BEFORE the map load, mirroring C (RAP_SetPlayerDiff
+        // precedes RAP_LoadMap, INPUT.C:70->270). LoadWave's DoInitialSpawn filters
+        // the iter-0 group by _curDiff, so applying difficulty afterwards (in
+        // SetupDemoPlayer) spawned a stale-mask extra enemy (MED-tier idx0 at ROOKIE).
+        SetPlayerDiff(DemoStartDiff(replay.Header.Loadout));
         LoadWave(_waveNum);
-        SetupDemoPlayer(replay.Header.DemoGame);
+        SetupDemoPlayer(replay);
         _gameEnterFc = SimClock.Frame;
         _waveActive = true;
         if (_debugDemoReplay)
@@ -606,10 +636,48 @@ public partial class WaveController : Node
         OnIterEnd?.Invoke();
     }
 
-    private void SetupDemoPlayer(int game)
+    /// <summary>True if any record carries directional-key input (keyboard play).
+    /// If none do, the recording used mouse/joystick and the replay must drive
+    /// movement from the recorded g_addx/g_addy delta instead of the key ramp.</summary>
+    private static bool AnyDirectionalInput(DemoReplay replay)
     {
-        // DEMO_MakePlayer sets plr.diff[0..2] = DIFF_3 before
-        // RAP_SetPlayerDiff(), so demo playback runs on hard difficulty.
+        foreach (var r in replay.Records)
+            if (r.Dirs != 0) return true;
+        return false;
+    }
+
+    private void SetupDemoPlayer(DemoReplay replay)
+    {
+        var loadout = replay.Header.Loadout;
+
+        // OBJS_Clear() before setup — start from a clean inventory so a demo set up
+        // after a live wave (or another demo) on the same WaveController doesn't add
+        // on top of dirty state.
+        Inventory.Clear();
+
+        if (loadout != null)
+        {
+            // Exact-parity replay: reconstruct the recorded starting state so
+            // weapons/score/difficulty/shield match C bit-for-bit. Shield lives in
+            // the Energy inventory slot, so loading objs[] restores it (no SetShield).
+            SetScore(loadout.Score);
+            SetPlayerDiff(loadout.Diff);   // mirrors RAP_SetPlayerDiff(curplr_diff)
+            foreach (var o in loadout.Objs)   // each entry: [type, num, inuse]
+                Inventory.Load((ObjType)o[0], o[1], o.Length > 2 && o[2] != 0);
+            // Mirror RAP_LoadPlayer tail: keep sweapon if still owned, else cycle.
+            Inventory.EquippedSpecial =
+                (loadout.Sweapon >= 0 && loadout.Sweapon < (int)ObjType.LastObject)
+                    ? (ObjType)loadout.Sweapon : null;
+            if (Inventory.EquippedSpecial is not ObjType sw || !Inventory.IsEquip(sw))
+                Inventory.GetNext();
+            HasSecretsDetector = Inventory.IsEquip(ObjType.Detect);
+            _shieldHud.SyncOldShield(PlayerLogic.Shield);
+            return;
+        }
+
+        // Legacy demo (no loadout snapshot): DEMO_MakePlayer sets plr.diff[0..2] =
+        // DIFF_3 before RAP_SetPlayerDiff(), so playback runs on hard difficulty.
+        int game = replay.Header.DemoGame;
         _curPlayerDiff = 3;
         _curDiff = EB_EASY_LEVEL | EB_MED_LEVEL | EB_HARD_LEVEL;
 
@@ -621,15 +689,9 @@ public partial class WaveController : Node
         };
         HasSecretsDetector = true;
 
-        // DEMO_MakePlayer calls OBJS_Clear() before granting the demo loadout.
-        // Mirror that: start from a clean inventory so a demo set up after a live
-        // wave (or another demo) on the same WaveController doesn't add on top of
-        // dirty inventory state.
-        Inventory.Clear();
         DemoLoadout.Apply(Shooter, game, registered: false);
-        // Task 4.2: SetShield must run AFTER Clear()+loadout — Shield now lives in
-        // the Inventory energy slot, so setting it before Clear() would be wiped.
-        // The demo loadout grants no energy slot, so SetShield creates it (via Load).
+        // SetShield must run AFTER Clear()+loadout — the demo loadout grants no
+        // energy slot, so SetShield creates it (via Load).
         PlayerLogic.SetShield(PlayerLogic.MaxShield);
         _shieldHud.SyncOldShield(PlayerLogic.Shield);
     }
@@ -751,6 +813,9 @@ public partial class WaveController : Node
         // Clear last tick's muzzle positions before any shooting is processed.
         // View-only / parity-inert (DebugRenderer muzzle-flash cosmetics).
         Shooter.ClearMuzzles();
+        // Reset this iter's objuse_flag; the fire cascade below sets it (consumed by
+        // PhaseHud's shield recharge). No firing path → no recharge suppression.
+        _objUsedThisIter = false;
 
         if (_demo.Active)
         {
@@ -761,9 +826,30 @@ public partial class WaveController : Node
             }
 
             if (_debugDemoReplay && _demo.RecordIndex <= 40)
-                GD.Print($"demo tick fc={SimClock.Frame} rec={_demo.RecordIndex - 1} px={frame.Px} py={frame.Py}");
-            PlayerLogic.ApplyDemoFrame(frame.Px, frame.Py, frame.PlayerPic);
-            _buttonInput.ApplyDemo(frame, Shooter, PlayerLogic, _weaponTargetEnemies, _enemies, _playerBullets, _shooterRng);
+                GD.Print($"demo tick fc={SimClock.Frame} rec={_demo.RecordIndex - 1} px={frame.Px} py={frame.Py} exact={_demoExactReplay}");
+            if (_demoExactReplay)
+            {
+                // Recompute movement so Godot's own movement code is exercised and
+                // its result (X/Y/Pic) is compared against the recorded px/py oracle.
+                if (_demoUseDirs)
+                {
+                    // dirs bits: 1=Left 2=Right 4=Up 8=Down. Left/Up win ties,
+                    // mirroring IPT_GetKeyBoard's if-else order (INPUT.C:508-556).
+                    int dx = (frame.Dirs & 0x1) != 0 ? -1 : ((frame.Dirs & 0x2) != 0 ? 1 : 0);
+                    int dy = (frame.Dirs & 0x4) != 0 ? -1 : ((frame.Dirs & 0x8) != 0 ? 1 : 0);
+                    PlayerLogic.Tick(dx, dy);
+                }
+                else
+                {
+                    PlayerLogic.TickDelta(frame.Gax, frame.Gay);
+                }
+            }
+            else
+            {
+                // Legacy demo: force the recorded position (C DEMO_PLAYBACK).
+                PlayerLogic.ApplyDemoFrame(frame.Px, frame.Py, frame.PlayerPic);
+            }
+            _objUsedThisIter = _buttonInput.ApplyDemo(frame, Shooter, PlayerLogic, _weaponTargetEnemies, _enemies, _playerBullets, _shooterRng);
             Shooter.TickCooldowns();
             return;
         }
@@ -810,7 +896,7 @@ public partial class WaveController : Node
         // cooldowns), so the cooldown set this tick can't be cleared in the
         // same tick. C resets BUT_1=FALSE after firing — our edge model uses
         // the held state, which is what the demo records (b1 is a held flag).
-        _buttonInput.ApplyLive(input.B1, input.B2, input.B3, Shooter, PlayerLogic, _waveActive,
+        _objUsedThisIter = _buttonInput.ApplyLive(input.B1, input.B2, input.B3, Shooter, PlayerLogic, _waveActive,
             _weaponTargetEnemies, _enemies, _playerBullets, _shooterRng);
 
         // SHOTS.C:1035-1040 — cooldown decrement once per game iter. Done at
@@ -1401,7 +1487,8 @@ public partial class WaveController : Node
         // the wave's initial-skip frame and the main shield tick, as before.
         if (_shieldHud.TickSkipInitial(PlayerLogic, _curPlayerDiff,
                 deathActive: _playerDeath.Active,
-                endWaveActive: _endWave.Active))
+                endWaveActive: _endWave.Active,
+                objUsed: _objUsedThisIter))
             return;
 
         if (_playerDeath.Active)
@@ -1416,7 +1503,8 @@ public partial class WaveController : Node
         _shieldHud.Tick(PlayerLogic, Inventory, _curPlayerDiff,
             deathActive: _playerDeath.Active,
             endWaveActive: _endWave.Active,
-            gameLoopIter: _gameLoopIter, shooterRng: _shooterRng);
+            gameLoopIter: _gameLoopIter, shooterRng: _shooterRng,
+            objUsed: _objUsedThisIter);
     }
 
     // ── Internal scheduler ────────────────────────────────────────────────────

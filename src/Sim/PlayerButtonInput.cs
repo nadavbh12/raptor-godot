@@ -44,7 +44,10 @@ internal sealed class PlayerButtonInput
     /// this tick can't be cleared the same tick. The held-state edge model matches
     /// what the demo records (b1 is a held flag; C resets BUT_1 after firing).
     /// </summary>
-    public void ApplyLive(
+    /// <returns>True if the player used an owned object this iter (C objuse_flag):
+    /// holding fire uses the always-owned forward guns, or a megabomb fires on its
+    /// rising edge. Consumed by the shield recharge (OBJS_Think skips that tick).</returns>
+    public bool ApplyLive(
         bool fireHeld, bool fireSpHeld, bool megaHeld,
         PlayerShooter shooter, PlayerLogic player, bool waveActive,
         List<EnemyLogic> targetEnemies, List<EnemyLogic> enemies,
@@ -52,9 +55,14 @@ internal sealed class PlayerButtonInput
     {
         int cx = player.X + 16;
         int cy = player.Y + 16;
+        bool objUsed = false;
 
         if (waveActive && fireHeld)
         {
+            // RAP.C:1005-1013 BUT_1 → OBJS_Use(FORWARD_GUNS): forward guns are always
+            // owned (Forever), so the objuse_flag is set every iter fire is held —
+            // independent of weapon cooldown (OBJS_Use sets it before lib->actf).
+            objUsed = true;
             var fired = shooter.ApplyButton1(cx, cy, player.Pic, targetEnemies, rng);
             foreach (var b in fired) playerBullets.Add(b);
         }
@@ -66,13 +74,15 @@ internal sealed class PlayerButtonInput
             if (!_liveB3Latch)
             {
                 _liveB3Latch = true;
-                var fired = new List<BulletLogic>(1);
-                if (waveActive
-                    && shooter.MegaBombCount > 0
-                    && shooter.Shoot(ObjType.MegaBomb, cx, cy, player.Pic, fired, enemies, rng))
+                if (waveActive && shooter.MegaBombCount > 0)
                 {
-                    shooter.ConsumeMegaBomb();
-                    foreach (var b in fired) playerBullets.Add(b);
+                    objUsed = true;   // OBJS_Use(MEGA_BOMB) when owned (RAP.C:1030-1037)
+                    var fired = new List<BulletLogic>(1);
+                    if (shooter.Shoot(ObjType.MegaBomb, cx, cy, player.Pic, fired, enemies, rng))
+                    {
+                        shooter.ConsumeMegaBomb();
+                        foreach (var b in fired) playerBullets.Add(b);
+                    }
                 }
             }
         }
@@ -80,10 +90,13 @@ internal sealed class PlayerButtonInput
         {
             _liveB3Latch = false;
         }
+
+        return objUsed;
     }
 
     /// <summary>Demo-replay buttons (same cascade, driven by the recorded frame).</summary>
-    public void ApplyDemo(
+    /// <returns>True if an owned object was used this iter (see <see cref="ApplyLive"/>).</returns>
+    public bool ApplyDemo(
         DemoReplay.Frame frame,
         PlayerShooter shooter, PlayerLogic player,
         List<EnemyLogic> targetEnemies, List<EnemyLogic> enemies,
@@ -91,9 +104,11 @@ internal sealed class PlayerButtonInput
     {
         int cx = player.X + 16;
         int cy = player.Y + 16;
+        bool objUsed = false;
 
         if (frame.B1 != 0)
         {
+            objUsed = true;   // OBJS_Use(FORWARD_GUNS): always owned → objuse_flag set
             var fired = shooter.ApplyButton1(cx, cy, player.Pic, targetEnemies, rng);
             foreach (var b in fired) playerBullets.Add(b);
         }
@@ -103,7 +118,7 @@ internal sealed class PlayerButtonInput
             if (!_demoB2Latch)
             {
                 _demoB2Latch = true;
-                shooter.CycleSpecial();
+                shooter.CycleSpecial();   // BUT_2 → OBJS_GetNext (no OBJS_Use → no objuse)
             }
         }
         else
@@ -116,12 +131,15 @@ internal sealed class PlayerButtonInput
             if (!_demoB3Latch)
             {
                 _demoB3Latch = true;
-                var fired = new List<BulletLogic>(1);
-                if (shooter.MegaBombCount > 0
-                    && shooter.Shoot(ObjType.MegaBomb, cx, cy, player.Pic, fired, enemies, rng))
+                if (shooter.MegaBombCount > 0)
                 {
-                    shooter.ConsumeMegaBomb();
-                    foreach (var b in fired) playerBullets.Add(b);
+                    objUsed = true;   // OBJS_Use(MEGA_BOMB) when owned
+                    var fired = new List<BulletLogic>(1);
+                    if (shooter.Shoot(ObjType.MegaBomb, cx, cy, player.Pic, fired, enemies, rng))
+                    {
+                        shooter.ConsumeMegaBomb();
+                        foreach (var b in fired) playerBullets.Add(b);
+                    }
                 }
             }
         }
@@ -129,5 +147,7 @@ internal sealed class PlayerButtonInput
         {
             _demoB3Latch = false;
         }
+
+        return objUsed;
     }
 }

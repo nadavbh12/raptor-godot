@@ -69,7 +69,17 @@ def read_ndjson(path: str) -> list[dict]:
     return out
 
 
-def compare(c: list[dict], g: list[dict]) -> tuple[int, int, list[str]]:
+# Exact mode: every required field must match bit-for-bit (zero tolerance),
+# including obj_hash. Only fc stays advisory (C/Godot reach the same iter at
+# different framecounts). This is the gate for true exact-parity replay.
+EXACT_TOLERANCES = {f: _exact for f in
+                    ["iter", "win", "player_x", "player_y", "score", "shield",
+                     "enemies", "pbullets", "ebullets", "obj_hash"]}
+EXACT_ADVISORY = {"fc"}
+
+
+def compare(c: list[dict], g: list[dict],
+            tolerances=TOLERANCES, advisory=ADVISORY_FIELDS) -> tuple[int, int, list[str]]:
     """
     Returns (n_total, n_passed, diagnostics).
     Iterates by index — fc-misalignment is reported as a divergence.
@@ -89,7 +99,7 @@ def compare(c: list[dict], g: list[dict]) -> tuple[int, int, list[str]]:
 
         cc, gg = c[i], g[i]
         ok = True
-        for field, cmp in TOLERANCES.items():
+        for field, cmp in tolerances.items():
             if field not in cc:
                 diags.append(f"#{i} fc={cc.get('fc')}: C output missing field '{field}'")
                 ok = False; continue
@@ -99,8 +109,8 @@ def compare(c: list[dict], g: list[dict]) -> tuple[int, int, list[str]]:
             if not cmp(cc[field], gg[field]):
                 diags.append(f"#{i} fc={cc.get('fc')}: {field} c={cc[field]} godot={gg[field]} (out of tolerance)")
                 ok = False
-        # Advisory: check obj_hash, log mismatches, don't count as failure.
-        for field in ADVISORY_FIELDS:
+        # Advisory: log mismatches, don't count as failure.
+        for field in advisory:
             if field in cc and field in gg and cc[field] != gg[field]:
                 diags.append(f"#{i} fc={cc.get('fc')}: {field} c={cc[field]} godot={gg[field]} (advisory mismatch)")
         if ok:
@@ -114,11 +124,19 @@ def main():
     p.add_argument("--godot-out", required=True)
     p.add_argument("--max-diags", type=int, default=10,
                    help="max diagnostic lines to print before truncating")
+    p.add_argument("--exact", action="store_true",
+                   help="exact-parity mode: every required field (incl. obj_hash) "
+                        "must match bit-for-bit; PASS requires 100%%.")
     args = p.parse_args()
 
     c = read_ndjson(args.c_golden)
     g = read_ndjson(args.godot_out)
-    n_total, n_passed, diags = compare(c, g)
+    if args.exact:
+        n_total, n_passed, diags = compare(c, g, EXACT_TOLERANCES, EXACT_ADVISORY)
+        pass_threshold = 1.0
+    else:
+        n_total, n_passed, diags = compare(c, g)
+        pass_threshold = PASS_PCT
 
     # Special case: if BOTH inputs are empty, that's a vacuous PASS but
     # it almost certainly means a misconfigured run — fail loudly.
@@ -134,10 +152,10 @@ def main():
         if len(diags) > args.max_diags:
             print(f"  ... and {len(diags) - args.max_diags} more")
 
-    if pct >= PASS_PCT:
+    if pct >= pass_threshold:
         print("PASS")
         return 0
-    print(f"FAIL: pass rate {pct:.1%} < {PASS_PCT:.0%}")
+    print(f"FAIL: pass rate {pct:.1%} < {pass_threshold:.0%}")
     return 1
 
 

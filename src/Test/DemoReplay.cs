@@ -17,6 +17,36 @@ public sealed class DemoReplay
 
         [JsonPropertyName("demo_wave")]
         public int DemoWave { get; set; }
+
+        /// <summary>Format version. 0/absent = legacy (forced position, no
+        /// directional input). 2 = exact-parity capture (dirs/gax/gay + loadout).</summary>
+        [JsonPropertyName("v")]
+        public int V { get; set; }
+
+        /// <summary>Player loadout snapshot at wave start (v2 only); null for
+        /// legacy demos. Mirrors C RAPTOR_LOADOUT_LOG.</summary>
+        [JsonPropertyName("loadout")]
+        public LoadoutData? Loadout { get; set; }
+    }
+
+    /// <summary>Player loadout snapshot — the starting state the exact-parity
+    /// replay reconstructs. Mirrors OBJS_DumpLoadout (dosraptor OBJECTS.C).</summary>
+    public sealed class LoadoutData
+    {
+        [JsonPropertyName("score")]
+        public uint Score { get; set; }
+
+        /// <summary>Equipped special weapon type, or &lt;0 for none (C EMPTY).</summary>
+        [JsonPropertyName("sweapon")]
+        public int Sweapon { get; set; } = -1;
+
+        /// <summary>Active difficulty (C curplr_diff, DIFF_0..3).</summary>
+        [JsonPropertyName("diff")]
+        public int Diff { get; set; }
+
+        /// <summary>Inventory in C linked-list order: each entry is [type, num, inuse].</summary>
+        [JsonPropertyName("objs")]
+        public List<int[]> Objs { get; set; } = new();
     }
 
     public readonly record struct Frame(
@@ -24,6 +54,9 @@ public sealed class DemoReplay
         int B2,
         int B3,
         int B4,
+        int Dirs,
+        int Gax,
+        int Gay,
         int Px,
         int Py,
         int PlayerPic);
@@ -50,6 +83,16 @@ public sealed class DemoReplay
 
         [JsonPropertyName("b4")]
         public int B4 { get; set; }
+
+        // v2 fields — absent in legacy demos, default to 0.
+        [JsonPropertyName("dirs")]
+        public int Dirs { get; set; }
+
+        [JsonPropertyName("gax")]
+        public int Gax { get; set; }
+
+        [JsonPropertyName("gay")]
+        public int Gay { get; set; }
 
         [JsonPropertyName("px")]
         public int Px { get; set; }
@@ -80,7 +123,7 @@ public sealed class DemoReplay
 
         var records = new List<Frame>(data.Records.Count);
         foreach (var r in data.Records)
-            records.Add(new Frame(r.B1, r.B2, r.B3, r.B4, r.Px, r.Py, r.PlayerPic));
+            records.Add(new Frame(r.B1, r.B2, r.B3, r.B4, r.Dirs, r.Gax, r.Gay, r.Px, r.Py, r.PlayerPic));
 
         return new DemoReplay(data.Header, records);
     }

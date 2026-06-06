@@ -69,6 +69,25 @@ public class ParityEmitterTests
     }
 
     [Fact]
+    public void Emits_real_obj_hash_when_provider_is_wired()
+    {
+        var path = Path.GetTempFileName();
+        try {
+            SimClock.ResetForTest();
+            using var worker = new ParityEmitWorker();
+            worker.GetObjHash = () => 0x0123456789abcdefUL;
+            worker.Open(path);
+            for (int i = 0; i < 70; i++) { SimClock.Tick(); worker.Tick(); }
+
+            var line = File.ReadAllText(path).Trim();
+            // 16-hex lowercase, exactly as C formats obj_hash ("%016llx").
+            Assert.Contains("\"obj_hash\":\"0123456789abcdef\"", line);
+        } finally {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
     public void QuitAfterDeath_suppresses_the_post_death_menu_tail()
     {
         // Death scenarios freeze the wave snapshot and re-emit it as MENU rows

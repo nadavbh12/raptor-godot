@@ -1,10 +1,31 @@
 using Raptor.Sim;
+using Raptor.Test;
 using Xunit;
 
 namespace RaptorTests;
 
 public class DifficultyTests
 {
+    // The demo-replay path must establish difficulty BEFORE LoadWave (mirroring C,
+    // where RAP_SetPlayerDiff runs before RAP_LoadMap, INPUT.C:70->270) so the
+    // iter-0 spawn is filtered by the correct mask. The difficulty comes from the
+    // loadout snapshot (v2 demos); legacy demos (no snapshot) run at DIFF_3, since
+    // C's DEMO_MakePlayer sets plr.diff = DIFF_3 (INPUT.C:64-71).
+    [Theory]
+    [InlineData(0, 0)]
+    [InlineData(1, 1)]   // ROOKIE loadout → DIFF_1 (the parity-bug case: must NOT default to 2/3)
+    [InlineData(2, 2)]
+    [InlineData(3, 3)]
+    public void Demo_start_diff_uses_loadout_difficulty(int loadoutDiff, int expected)
+    {
+        var loadout = new DemoReplay.LoadoutData { Diff = loadoutDiff };
+        Assert.Equal(expected, WaveController.DemoStartDiff(loadout));
+    }
+
+    [Fact]
+    public void Demo_start_diff_defaults_to_elite_for_legacy_demos_without_loadout()
+        => Assert.Equal(3, WaveController.DemoStartDiff(null));
+
     // Mirrors RAP_SetPlayerDiff (LOADSAVE.C): EB_EASY=8, EB_MED=16, EB_HARD=32.
     [Theory]
     [InlineData(0, 8)]   // DIFF_0 (training) → EASY

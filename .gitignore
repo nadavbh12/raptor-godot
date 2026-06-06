@@ -24,6 +24,8 @@ Thumbs.db
 # Test artifacts
 # Generated local parity/video artifacts.
 dumps/
+# C-play benchmark recordings (input/state/lossless video/audio — large, local-only).
+benchmarks/
 # Transient comparator outputs.
 tests/parity_runs/
 # Transient L7 screenshots.

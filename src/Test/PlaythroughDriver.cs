@@ -139,7 +139,12 @@ public partial class PlaythroughDriver : Node
         {
             if (key == "D" && _wave != null)
             {
-                string demoPath = Path.Combine(ProjectSettings.GlobalizePath("res://assets"), "demos", "DEMO1G1_REC.json");
+                // RAPTOR_DEMO_PATH overrides the demo file — used to replay a
+                // recorded C benchmark (tools/rec_to_demo_json.py output) for
+                // frame-by-frame parity comparison. Defaults to the bundled demo.
+                string demoPath = OS.GetEnvironment("RAPTOR_DEMO_PATH");
+                if (string.IsNullOrEmpty(demoPath))
+                    demoPath = Path.Combine(ProjectSettings.GlobalizePath("res://assets"), "demos", "DEMO1G1_REC.json");
                 _wave.StartDemoPlayback(DemoReplay.LoadFile(demoPath), Sim.SimClock.Frame);
                 return;
             }

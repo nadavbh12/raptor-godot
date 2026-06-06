@@ -34,8 +34,59 @@ public sealed class Inventory
         public bool InUse;
     }
 
-    // p_objs[] equivalent: slot present + InUse == equipped.
-    private readonly Dictionary<ObjType, ObjSlot> _slots = new();
+    // p_objs[] equivalent: slot present + InUse == equipped. Insertion-ordered so
+    // obj_hash can walk it in C linked-list order (see SlotMap / ComputeObjHash).
+    private readonly SlotMap _slots = new();
+
+    /// <summary>
+    /// Insertion-ordered ObjType→ObjSlot map mirroring C's OBJ linked list
+    /// (OBJECTS.C): a new key links at the tail; Remove unlinks; a re-added key
+    /// links a fresh node at the tail. Exposes exactly the surface Inventory uses
+    /// (indexer, TryGetValue, Remove, Clear, ordered enumeration) so every existing
+    /// call site is unchanged. Ordering is load-bearing for obj_hash parity.
+    /// </summary>
+    private sealed class SlotMap : IEnumerable<KeyValuePair<ObjType, ObjSlot>>
+    {
+        private readonly Dictionary<ObjType, ObjSlot> _map = new();
+        private readonly List<ObjType> _order = new();
+
+        public ObjSlot this[ObjType key]
+        {
+            get => _map[key];
+            set
+            {
+                if (!_map.ContainsKey(key))
+                    _order.Add(key);
+                _map[key] = value;
+            }
+        }
+
+        public bool TryGetValue(ObjType key,
+            [System.Diagnostics.CodeAnalysis.MaybeNullWhen(false)] out ObjSlot value)
+            => _map.TryGetValue(key, out value);
+
+        public bool Remove(ObjType key)
+        {
+            if (!_map.Remove(key)) return false;
+            _order.Remove(key);
+            return true;
+        }
+
+        public void Clear()
+        {
+            _map.Clear();
+            _order.Clear();
+        }
+
+        public IEnumerator<KeyValuePair<ObjType, ObjSlot>> GetEnumerator()
+        {
+            foreach (var key in _order)
+                yield return new KeyValuePair<ObjType, ObjSlot>(key, _map[key]);
+        }
+
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator()
+            => GetEnumerator();
+    }
 
     /// <summary>
     /// Mirrors plr.sweapon. Null == EMPTY (no special weapon equipped).
@@ -248,6 +299,22 @@ public sealed class Inventory
     {
         foreach (var kvp in _slots)
             yield return (kvp.Key, kvp.Value.Num, kvp.Value.InUse);
+    }
+
+    // -----------------------------------------------------------------------
+    // obj_hash — mirrors C compute_obj_hash (port/platform/parity.c:160)
+    // -----------------------------------------------------------------------
+    /// <summary>
+    /// FNV-1a 64-bit hash over the owned objects in C linked-list order, folding
+    /// (type &amp; 0xff) then (num &amp; 0xff) per object. Matches the C parity
+    /// emitter's obj_hash field exactly (empty inventory → 0xcbf29ce484222325).
+    /// </summary>
+    public ulong ComputeObjHash() => ObjHash.Compute(HashObjs());
+
+    private IEnumerable<(int type, int num)> HashObjs()
+    {
+        foreach (var kvp in _slots)
+            yield return ((int)kvp.Key, kvp.Value.Num);
     }
 
     // -----------------------------------------------------------------------

@@ -205,6 +205,42 @@ public class MapSpawnScrollerTests
         Assert.Single(enemies);
     }
 
+    // ── Difficulty masks the wave-1 iter-0 group (the extra-enemy bug) ─────────
+
+    [Theory]
+    [InlineData(1, 2)]   // ROOKIE/DIFF_1 (mask EB_EASY=8): MED idx0 filtered → 2 (== C)
+    [InlineData(0, 2)]   // TRAINING/DIFF_0 (mask 8): same as ROOKIE → 2
+    [InlineData(2, 3)]   // VETERAN/DIFF_2 (mask EASY|MED=24): MED idx0 spawns → 3
+    [InlineData(3, 3)]   // ELITE/DIFF_3 (mask 56): MED idx0 spawns → 3
+    public void SpawnDueEnemies_Wave1Iter0Group_CountDependsOnDifficultyMask(int diff, int expected)
+    {
+        // The exact wave-1 iter-0 link-group from assets/levels/MAP1G1_MAP.json:
+        //   idx0: x=4 y=139 level=4 (E_MED_LEVEL)  link=0  (group head, tiley=139)
+        //   idx1: x=5 y=138 level=3 (E_EASY_LEVEL) link=0  (continues group)
+        //   idx2: x=3 y=138 level=3 (E_EASY_LEVEL) link=1  (ends group)
+        // idx0 is MED-tier, so it spawns only when the difficulty mask carries the
+        // MED bit. At ROOKIE (mask 8) it is filtered (16 & 8 == 0) → 2 enemies, the
+        // C ground truth; at VETERAN+ it spawns → 3.
+        var s = New();
+        s.ResetForWave();   // tiley = 139
+        var slib = SpriteMetaLibrary.FromList(new[] { Meta(32, 24) });
+        s.SetSprites(new List<MapSpriteEntry>
+        {
+            Sprite(x: 4, y: 139, slib: 0, level: 4, link: 0),
+            Sprite(x: 5, y: 138, slib: 0, level: 3, link: 0),
+            Sprite(x: 3, y: 138, slib: 0, level: 3, link: 1),
+        });
+
+        int mask = WaveController.SpawnMaskForDiff(diff);
+        var enemies = new List<EnemyLogic>();
+        s.SpawnDueEnemies(
+            slib, enemies,
+            sprite => (WaveController.GetEbLevel(sprite.Level) & mask) != 0,
+            bossLowHp: 0);
+
+        Assert.Equal(expected, enemies.Count);
+    }
+
     [Fact]
     public void SpawnDueEnemies_BossLowHpClampsBossHits()
     {

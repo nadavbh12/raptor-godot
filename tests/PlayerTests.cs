@@ -9,6 +9,17 @@ namespace Raptor.Tests;
 public class PlayerTests
 {
     [Fact]
+    public void TickDelta_applies_exact_per_iter_delta()
+    {
+        // Replay fallback for non-keyboard recordings: apply the recorded
+        // g_addx/g_addy directly (device-independent), bypassing the input ramp.
+        var p = new PlayerLogic();
+        p.TickDelta(5, -3);
+        Assert.Equal(PlayerLogic.InitX + 5, p.X);
+        Assert.Equal(PlayerLogic.InitY - 3, p.Y);
+    }
+
+    [Fact]
     public void Reset_returns_to_init_position()
     {
         var p = new PlayerLogic();
@@ -38,21 +49,22 @@ public class PlayerTests
     }
 
     [Fact]
-    public void Position_clamped_so_sprite_stays_inside_playfield_width()
+    public void Position_clamps_to_c_player_bounds()
     {
+        // C PUBLIC.H / INPUT.C:844-866 — the authoritative player-position clamps:
+        //   PLAYERMINX=5, PLAYERMAXX=314 (right edge), so playerx ∈ [5, 314-32=282];
+        //   MINPLAYERY=0, MAXPLAYERY=160 (top-left y, NOT screen-height minus sprite).
+        // Godot previously used screen-gutter values (16 / 304-32 / 200-32) which
+        // diverged from the C goldens once the player rode an edge (player_x@180).
         var p = new PlayerLogic();
+        for (int i = 0; i < 1000; i++) p.Tick(-1, 0);
+        Assert.Equal(5, p.X);                                  // PLAYERMINX
         for (int i = 0; i < 1000; i++) p.Tick(1, 0);
-
-        Assert.Equal(304, p.X + PlayerLogic.SpriteWidth);
-    }
-
-    [Fact]
-    public void Position_clamped_so_sprite_stays_above_bottom_screen_edge()
-    {
-        var p = new PlayerLogic();
+        Assert.Equal(314 - PlayerLogic.SpriteWidth, p.X);      // PLAYERMAXX - PLAYERWIDTH = 282
         for (int i = 0; i < 1000; i++) p.Tick(0, 1);
-
-        Assert.Equal(200, p.Y + PlayerLogic.SpriteHeight);
+        Assert.Equal(160, p.Y);                                // MAXPLAYERY
+        for (int i = 0; i < 1000; i++) p.Tick(0, -1);
+        Assert.Equal(0, p.Y);                                  // MINPLAYERY
     }
 
     // Shield / Alive tests (PlayerLogic already had Shield and TakeDamage from earlier stage)
