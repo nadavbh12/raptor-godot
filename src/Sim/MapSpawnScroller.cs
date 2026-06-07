@@ -43,6 +43,13 @@ internal sealed class MapSpawnScroller
     private int _tilepos;
     private int _tileyoff;
     private int _tiley;   // current spawn row: tilepos/MAP_COLS - 3
+    // Mirrors C's TILE.C scroll_flag/last_tile (TILE.C:30-31). scroll_flag starts
+    // TRUE and goes FALSE only at the map's own end (last_tile && tileyoff>=0,
+    // TILE.C:469-472); last_tile latches when tilepos reaches 0. The map scroll is
+    // decoupled from enemy-spawn exhaustion — it keeps advancing through the
+    // end-wave fly-off until the map ends (finding #13).
+    private bool _lastTile;
+    private bool _scrollFlag;
 
     // ── Map sprite list for spawning ──────────────────────────────────────────
     private List<MapSpriteEntry>? _mapSprites;
@@ -63,6 +70,12 @@ internal sealed class MapSpawnScroller
     public int TilePos  => _tilepos;
     /// <summary>Current spawn row in the tile grid (mirrors C's tiley).</summary>
     public int TileY    => _tiley;
+    /// <summary>
+    /// Whether the map is still scrolling (mirrors C's scroll_flag, TILE.C:30).
+    /// TRUE from wave start until the map's own end; stays TRUE through the
+    /// end-wave fly-off (the scroll is NOT frozen by enemy-spawn exhaustion).
+    /// </summary>
+    public bool ScrollFlag => _scrollFlag;
 
     /// <summary>Whether a wave's sprite list has been loaded (SetSprites called).</summary>
     public bool HasSprites => _mapSprites != null;
@@ -75,6 +88,8 @@ internal sealed class MapSpawnScroller
         _tilepos  = (_mapRows - _mapOnScreen) * _mapCols;
         _tileyoff = 200 - _mapOnScreen * _mapBlockSize;  // -56
         _tiley    = _tilepos / _mapCols - 3;             // = 139
+        _lastTile = false;     // C TILE.C:241/280
+        _scrollFlag = true;    // C TILE.C:240/279
     }
 
     /// <summary>
@@ -158,13 +173,31 @@ internal sealed class MapSpawnScroller
     /// </summary>
     public void AdvanceScroll()
     {
+        // Faithful port of C TILE_Display's scroll block (TILE.C:465-485). The
+        // map keeps advancing until last_tile (tilepos reached 0), then freezes
+        // (scroll_flag=FALSE, tileyoff pinned at 0). Before this fix the scroll
+        // never stopped here — it was frozen externally by WaveController's
+        // _endWaveFlag guard, which also froze it prematurely at enemy-spawn
+        // exhaustion (finding #13). Now the stop matches the map's own end.
         _tileyoff++;
         if (_tileyoff > 0)
         {
-            _tileyoff -= _mapBlockSize;
-            _tilepos  -= _mapCols;
-            _tiley     = _tilepos / _mapCols - 3;
-            if (_tilepos <= 0) _tilepos = 0;
+            if (_lastTile)
+            {
+                _tileyoff   = 0;
+                _scrollFlag = false;
+            }
+            else
+            {
+                _tileyoff -= _mapBlockSize;
+                _tilepos  -= _mapCols;
+                _tiley     = _tilepos / _mapCols - 3;
+            }
+            if (_tilepos <= 0)
+            {
+                _tilepos  = 0;
+                _lastTile = true;
+            }
         }
     }
 }

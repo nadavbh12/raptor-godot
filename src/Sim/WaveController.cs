@@ -433,12 +433,12 @@ public partial class WaveController : Node
     /// <summary>
     /// Whether the tile map is advancing this tick (mirrors C's scroll_flag,
     /// TILE.C:240/279/472). In C scroll_flag starts TRUE and goes FALSE only at
-    /// the very end of the map (last_tile && tileyoff >= 0). The port stops
-    /// advancing _tileyoff/_tilepos exactly when PhaseSpawn early-returns on
-    /// _endWaveFlag, which also freezes the visible scroll — so !_endWaveFlag is
-    /// true on precisely the ticks the map advances by 1px. Read-only / parity-inert.
+    /// the very end of the map (last_tile && tileyoff >= 0) — it keeps scrolling
+    /// through the end-wave fly-off, decoupled from enemy-spawn exhaustion. The
+    /// scroller owns the faithful flag now (finding #13); previously this returned
+    /// !_endWaveFlag, which froze the scroll prematurely. Read-only / parity-inert.
     /// </summary>
-    public bool IsScrolling => !_endWaveFlag;
+    public bool IsScrolling => _scroller.ScrollFlag;
     public int MapRows  => MAP_ROWS;
     public int MapCols  => MAP_COLS;
     public int MapOnScreen   => MAP_ONSCREEN;
@@ -943,7 +943,14 @@ public partial class WaveController : Node
 
     internal void PhaseSpawn()
     {
-        if (!_scroller.HasSprites || _slib == null || _endWaveFlag) return;
+        // C runs TILE_Think + ENEMY_DoSprites + TILE_Display every iter
+        // unconditionally (RAP.C:1058-1069); enemy-spawn exhaustion does NOT
+        // freeze the tile-slice or scroll. Gating this phase on _endWaveFlag froze
+        // the scroll prematurely (finding #13) — the spawn loop already no-ops once
+        // the sprite list is consumed, and AdvanceScroll now stops faithfully at
+        // the map's own end (scroll_flag). So only the no-sprites/no-slib guards
+        // remain.
+        if (!_scroller.HasSprites || _slib == null) return;
 
         _tiles.RefreshTileSliceForThink(_mapTiles, _scroller.TilePos, _scroller.TileYOff);
         // C TILE_Think (RAP.C:1058, before SHOTS_Think): the per-iter award scan

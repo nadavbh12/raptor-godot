@@ -90,17 +90,27 @@ public class MapSpawnScrollerTests
     }
 
     [Fact]
-    public void AdvanceScroll_ClampsTileposAtZero()
+    public void AdvanceScroll_StopsAtMapEnd_FreezesAndClearsScrollFlag()
     {
         var s = New();
         s.ResetForWave();
-        // Drive far past the end of the map; tilepos must clamp at 0 and stay there.
+        Assert.True(s.ScrollFlag);   // C scroll_flag starts TRUE (TILE.C:240/279).
+
+        // Drive far past the end of the map. C's TILE_Display (TILE.C:465-485)
+        // stops the scroll once last_tile is reached (tilepos<=0): it sets
+        // scroll_flag=FALSE and pins tileyoff at 0 — it does NOT keep advancing.
+        // (The map advance is decoupled from enemy-spawn exhaustion: scrolling
+        // continues through the end-wave fly-off until the map's own end —
+        // finding #13. The old code ran forever and overshot tiley to -4.)
         for (int i = 0; i < 100000; i++) s.AdvanceScroll();
+
+        Assert.False(s.ScrollFlag);  // scroll_flag FALSE at map end
         Assert.Equal(0, s.TilePos);
-        // After the clamp, tilepos stays 0, but tiley is recomputed BEFORE the
-        // clamp from the negative tilepos (-9): tiley = -9/9 - 3 = -4. (Once
-        // tilepos has overshot, every further crossing recomputes -4.)
-        Assert.Equal(-4, s.TileY);
+        Assert.Equal(0, s.TileYOff);
+        // tiley settles at tilepos/9 - 3 = -3, computed the tick tilepos hit 0,
+        // then frozen (C recomputes tiley=tilepos/9-3 in ENEMY_DoSprites every
+        // iter, so 0/9-3 = -3 forever). NOT the -4 the run-forever code reached.
+        Assert.Equal(-3, s.TileY);
     }
 
     // ── Spawn geometry (spawnX / mapY) ────────────────────────────────────────
