@@ -17,8 +17,19 @@ namespace Raptor.Sim;
 internal static class EnemyDeathEffects
 {
     private const int ExpAirLargeCode = 2;   // EXP_AIRLARGE (SOURCE/MAP.H)
+    private const int ExpGrdMed       = 4;   // EXP_GRDMED
+    private const int ExpGrdLarge     = 5;   // EXP_GRDLARGE
+    private const int ExpBoss         = 6;   // EXP_BOSS
     private const int ExpEnergy       = 8;   // EXP_ENERGY → NRGBANG_BLK + S_ITEMBUY6 bonus
     private const int ItemBuy6ObjType = 23;
+
+    // View explosion/anim codes used by the cascade spawns (DebugRenderer.ExpAnim).
+    // Visual-only (not in the parity checkpoint schema); the RNG draws are what must
+    // match C. Sub-anims without an ExpAnim slot (sparkle/flare) are not spawned.
+    private const int AMedAirExplo   = 1;    // A_MED_AIR_EXPLO   → LGFLAK_BLK
+    private const int AMedAirExplo2  = 10;   // A_MED_AIR_EXPLO2  → SMFLAK_BLK
+    private const int ALargeAirExplo = 1;    // A_LARGE_AIR_EXPLO → LGFLAK_BLK
+    private const int AGroundExplo   = 5;    // A_LARGE/SMALL_GROUND_EXPLO → GEXPLO_BLK
 
     internal readonly record struct Spawn(int ExpType, int X, int Y, int StartDelayIters);
     internal readonly record struct BonusDrop(int ObjType, int X, int Y, int InitialPos);
@@ -48,34 +59,70 @@ internal static class EnemyDeathEffects
         if (BonusForExplosionType(e.Meta.ExpType) is { } energyBonus)
             AddBonus(r, energyBonus, e.X, e.Y, rng);
 
-        // EXP_AIRLARGE fires (width/16 * height/16) medium explosions at deterministic
-        // pseudo-random offsets inside the sprite bounds (no RNG state mutated — the
-        // mixing hash uses prime multipliers).
-        if (e.Meta.ExpType == ExpAirLargeCode)
-        {
-            int w = e.Meta.Width;
-            int h = e.Meta.Height;
-            int count = (w >> 4) * (h >> 4);
-            uint hash = (uint)(e.X * 73856093 ^ e.Y * 19349663 ^ startIterForHash * 83492791);
-            for (int i = 0; i < count; i++)
-            {
-                hash = hash * 1103515245u + 12345u;
-                int ox = (int)((hash >> 8) % (uint)Math.Max(1, w));
-                hash = hash * 1103515245u + 12345u;
-                int oy = (int)((hash >> 8) % (uint)Math.Max(1, h));
-                int t = (i & 1) == 1 ? 1 /* EXP_AIRMED → A_MED_AIR_EXPLO */
-                                     : 10 /* EXP_AIRSMALL2 → A_MED_AIR_EXPLO2 */;
-                // Stagger start iteration slightly so the cascade doesn't appear all
-                // at once (matches C's per-loop ANIMS_StartAnim spacing).
-                r.Explosions.Add(new Spawn(t, e.X + ox, e.Y + oy, i % 4));
-            }
-        }
+        // Exptype debris cascade. C draws the shared rand() stream here
+        // (ENEMY.C:1152-1210), in this exact order, between the primary explosion
+        // and the trailing bonus. Masked under deterministic RNG (offsets collapse to
+        // center, no stream advance) but the draw count/order must match for
+        // non-deterministic parity (findings #4/#5).
+        AppendCascade(r, e, rng);
 
-        // ENEMY.C:1154-1155 drops the sprite's own bonus if lib->bonus is set.
+        // ENEMY.C:1221-1222 drops the sprite's own bonus if lib->bonus is set.
         if (e.Meta.Bonus >= 0)
             AddBonus(r, e.Meta.Bonus, e.X, e.Y, rng);
 
         return r;
+    }
+
+    private static void AppendCascade(Result r, EnemyLogic e, Random? rng)
+    {
+        int w  = Math.Max(1, e.Meta.Width);
+        int h  = Math.Max(1, e.Meta.Height);
+        int x0 = e.X, y0 = e.Y;
+        int area = (e.Meta.Width >> 4) * (e.Meta.Height >> 4);
+
+        switch (e.Meta.ExpType)
+        {
+            case ExpAirLargeCode:   // EXP_AIRLARGE: per area cell random(w), random(h)
+                for (int i = 0; i < area; i++)
+                {
+                    int ox = PlayerShooter.NextRandom(rng, w, "airlarge.x");
+                    int oy = PlayerShooter.NextRandom(rng, h, "airlarge.y");
+                    int t  = (i & 1) == 1 ? AMedAirExplo : AMedAirExplo2;
+                    r.Explosions.Add(new Spawn(t, x0 + ox, y0 + oy, i % 4));
+                }
+                break;
+
+            case ExpGrdMed:         // EXP_GRDMED: random(w), random(h), random(2)
+            {
+                int gx = PlayerShooter.NextRandom(rng, w, "grdmed.x");
+                int gy = PlayerShooter.NextRandom(rng, h, "grdmed.y");
+                PlayerShooter.NextRandom(rng, 2, "grdmed.pick");   // sparkle/flare select (View)
+                r.Explosions.Add(new Spawn(AGroundExplo, x0 + e.Meta.HalfX, y0 + e.Meta.HalfY, 0));
+                _ = gx; _ = gy;
+                break;
+            }
+
+            case ExpGrdLarge:       // EXP_GRDLARGE: per area cell random(w), random(h), random(2)
+                r.Explosions.Add(new Spawn(AGroundExplo, x0 + e.Meta.HalfX, y0 + e.Meta.HalfY, 0));
+                for (int i = 0; i < area; i++)
+                {
+                    int gx = PlayerShooter.NextRandom(rng, w, "grdlarge.x");
+                    int gy = PlayerShooter.NextRandom(rng, h, "grdlarge.y");
+                    PlayerShooter.NextRandom(rng, 2, "grdlarge.pick");   // flare/sparkle select (View)
+                    r.Explosions.Add(new Spawn(AGroundExplo, x0 + gx, y0 + gy, i % 4));
+                }
+                break;
+
+            case ExpBoss:           // EXP_BOSS: per area cell random(w), random(h)
+                for (int i = 0; i < area; i++)
+                {
+                    int bx = PlayerShooter.NextRandom(rng, w, "boss.x");
+                    int by = PlayerShooter.NextRandom(rng, h, "boss.y");
+                    int t  = (i & 1) == 1 ? ALargeAirExplo : AMedAirExplo2;
+                    r.Explosions.Add(new Spawn(t, x0 + bx, y0 + by, i % 4));
+                }
+                break;
+        }
     }
 
     private static void AddBonus(Result r, int objType, int enemyX, int enemyY, Random? rng)
