@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using Raptor.Sim;
 using Raptor.Sim.Bullet;
 using Raptor.Sim.Enemy;
+using Raptor.Sim.Shots;
 using Xunit;
 
 namespace Raptor.Tests;
@@ -34,6 +35,74 @@ public class CollisionDetectionTests
 
         Assert.Single(outHits);
         Assert.Same(enemy, outHits[0].enemy);
+    }
+
+    private static EnemyLogic BeamEnemy(int hits, int x, int y, int flightType = 1)
+        => new EnemyLogic(new SpriteMeta
+        {
+            Hits = hits, NumFlight = 0, FlightType = flightType, Width = 32, Height = 24,
+        }, spawnX: x, mapY: y);
+
+    private static BulletLogic Beam(int x, int damage, HitType ht = HitType.All)
+    {
+        var b = BulletLogic.VerticalBeam(x: x, y: 0, life: 5, damage: damage,
+                                         startPlayerX: x, startPlayerY: 200);
+        b.HitType = ht;
+        return b;
+    }
+
+    [Fact]
+    public void CollectBeamEnemyHits_has_no_hittype_gate_hits_ground_enemy()
+    {
+        // Finding #9: C's S_BEAM loop (SHOTS.C:1092-1106) is purely geometric — no
+        // air/ground gate. FORWARD_LASER sets ht=S_AIR but meffect=TRUE skips the
+        // ht-based switch (SHOTS.C:1155), so the beam hits air AND ground alike.
+        // Godot's spurious HitTypeMatches gate blocked HitType.Air beams from ground.
+        var ground = BeamEnemy(hits: 10, x: 100, y: 50, flightType: 3);  // IsGround
+        var outHits = new List<(EnemyLogic enemy, int dmg)>();
+
+        CollisionDetection.CollectBeamEnemyHits(
+            new List<BulletLogic> { Beam(110, 3, HitType.Air) },
+            new List<EnemyLogic> { ground }, playerCy: 200, outHits);
+
+        Assert.Single(outHits);
+        Assert.Same(ground, outHits[0].enemy);
+    }
+
+    [Fact]
+    public void CollectBeamEnemyHits_continues_past_enemy_landing_on_minus_one()
+    {
+        // Finding #24: C breaks only when post-subtraction hits != -1
+        // (SHOTS.C:1099-1101). An enemy reduced to exactly -1 is passed THROUGH and
+        // the beam continues to the next enemy in the column. Hits=5, damage=6 → -1.
+        var first  = BeamEnemy(hits: 5,  x: 100, y: 30);
+        var second = BeamEnemy(hits: 10, x: 100, y: 60);
+        var outHits = new List<(EnemyLogic enemy, int dmg)>();
+
+        CollisionDetection.CollectBeamEnemyHits(
+            new List<BulletLogic> { Beam(110, 6) },
+            new List<EnemyLogic> { first, second }, playerCy: 200, outHits);
+
+        Assert.Equal(2, outHits.Count);
+        Assert.Same(first, outHits[0].enemy);
+        Assert.Same(second, outHits[1].enemy);
+    }
+
+    [Fact]
+    public void CollectBeamEnemyHits_breaks_when_post_damage_hits_not_minus_one()
+    {
+        // Control for #24: a normal hit (post-damage hits != -1, e.g. 20-6=14) still
+        // breaks the beam after the first enemy — beams do NOT pierce in general.
+        var first  = BeamEnemy(hits: 20, x: 100, y: 30);
+        var second = BeamEnemy(hits: 10, x: 100, y: 60);
+        var outHits = new List<(EnemyLogic enemy, int dmg)>();
+
+        CollisionDetection.CollectBeamEnemyHits(
+            new List<BulletLogic> { Beam(110, 6) },
+            new List<EnemyLogic> { first, second }, playerCy: 200, outHits);
+
+        Assert.Single(outHits);
+        Assert.Same(first, outHits[0].enemy);
     }
 
     [Fact]
