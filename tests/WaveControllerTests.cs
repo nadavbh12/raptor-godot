@@ -185,6 +185,14 @@ public class WaveControllerTests
 
         // End-wave suppression takes precedence over the DIFF_0 halving.
         Assert.Equal(0, WaveController.GateSubEnergyDamage(10, endWaveActive: true, curPlayerDiff: 0));
+
+        // Player-death countdown also arms C's startendwave (RAP.C:575-576), so
+        // OBJS_SubEnergy's `startendwave != EMPTY` early-return (OBJECTS.C:1267)
+        // suppresses damage during death too — not only end-wave (finding #19).
+        Assert.Equal(0, WaveController.GateSubEnergyDamage(10, endWaveActive: false, curPlayerDiff: 2, deathActive: true));
+        // Death suppression takes precedence over DIFF_0 halving, same as end-wave.
+        Assert.Equal(0, WaveController.GateSubEnergyDamage(10, endWaveActive: false, curPlayerDiff: 0, deathActive: true));
+        // deathActive defaults to false: the original 5 calls above are unaffected.
     }
 
     [Fact]

@@ -1283,7 +1283,7 @@ public partial class WaveController : Node
     private void ApplyPlayerDamage(int amt)
     {
         if (_godmode) return;  // RAPTOR_GODMODE capture hook: invuln (parity-inert; env off in all scenarios).
-        int dmg = GateSubEnergyDamage(amt, endWaveActive: _endWave.Active, _curPlayerDiff);
+        int dmg = GateSubEnergyDamage(amt, endWaveActive: _endWave.Active, _curPlayerDiff, deathActive: _playerDeath.Active);
         if (dmg > 0) PlayerLogic.TakeDamage(dmg);
     }
 
@@ -1560,17 +1560,20 @@ public partial class WaveController : Node
 
 
     /// <summary>
-    /// Pure-C# port of the pre-drain gates in OBJS_SubEnergy (OBJECTS.C:1227-1235):
-    /// damage is suppressed entirely during the end-wave fly-off
-    /// (startendwave != EMPTY), and halved for amounts &gt; 1 in training mode
-    /// (curplr_diff == DIFF_0). The godmode gate is omitted — the port has no
-    /// godmode input path. Returns the effective damage to apply.
+    /// Pure-C# port of the pre-drain gates in OBJS_SubEnergy (OBJECTS.C:1265-1267):
+    /// damage is suppressed entirely whenever C's single `startendwave != EMPTY`
+    /// flag is set — which covers BOTH the end-wave fly-off (armed at ENEMY.C:392)
+    /// AND the player-death countdown (armed at RAP.C:575-576). Damage is halved
+    /// for amounts &gt; 1 in training mode (curplr_diff == DIFF_0). The godmode
+    /// gate is omitted — the port has no godmode input path. Returns the effective
+    /// damage to apply.
     /// </summary>
-    internal static int GateSubEnergyDamage(int amt, bool endWaveActive, int curPlayerDiff)
+    internal static int GateSubEnergyDamage(int amt, bool endWaveActive, int curPlayerDiff, bool deathActive = false)
     {
-        // C:1229  if (startendwave != EMPTY) return 0 — no damage during end-wave.
-        if (endWaveActive) return 0;
-        // C:1233-1234  if (curplr_diff == DIFF_0 && amt > 1) amt = amt>>1.
+        // C:1267  if (startendwave != EMPTY) return 0 — the single C flag is set
+        // for the end-wave fly-off AND the player-death countdown (RAP.C:575).
+        if (endWaveActive || deathActive) return 0;
+        // C:1271-1272  if (curplr_diff == DIFF_0 && amt > 1) amt = amt>>1.
         if (curPlayerDiff == 0 && amt > 1) amt >>= 1;
         return amt;
     }
