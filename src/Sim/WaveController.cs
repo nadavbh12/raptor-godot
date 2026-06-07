@@ -840,7 +840,14 @@ public partial class WaveController : Node
 
             if (_debugDemoReplay && _demo.RecordIndex <= 40)
                 GD.Print($"demo tick fc={SimClock.Frame} rec={_demo.RecordIndex - 1} px={frame.Px} py={frame.Py} exact={_demoExactReplay}");
-            if (_demoExactReplay)
+            // The end-wave fly-off is a FORCED move (IPT_FMovePlayer, ~-8 px/iter
+            // unclamped) with zero key input — it cannot be reproduced by recomputing
+            // from the recorded dirs. C's DEMO_PLAYBACK forces the recorded position
+            // throughout, so during the fly-off (wave cleared: spawns exhausted + no
+            // enemies left) we likewise force the recorded px/py instead of recomputing.
+            bool flyoffActive = _endWaveFlag
+                && !_enemies.Exists(e => e.Alive || e.PendingRemovalDump);
+            if (_demoExactReplay && !flyoffActive)
             {
                 // Recompute movement so Godot's own movement code is exercised and
                 // its result (X/Y/Pic) is compared against the recorded px/py oracle.
@@ -859,7 +866,8 @@ public partial class WaveController : Node
             }
             else
             {
-                // Legacy demo: force the recorded position (C DEMO_PLAYBACK).
+                // Legacy demo, or the end-wave fly-off: force the recorded position
+                // (mirrors C DEMO_PLAYBACK forcing playback[].px/py).
                 PlayerLogic.ApplyDemoFrame(frame.Px, frame.Py, frame.PlayerPic);
             }
             _objUsedThisIter = _buttonInput.ApplyDemo(frame, Shooter, PlayerLogic, _weaponTargetEnemies, _enemies, _playerBullets, _shooterRng);
