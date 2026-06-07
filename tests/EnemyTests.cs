@@ -590,4 +590,68 @@ public class EnemyLogicTests
         e.Tick();  // y becomes 1, x slides by 3 → -74
         Assert.Equal((-74, 1), (e.X, e.Y));
     }
+
+    // Regression (F_REPEAT flight parity — latent flight finding split out from #2):
+    // at a ping-pong reversal C re-targets the SAME waypoint the boss already sits
+    // on — a ZERO-LENGTH segment. C's InitMobj leaves addx=1, maxloop=delx+1=1, so
+    // MoveMobj/MoveEobj DRIFT the boss one extra pixel before reversing (an authentic
+    // C quirk). Godot used to special-case zero-length in InitBresenhamForTarget
+    // (maxloop=0, moveDone, no drift) → a "clean" reversal that diverged from C at
+    // the first turn (the wave-1 boss SHIP10G1). NOTE the `if maxloop<1 done` post-
+    // loop check in MoveEobjSteps is FAITHFUL (C ENEMY.C:149-150) and must stay; only
+    // the special case is the bug.
+    //
+    // Golden = the C enemy-flight Bresenham (RAP.C InitMobj/MoveMobj + ENEMY.C
+    // MoveEobj) ported + verified in tools/flight_parity_check.py: with the special
+    // case present Godot diverges from C at tick 158; with it removed they match for
+    // 2000 ticks. EnemyLogic.X/Y is the PRE-move snapshot (C sets sprite->x from
+    // move.x before MoveEobj runs), so actual[t] == golden[t-1] (one-tick offset).
+    [Fact]
+    public void F_repeat_flight_matches_c_bresenham_through_reversals()
+    {
+        var meta = new SpriteMeta
+        {
+            Hits       = 100000,   // stay alive for the whole window
+            MoveSpeed  = 2,
+            NumFlight  = 8,
+            FlightType = 0,        // F_REPEAT (ping-pong)
+            FlightX    = new[] {   0,  64,  64,   8,  -8, -64, -64,  -4 },  // SHIP10G1
+            FlightY    = new[] { -72, -32,  -8,  32,  32,  -8, -32, -70 },
+            Repos      = 0,
+            NumGuns    = 0,
+            // Height defaults to 24 → HalfY 12 → flight home _sy = 100 - 12 = 88.
+        };
+        // C (x,y) for ticks 1..180 (post-move), from flight_parity_check.py.
+        int[] golden = {
+            160,3,160,5,160,7,160,9,160,11,160,13,160,15,161,17,163,18,165,19,
+            167,21,169,22,171,23,173,24,175,26,177,27,179,28,181,29,183,31,185,32,
+            187,33,189,34,191,36,193,37,195,38,197,39,199,41,201,42,203,43,205,44,
+            207,46,209,47,211,48,213,49,215,51,217,52,219,53,221,54,223,56,224,57,
+            224,59,224,61,224,63,224,65,224,67,224,69,224,71,224,73,224,75,224,77,
+            224,79,223,81,221,82,219,84,217,85,215,87,213,88,211,89,209,91,207,92,
+            205,94,203,95,201,97,199,98,197,99,195,101,193,102,191,104,189,105,187,107,
+            185,108,183,109,181,111,179,112,177,114,175,115,173,117,171,118,169,119,167,120,
+            165,120,163,120,161,120,159,120,157,120,155,120,153,120,151,119,149,118,147,116,
+            145,115,143,113,141,112,139,111,137,109,135,108,133,106,131,105,129,103,127,102,
+            125,101,123,99,121,98,119,96,117,95,115,93,113,92,111,91,109,89,107,88,
+            105,86,103,85,101,83,99,82,97,81,96,79,96,77,96,75,96,73,96,71,96,69,
+            96,67,96,65,96,63,96,61,96,59,96,57,97,55,99,54,101,53,103,51,105,50,
+            107,49,109,48,111,46,113,45,115,44,117,43,119,41,121,40,123,39,125,37,
+            127,36,129,35,131,34,133,32,135,31,137,30,139,29,141,27,143,26,145,25,
+            147,24,149,22,151,21,153,20,155,18,157,18,155,19,153,20,151,21,149,23,
+            147,24,145,25,143,26,141,28,139,29,137,30,135,31,133,33,131,34,129,35,
+            127,37,125,38,123,39,121,40,119,42,117,43,115,44,113,45,
+        };
+
+        var e = new EnemyLogic(meta, spawnX: 160, mapY: 0);
+        var actual = new (int x, int y)[181];
+        for (int t = 0; t < 181; t++)
+        {
+            e.Tick();
+            actual[t] = (e.X, e.Y);
+        }
+
+        for (int t = 1; t <= 180; t++)
+            Assert.Equal((golden[2 * (t - 1)], golden[2 * (t - 1) + 1]), actual[t]);
+    }
 }

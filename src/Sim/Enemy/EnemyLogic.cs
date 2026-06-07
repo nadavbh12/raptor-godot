@@ -485,20 +485,15 @@ public sealed class EnemyLogic
         _tgtX = toX;
         _tgtY = toY;
 
-        // Zero-length segment (target == current position). F_REPEAT hits this
-        // immediately after a direction reversal, because C re-uses the last
-        // waypoint as the next target on the reversal tick. Marking done here
-        // lets AdvanceFlightSegment fire again immediately on the next tick.
-        if (fromX == toX && fromY == toY)
-        {
-            _addX = _addY = 0;
-            _delX = _delY = 0;
-            _err = 0;
-            _maxloop = 0;
-            _moveDone = true;
-            return;
-        }
-
+        // No zero-length special case: C's InitMobj (RAP.C:339) does NOT short-
+        // circuit when target == current position. F_REPEAT hits this on a
+        // direction reversal (C re-uses the just-reached waypoint as the next
+        // target), where delx=dely=0 → maxloop=delx+1=1, addx=1, so the
+        // subsequent MoveMobj/MoveEobj DRIFT the boss one extra pixel before the
+        // next reversal (an authentic C quirk). Special-casing it here made the
+        // ping-pong reverse "cleanly" and diverge from C at the first turn
+        // (latent flight finding split out from #2; verified vs C 2000 ticks in
+        // tools/flight_parity_check.py).
         _addX = 1; _addY = 1;
         _delX = toX - fromX;
         _delY = toY - fromY;
