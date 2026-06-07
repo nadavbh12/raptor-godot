@@ -299,6 +299,53 @@ public class WaveControllerTests
         finally { Raptor.Sim.DeterministicRandom.Override = prev; }
     }
 
+    [Fact]
+    public void Boss_low_health_smoke_gates_on_bossflag_hits50_and_glcnt2()
+    {
+        // Finding #18. ENEMY.C:1090-1093 — a boss draws low-health smoke when
+        // bossflag && hits < 50 && (gl_cnt & 2). gl_cnt is incremented BEFORE
+        // ENEMY_Think (RAP.C:1056) while Godot increments _gameLoopIter AFTER the
+        // phase, so at the check gl_cnt == _gameLoopIter + 1 (both sides emit the
+        // same iter-aligned checkpoint, so the post-increment values coincide).
+        var boss = new EnemyLogic(
+            new SpriteMeta { IName = "BOSS", Hits = 40, BossFlag = 1, Width = 64, Height = 48 },
+            spawnX: 100, mapY: 0);                                  // Hits = 40 (< 50), not nerfed (diff 2)
+        var nonBoss = new EnemyLogic(
+            new SpriteMeta { IName = "SHIP", Hits = 40, BossFlag = 0 }, spawnX: 100, mapY: 0);
+        var healthyBoss = new EnemyLogic(
+            new SpriteMeta { IName = "BOSS", Hits = 100, BossFlag = 1, Width = 64, Height = 48 },
+            spawnX: 100, mapY: 0);
+
+        // gl_cnt & 2 is set when (gameLoopIter+1) has bit 1 set:
+        Assert.True (WaveController.BossSmokeFires(boss, gameLoopIter: 1));  // gl_cnt=2 -> &2=2
+        Assert.True (WaveController.BossSmokeFires(boss, gameLoopIter: 2));  // gl_cnt=3 -> &2=2
+        Assert.False(WaveController.BossSmokeFires(boss, gameLoopIter: 3));  // gl_cnt=4 -> &2=0
+        Assert.False(WaveController.BossSmokeFires(boss, gameLoopIter: 0));  // gl_cnt=1 -> &2=0
+        Assert.False(WaveController.BossSmokeFires(nonBoss, gameLoopIter: 1));      // not a boss
+        Assert.False(WaveController.BossSmokeFires(healthyBoss, gameLoopIter: 1));  // hits >= 50
+    }
+
+    [Fact]
+    public void Boss_smoke_draws_two_random_over_body()
+    {
+        // ENEMY.C:1095-1096 — x = sprite->x + random(width); y = sprite->y +
+        // random(height): two shared random() draws (inert under deterministic RNG).
+        var prev = Raptor.Sim.DeterministicRandom.Override;
+        Raptor.Sim.DeterministicRandom.Override = false;
+        try
+        {
+            var boss = new EnemyLogic(
+                new SpriteMeta { IName = "BOSS", Hits = 40, BossFlag = 1, Width = 64, Height = 48 },
+                spawnX: 100, mapY: 0);
+            var rng = new CountingRandom();
+            var (x, y) = WaveController.BossSmokePos(boss, rng);
+            Assert.Equal(2, rng.Count);                  // exactly two draws: random(64), random(48)
+            Assert.InRange(x - boss.X, 0, 63);           // sprite->x + random(width)
+            Assert.InRange(y - boss.Y, 0, 47);           // sprite->y + random(height)
+        }
+        finally { Raptor.Sim.DeterministicRandom.Override = prev; }
+    }
+
     [Theory]
     [InlineData(true, false, true, true, false, true)]   // all met -> complete
     [InlineData(true, false, true, true, true, false)]   // enemies remain -> wait

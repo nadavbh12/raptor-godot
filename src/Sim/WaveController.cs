@@ -994,6 +994,13 @@ public partial class WaveController : Node
                 foreach (var b in extras) AddEnemyBullet(b);
         }
 
+        // ENEMY.C:1090-1098 — a boss below 50 HP smokes on alternate game-loop
+        // frames (gl_cnt & 2), drawing two shared random() per qualifying iter.
+        // This sits in the ENEMY_Think per-enemy position: after the enemy ticks
+        // (shoots), before its body-crash draw (finding #18). Inert under
+        // deterministic RNG (no stream advance; smoke lands at the boss midpoint).
+        ApplyBossLowHealthSmoke();
+
         // C handles body collision and enemy death side effects inside
         // ENEMY_Think, before BONUS_Think. A shot-killed enemy can still
         // body-crash this iter, then drop a bonus that immediately gets the
@@ -1280,6 +1287,51 @@ public partial class WaveController : Node
         int jx = PlayerShooter.NextRandom(rng, 8, "bodycrash.x") - 4;
         int jy = PlayerShooter.NextRandom(rng, 8, "bodycrash.y") - 4;
         return (playerCx + jx, playerCy + jy);
+    }
+
+    /// <summary>
+    /// Whether a boss draws its low-health smoke this iter (finding #18,
+    /// ENEMY.C:1090-1093): bossflag &amp;&amp; hits &lt; 50 &amp;&amp; (gl_cnt &amp; 2). C's gl_cnt is
+    /// incremented BEFORE ENEMY_Think (RAP.C:1056); Godot increments
+    /// <c>_gameLoopIter</c> AFTER the phase, and both sides emit the same
+    /// iter-aligned checkpoint — so at the ENEMY_Think point
+    /// <c>gl_cnt == _gameLoopIter + 1</c>. Static so the frame gate is unit-testable.
+    /// </summary>
+    internal static bool BossSmokeFires(EnemyLogic e, int gameLoopIter)
+        => e.IsBoss && e.Hits < 50 && (((gameLoopIter + 1) & 2) != 0);
+
+    /// <summary>
+    /// C boss low-health smoke position (ENEMY.C:1095-1096): two shared random()
+    /// draws over the boss's width/height jitter A_SMALL_AIR_EXPLO across its body.
+    /// Static so the draw count/order is unit-testable; inert under deterministic
+    /// RNG (lands at the boss top-left + each dimension's midpoint).
+    /// </summary>
+    internal static (int x, int y) BossSmokePos(EnemyLogic e, System.Random? rng)
+    {
+        int rx = PlayerShooter.NextRandom(rng, e.Meta.Width, "boss.smoke.x");
+        int ry = PlayerShooter.NextRandom(rng, e.Meta.Height, "boss.smoke.y");
+        return (e.X + rx, e.Y + ry);
+    }
+
+    /// <summary>
+    /// ENEMY.C:1090-1098 — emit the boss low-health smoke for every alive boss
+    /// below 50 HP on a gl_cnt&amp;2 frame. Runs in the ENEMY_Think per-enemy
+    /// position (after the enemy ticks/shoots, before its body-crash draw). For a
+    /// lone low-HP boss — the realistic case — this reproduces C's per-enemy RNG
+    /// order exactly; with multiple draw-eligible enemies the per-phase model
+    /// shares the existing body-crash/death ordering caveat (masked under
+    /// deterministic RNG). The A_SMALL_AIR_EXPLO maps to <c>ExpAirSmall2</c>, the
+    /// same block the body-crash explosion uses (ENEMY.C:1116).
+    /// </summary>
+    private void ApplyBossLowHealthSmoke()
+    {
+        foreach (var e in _enemies)
+        {
+            if (!e.Alive) continue;
+            if (!BossSmokeFires(e, _gameLoopIter)) continue;
+            var (sx, sy) = BossSmokePos(e, _shooterRng);
+            AddExplosion(ExpAirSmall2, sx, sy);
+        }
     }
 
     internal static bool EnemyBodyCrashContainsPlayer(EnemyLogic e, int playerCx, int playerCy)
