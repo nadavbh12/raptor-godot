@@ -1390,7 +1390,17 @@ public partial class WaveController : Node
     private void ApplyPlayerDamage(int amt)
     {
         if (_godmode) return;  // RAPTOR_GODMODE capture hook: invuln (parity-inert; env off in all scenarios).
-        int dmg = GateSubEnergyDamage(amt, endWaveActive: _endWave.Active, _curPlayerDiff, deathActive: _playerDeath.Active);
+        // C arms startendwave — which makes OBJS_SubEnergy a no-op (OBJECTS.C:1267)
+        // — in ENEMY_Remove the instant the last enemy is removed (end_waveflag &&
+        // numships<1, ENEMY.C:391), DURING ENEMY_Think, i.e. BEFORE ESHOT_Think
+        // applies that iter's enemy-bullet damage. Godot's _endWave sequencer only
+        // flips Active in PhaseCleanup (after this collision-resolve phase), so the
+        // iter the wave clears the player still took the in-flight hits (wave 2 ended
+        // 4 shield low). The dead boss is already removed in PhaseMovement, so mirror
+        // C's arm condition directly here.
+        bool endWaveArmed = _endWave.Active
+            || (_endWaveFlag && !_enemies.Exists(e => e.Alive || e.PendingRemovalDump));
+        int dmg = GateSubEnergyDamage(amt, endWaveActive: endWaveArmed, _curPlayerDiff, deathActive: _playerDeath.Active);
         if (dmg > 0) PlayerLogic.TakeDamage(dmg);
     }
 
