@@ -242,6 +242,20 @@ public class WaveControllerTests
     }
 
     [Fact]
+    public void Bonus_add_gates_mirror_c_caps()
+    {
+        // Finding #6. C BONUS_Add (BONUS.C:172-182): reject >= S_LAST_OBJECT(24),
+        // reject S_ITEMBUY6(23) when energy_count > MAX_MONEY(9), reject when the
+        // 12-slot pool is full — all BEFORE the random(16) draw.
+        Assert.True(WaveController.BonusAddPasses(objType: 5, liveBonusCount: 0, energyCount: 0));
+        Assert.False(WaveController.BonusAddPasses(objType: 24, liveBonusCount: 0, energyCount: 0));  // >= S_LAST_OBJECT
+        Assert.False(WaveController.BonusAddPasses(objType: 23, liveBonusCount: 0, energyCount: 10)); // ITEMBUY6 over MAX_MONEY
+        Assert.True(WaveController.BonusAddPasses(objType: 23, liveBonusCount: 0, energyCount: 9));   // ==MAX_MONEY allowed (C: > )
+        Assert.False(WaveController.BonusAddPasses(objType: 5, liveBonusCount: 12, energyCount: 0));  // pool full
+        Assert.True(WaveController.BonusAddPasses(objType: 5, liveBonusCount: 11, energyCount: 0));   // one slot left
+    }
+
+    [Fact]
     public void Body_crash_draws_two_random8_and_jitters_explosion()
     {
         // Finding #7. ENEMY.C:1114-1115 — the body-crash explosion is jittered by

@@ -299,6 +299,9 @@ public partial class WaveController : Node
     private readonly List<BulletLogic>  _playerBullets = new();
     private readonly List<BulletLogic>  _enemyBullets  = new();
     private readonly List<BonusLogic>   _bonuses       = new();
+    // C BONUS.C energy_count: live count of S_ITEMBUY6 money bonuses. Gates new
+    // ITEMBUY6 spawns at MAX_MONEY (finding #6). Reset per wave (BONUS_Clear).
+    private int _energyCount;
     private readonly List<EnemyLogic>   _weaponTargetEnemies = new();
 
     // Mirrors C's BONUS_Think static `gcnt` (BONUS.C:205): incremented once per
@@ -706,6 +709,7 @@ public partial class WaveController : Node
         _playerBullets.Clear();
         _enemyBullets.Clear();
         _bonuses.Clear();
+        _energyCount = 0;            // C BONUS_Clear resets energy_count (BONUS.C:65)
         _weaponTargetEnemies.Clear();
         _hitEnemies.Clear();
         _shotDoneAfterCollision.Clear();
@@ -1484,10 +1488,36 @@ public partial class WaveController : Node
             AddExplosion(ex.ExpType, ex.X, ex.Y, ex.StartDelayIters);
         foreach (var b in fx.Bonuses)
         {
-            var bonus = new BonusLogic(b.ObjType, b.X, b.Y, b.InitialPos);
+            // C BONUS_Add (BONUS.C:172-192): admission caps are checked BEFORE the
+            // random(16) pos draw (finding #6) — reject types >= S_LAST_OBJECT,
+            // S_ITEMBUY6 over MAX_MONEY, or a full 12-slot pool, drawing nothing.
+            if (!BonusAddPasses(b.ObjType, _bonuses.Count, _energyCount)) continue;
+            if (b.ObjType == ItemBuy6ObjType) _energyCount++;
+            int pos = PlayerShooter.NextRandom(_shooterRng, 16, "bonus.pos");
+            var bonus = new BonusLogic(b.ObjType, b.X, b.Y, pos);
             _bonuses.Add(bonus);
             TraceBonus("add", bonus);
         }
+    }
+
+    // BONUS.H caps for the live bonus pool.
+    internal const int MaxBonus        = 12;  // MAX_BONUS — pool size (BONUS_Get NULL when full)
+    internal const int MaxMoney        = 9;   // MAX_MONEY — ITEMBUY6 energy_count cap
+    private  const int ItemBuy6ObjType = 23;  // S_ITEMBUY6
+    private  const int SLastObject     = 24;  // S_LAST_OBJECT
+
+    /// <summary>
+    /// C BONUS_Add admission gates (BONUS.C:172-182), checked BEFORE the random(16)
+    /// pos draw: reject types >= S_LAST_OBJECT, reject S_ITEMBUY6 when energy_count
+    /// exceeds MAX_MONEY, and reject when the 12-slot pool is full (BONUS_Get NULL).
+    /// Static so the gate is unit-testable without the Godot Node.
+    /// </summary>
+    internal static bool BonusAddPasses(int objType, int liveBonusCount, int energyCount)
+    {
+        if (objType >= SLastObject) return false;
+        if (objType == ItemBuy6ObjType && energyCount > MaxMoney) return false;
+        if (liveBonusCount >= MaxBonus) return false;
+        return true;
     }
 
     internal void PhaseCleanup()
@@ -1498,6 +1528,9 @@ public partial class WaveController : Node
         // Remove out-of-bounds bullets.
         _playerBullets.RemoveAll(b => !b.Alive);
         _enemyBullets.RemoveAll(b => !b.Alive);
+        // C BONUS_Remove decrements energy_count for each removed S_ITEMBUY6 (BONUS.C:117).
+        foreach (var b in _bonuses)
+            if (!b.Alive && b.ObjType == ItemBuy6ObjType) _energyCount--;
         _bonuses.RemoveAll(b => !b.Alive);
 
         // Drop finished explosions. Frames-per-animation is determined by the

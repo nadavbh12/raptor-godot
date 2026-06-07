@@ -32,7 +32,10 @@ internal static class EnemyDeathEffects
     private const int AGroundExplo   = 5;    // A_LARGE/SMALL_GROUND_EXPLO → GEXPLO_BLK
 
     internal readonly record struct Spawn(int ExpType, int X, int Y, int StartDelayIters);
-    internal readonly record struct BonusDrop(int ObjType, int X, int Y, int InitialPos);
+    // A requested bonus drop. The random(16) wobble pos is NOT drawn here — C draws
+    // it in BONUS_Add only AFTER the pool/energy caps pass, so WaveController draws
+    // it at admission time (finding #6).
+    internal readonly record struct BonusDrop(int ObjType, int X, int Y);
 
     internal sealed class Result
     {
@@ -55,9 +58,9 @@ internal static class EnemyDeathEffects
         // Primary explosion at the enemy centre.
         r.Explosions.Add(new Spawn(e.Meta.ExpType, e.X + e.Meta.HalfX, e.Y + e.Meta.HalfY, 0));
 
-        // EXP_ENERGY explosions also drop an S_ITEMBUY6 bonus (drawn before the cascade).
+        // EXP_ENERGY explosions also drop an S_ITEMBUY6 bonus (requested before the cascade).
         if (BonusForExplosionType(e.Meta.ExpType) is { } energyBonus)
-            AddBonus(r, energyBonus, e.X, e.Y, rng);
+            AddBonus(r, energyBonus, e.X, e.Y);
 
         // Exptype debris cascade. C draws the shared rand() stream here
         // (ENEMY.C:1152-1210), in this exact order, between the primary explosion
@@ -68,7 +71,7 @@ internal static class EnemyDeathEffects
 
         // ENEMY.C:1221-1222 drops the sprite's own bonus if lib->bonus is set.
         if (e.Meta.Bonus >= 0)
-            AddBonus(r, e.Meta.Bonus, e.X, e.Y, rng);
+            AddBonus(r, e.Meta.Bonus, e.X, e.Y);
 
         return r;
     }
@@ -125,10 +128,10 @@ internal static class EnemyDeathEffects
         }
     }
 
-    private static void AddBonus(Result r, int objType, int enemyX, int enemyY, Random? rng)
+    private static void AddBonus(Result r, int objType, int enemyX, int enemyY)
     {
         // C: BONUS_Add(type, sprite->x, sprite->y); BONUS_Add stores cur->x = x + MAP_LEFT.
-        int initialPos = PlayerShooter.NextRandom(rng, 16, "bonus.pos");
-        r.Bonuses.Add(new BonusDrop(objType, BonusSpawnXFromEnemyX(enemyX), enemyY, initialPos));
+        // The random(16) pos draw is deferred to WaveController's gated admission (#6).
+        r.Bonuses.Add(new BonusDrop(objType, BonusSpawnXFromEnemyX(enemyX), enemyY));
     }
 }

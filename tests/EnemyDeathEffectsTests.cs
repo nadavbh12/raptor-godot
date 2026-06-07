@@ -86,17 +86,20 @@ public class EnemyDeathEffectsTests
     }
 
     [Fact]
-    public void Trailing_bonus_draws_one_more_random16()
+    public void Bonus_pos_draw_is_deferred_out_of_build()
     {
-        // ENEMY.C:1221-1222 — if curlib->bonus != EMPTY, BONUS_Add draws random(16).
+        // Finding #6: the bonus random(16) pos draw moved to WaveController's gated
+        // BONUS_Add equivalent. Build only REQUESTS the bonus (no pos draw), so a
+        // dying enemy with a bonus draws only the FX_AIREXPLO sound in Build.
         var prev = DeterministicRandom.Override;
         DeterministicRandom.Override = false;
         try
         {
-            var withBonus = new CountingRandom();
-            EnemyDeathEffects.Build(Enemy(expType: 0, width: 48, height: 48, bonus: 5), withBonus, 7);
-            // 1 sound + 0 cascade (AIRSMALL) + 1 trailing bonus = 2.
-            Assert.Equal(2, withBonus.Count);
+            var rng = new CountingRandom();
+            var r = EnemyDeathEffects.Build(Enemy(expType: 0, width: 48, height: 48, bonus: 5), rng, 7);
+            Assert.Equal(1, rng.Count);        // FX_AIREXPLO sound only; NO bonus draw
+            Assert.Single(r.Bonuses);          // the bonus is requested, not yet drawn
+            Assert.Equal(5, r.Bonuses[0].ObjType);
         }
         finally { DeterministicRandom.Override = prev; }
     }
