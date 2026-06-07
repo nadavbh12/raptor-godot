@@ -1212,7 +1212,10 @@ public partial class WaveController : Node
             e.TakeDamage(playerWidth2);
             int bodyDmg = e.Meta.BodyCrashDamage;
             ApplyPlayerDamage(bodyDmg);
-            AddExplosion(ExpAirSmall2, PlayerLogic.X + 16, PlayerLogic.Y + 16);
+            // ENEMY.C:1114-1115 — jitter the crash explosion by two random(8) draws,
+            // after the player damage and before the death award (finding #7).
+            var (cx, cy) = BodyCrashExplosionPos(PlayerLogic.X + 16, PlayerLogic.Y + 16, _shooterRng);
+            AddExplosion(ExpAirSmall2, cx, cy);
             // ENEMY.C:1117 plays SND_Patch(FX_CRASH) on body contact. No-op in headless.
             SoundEmitter.Emit("sound.fx_crash", PlayerLogic.X + 16, PlayerLogic.Y + 16);
             if (wasAlive && !e.Alive)
@@ -1223,6 +1226,18 @@ public partial class WaveController : Node
         }
 
         _bodyCrashEnemies.Clear();
+    }
+
+    /// <summary>
+    /// C body-crash explosion position (ENEMY.C:1114-1115): two shared random(8)
+    /// draws jittering the A_SMALL_AIR_EXPLO around the player centre. Static so the
+    /// draw count/order is unit-testable; inert under deterministic RNG (jitter 0).
+    /// </summary>
+    internal static (int x, int y) BodyCrashExplosionPos(int playerCx, int playerCy, System.Random? rng)
+    {
+        int jx = PlayerShooter.NextRandom(rng, 8, "bodycrash.x") - 4;
+        int jy = PlayerShooter.NextRandom(rng, 8, "bodycrash.y") - 4;
+        return (playerCx + jx, playerCy + jy);
     }
 
     internal static bool EnemyBodyCrashContainsPlayer(EnemyLogic e, int playerCx, int playerCy)

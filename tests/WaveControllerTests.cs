@@ -235,6 +235,31 @@ public class WaveControllerTests
             PlayerLogic.InitY + 16));
     }
 
+    private sealed class CountingRandom : System.Random
+    {
+        public int Count;
+        public override int Next(int maxValue) { Count++; return base.Next(maxValue); }
+    }
+
+    [Fact]
+    public void Body_crash_draws_two_random8_and_jitters_explosion()
+    {
+        // Finding #7. ENEMY.C:1114-1115 — the body-crash explosion is jittered by
+        // x = player_cx + (random(8)-4), y = player_cy + (random(8)-4): two shared
+        // random(8) draws, AFTER the player-damage and BEFORE the death award.
+        var prev = Raptor.Sim.DeterministicRandom.Override;
+        Raptor.Sim.DeterministicRandom.Override = false;
+        try
+        {
+            var rng = new CountingRandom();
+            var (x, y) = WaveController.BodyCrashExplosionPos(160, 176, rng);
+            Assert.Equal(2, rng.Count);                 // exactly two random(8) draws
+            Assert.InRange(x - 160, -4, 3);             // player_cx + (random(8)-4)
+            Assert.InRange(y - 176, -4, 3);
+        }
+        finally { Raptor.Sim.DeterministicRandom.Override = prev; }
+    }
+
     [Theory]
     [InlineData(true, false, true, true, false, true)]   // all met -> complete
     [InlineData(true, false, true, true, true, false)]   // enemies remain -> wait
