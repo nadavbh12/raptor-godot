@@ -1250,10 +1250,10 @@ public partial class WaveController : Node
         // F_GROUND family (FlightType 3/4/5) sets groundflag=TRUE in C, so
         // ground enemies (bonuses, turrets, tanks) never crash with the player.
         if (e.Meta.FlightType >= 3 && e.Meta.FlightType <= 5) return false;
-        int ex  = e.X;                    // sprite->x (top-left)
-        int ex2 = e.X + 2 * e.HalfW - 1; // sprite->x2 (= sprite->x + width - 1)
-        int ey  = e.Y;                    // sprite->y (top-left)
-        int ey2 = e.Y + 2 * e.HalfH - 1; // sprite->y2 (= sprite->y + height - 1)
+        int ex  = e.X;                      // sprite->x (top-left)
+        int ex2 = e.X + e.Meta.Width - 1;   // sprite->x2 = sprite->x + width - 1 (ENEMY.C:877)
+        int ey  = e.Y;                      // sprite->y (top-left)
+        int ey2 = e.Y + e.Meta.Height - 1;  // sprite->y2 = sprite->y + height - 1 (ENEMY.C:878)
         return playerCx > ex && playerCx < ex2 && playerCy > ey && playerCy < ey2;
     }
 

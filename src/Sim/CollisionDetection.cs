@@ -58,7 +58,7 @@ internal static class CollisionDetection
                 if (!e.Alive) continue;
                 if (!HitTypeMatches(b.HitType, e)) continue;
                 int ex  = e.X;
-                int ex2 = e.X + 2 * e.HalfW - 1;
+                int ex2 = e.X + e.Meta.Width - 1;   // sprite->x2 = sprite->x + width - 1 (ENEMY.C:877)
                 if (b.X > ex && b.X < ex2 && e.Y < playerCy && e.Y > -30)
                 {
                     outHits.Add((e, b.Damage));

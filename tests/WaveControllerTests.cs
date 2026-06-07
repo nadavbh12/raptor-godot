@@ -224,6 +224,23 @@ public class WaveControllerTests
     }
 
     [Fact]
+    public void Body_crash_right_bottom_edge_uses_full_width_height_minus_one()
+    {
+        // Finding #27: C body-crash tests player_c{x,y} < sprite->{x2,y2} where
+        // x2/y2 = sprite->{x,y} + {width,height} - 1 (ENEMY.C:877-878). Godot
+        // used 2*Half{W,H}-1 = {W,H}-2 for ODD dims, dropping the right/bottom
+        // interior pixel. Inert on shipped (all-even) assets; Width=Height=25
+        // exposes it.
+        var enemy = new EnemyLogic(new SpriteMeta
+        {
+            Hits = 3, NumFlight = 0, FlightType = 1, Width = 25, Height = 25,
+        }, spawnX: 100, mapY: 100);
+        // correct ex2/ey2 = 100+25-1 = 124; buggy = 100+2*12-1 = 123.
+        // player at (123,123): correct → 123<124 true; buggy → 123<123 false.
+        Assert.True(WaveController.EnemyBodyCrashContainsPlayer(enemy, 123, 123));
+    }
+
+    [Fact]
     public void Pending_removal_enemy_can_still_body_crash_before_c_removes_it()
     {
         var enemy = new EnemyLogic(new SpriteMeta
