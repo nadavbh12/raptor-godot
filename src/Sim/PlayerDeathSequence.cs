@@ -84,6 +84,16 @@ internal sealed class PlayerDeathSequence
                 playerY + PlayerShooter.NextRandom(rng, 32, "death.small.y")),
         };
 
+        // RAP.C:567-573 — while startendwave > END_EXPLODE the ship plays
+        // SND_Patch(FX_AIREXPLO) at a random(2)-selected pan (30 vs 225). The
+        // SND_Patch contributes no draw (finding #25 no-op), but the explicit
+        // random(2) pan-select IS a game-logic draw on the shared stream
+        // (finding #26). The value is discarded (view-only pan); only the stream
+        // advance matters. `> EndExplode` and `== EndExplode` are mutually
+        // exclusive, so the pitch never fires on the debris frame — matching C.
+        if (countdown > EndExplode)
+            PlayerShooter.NextRandom(rng, 2, "death.pitch.select");
+
         if (countdown == EndExplode)
         {
             explosions.Add(new DeathExplosion(ExpAirLarge, playerX + 16, playerY + 16));

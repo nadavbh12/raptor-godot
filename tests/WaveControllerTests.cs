@@ -380,6 +380,34 @@ public class WaveControllerTests
         Assert.Equal(256, burstMed2);
     }
 
+    [Fact]
+    public void Player_death_draws_pitch_select_random2_while_exploding_not_at_endexplode()
+    {
+        // RAP.C:567-573 — while startendwave > END_EXPLODE the ship plays
+        // SND_Patch(FX_AIREXPLO) at a random(2)-selected pan (30 vs 225). The
+        // SND_Patch itself contributes no draw (finding #25 no-op), but the
+        // explicit random(2) pan-select IS a game-logic draw on the shared stream
+        // (finding #26). It is NOT drawn on the == END_EXPLODE debris frame (the
+        // C `>` vs `==` split — mutually exclusive). Value discarded; only the
+        // stream advance matters. Masked under deterministic RNG (no death golden).
+        var prev = Raptor.Sim.DeterministicRandom.Override;
+        Raptor.Sim.DeterministicRandom.Override = false;
+        try
+        {
+            // countdown > EndExplode: 4 scatter draws + 1 pitch-select = 5.
+            var exploding = new CountingRandom();
+            PlayerDeathSequence.BuildExplosions(160, 176, PlayerDeathSequence.EndDuration, exploding);
+            Assert.Equal(5, exploding.Count);
+
+            // countdown == EndExplode: pitch NOT drawn — 4 scatter + debris only.
+            var endExplode = new CountingRandom();
+            PlayerDeathSequence.BuildExplosions(160, 176, PlayerDeathSequence.EndExplode, endExplode);
+            int debris = (PlayerLogic.SpriteWidth * PlayerLogic.SpriteHeight / 2) * 2;
+            Assert.Equal(4 + debris, endExplode.Count);
+        }
+        finally { Raptor.Sim.DeterministicRandom.Override = prev; }
+    }
+
     private static int Count(IReadOnlyList<PlayerDeathSequence.DeathExplosion> explosions, int expType)
     {
         int count = 0;
