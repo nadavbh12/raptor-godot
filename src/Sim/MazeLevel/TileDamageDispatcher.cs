@@ -91,7 +91,11 @@ public static class TileDamageDispatcher
     private static DamageResult DispatchHit(IList<TileState> tiles, int x, int y, int damage,
                                             bool splashAbove, int splashDamage, int mapCols)
     {
-        for (int i = 0; i < tiles.Count; i++)
+        // C: `while ( ts != lastspot )` where lastspot = tspots + (MAX_STILES-1)
+        // (TILE.C:277, 500, 543). The loop body never runs for the final slice
+        // element (slot 71), so a bullet over the last on-screen tile is never
+        // hit-tested. Mirror that with `i < tiles.Count - 1`.
+        for (int i = 0; i < tiles.Count - 1; i++)
         {
             var t = tiles[i];
             if (x < t.ScreenX || x >= t.ScreenX + 32) continue;

@@ -171,4 +171,52 @@ public class TileDamageDispatcherTests
         Assert.False(r.Hit);
         Assert.Equal(10, s[4].Hits);
     }
+
+    [Fact]
+    public void TileIsHit_skips_final_slice_slot_71_matching_C_lastspot_bound()
+    {
+        // C TILE_IsHit (TILE.C:500) walks `while ( ts != lastspot )` with
+        // lastspot = tspots + (MAX_STILES-1) = tspots+71 (TILE.C:277). The body
+        // never runs for the final slot, so a bullet over slot 71 is never
+        // hit-tested. Godot's loop must mirror that: `i < tiles.Count - 1`.
+        var s = Slice(8, 9);                       // 72 tiles, slots 0..71
+        // Slot 71 = row 7, col 8: ScreenX=16+8*32=272 (box[272,304)),
+        // ScreenY=-56+7*32=168 (box[168,200)); center (288,184).
+        s[71].IsDestructible = true; s[71].Hits = 10;
+
+        var r = TileDamageDispatcher.TileIsHit(s, x: 288, y: 184, damage: 5);
+
+        Assert.False(r.Hit);
+        Assert.Equal(-1, r.HitIndex);
+        Assert.Equal(10, s[71].Hits);              // never tested → unchanged
+    }
+
+    [Fact]
+    public void TileIsHit_still_hits_slot_70_the_last_C_tested_slot()
+    {
+        // Boundary pin: slot 70 (row 7, col 7) IS tested by C's loop, so the
+        // bound must be exactly 71, not lower. center (256,184).
+        var s = Slice(8, 9);
+        s[70].IsDestructible = true; s[70].Hits = 10;
+
+        var r = TileDamageDispatcher.TileIsHit(s, x: 256, y: 184, damage: 5);
+
+        Assert.True(r.Hit);
+        Assert.Equal(70, r.HitIndex);
+        Assert.Equal(5, s[70].Hits);
+    }
+
+    [Fact]
+    public void TileBomb_skips_final_slice_slot_71_matching_C_lastspot_bound()
+    {
+        // TILE_Bomb (TILE.C:543) has the identical `while ( ts != lastspot )` bound.
+        var s = Slice(8, 9);
+        s[71].IsDestructible = true; s[71].Hits = 10;
+
+        var r = TileDamageDispatcher.TileBomb(s, x: 288, y: 184, damage: 20, mapCols: 9);
+
+        Assert.False(r.Hit);
+        Assert.Equal(-1, r.HitIndex);
+        Assert.Equal(10, s[71].Hits);
+    }
 }

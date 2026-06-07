@@ -21,6 +21,17 @@ public class PlayerBulletCollisionDispatcherTests
         }, x, y);
     }
 
+    /// <summary>
+    /// The on-screen slice is always MAP_ONSCREEN*MAP_COLS=72 tiles, and C's
+    /// TILE_IsHit/TILE_Bomb (TILE.C:500,543 `while ( ts != lastspot )`) never
+    /// hit-test the final slot (slot 71). These unit fixtures place the tile
+    /// under test at slot 0 and append a never-hit sentinel that stands in for
+    /// the excluded last slot, so the bound (finding #14) doesn't swallow the
+    /// real tile. The sentinel is positioned off any bullet box.
+    /// </summary>
+    private static List<TileState> SliceWithTargetThenSkippedLast(TileState target)
+        => new() { target, new TileState { ScreenX = 10000, ScreenY = 10000 } };
+
     [Fact]
     public void Enemy_hit_suppresses_same_pass_tile_hit_for_all_bullets()
     {
@@ -140,7 +151,7 @@ public class PlayerBulletCollisionDispatcherTests
         var result = PlayerBulletCollisionDispatcher.Collect(
             new List<BulletLogic> { first, second },
             new List<EnemyLogic>(),
-            new List<TileState> { tile },
+            SliceWithTargetThenSkippedLast(tile),
             mapCols: 9);
 
         Assert.False(first.Alive);
@@ -167,7 +178,7 @@ public class PlayerBulletCollisionDispatcherTests
         var result = PlayerBulletCollisionDispatcher.Collect(
             new List<BulletLogic> { bullet },
             new List<EnemyLogic>(),
-            new List<TileState> { tile },
+            SliceWithTargetThenSkippedLast(tile),
             mapCols: 9);
 
         Assert.True(result.TileHit);
