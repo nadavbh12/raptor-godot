@@ -99,6 +99,8 @@ public sealed class EnemyLogic
     private bool _shootOn;         // mirrors C's sprite->shoot_on
     private int _shootFlag;        // mirrors C's sprite->shootflag (counts down to fire)
     private int _shootCount;       // mirrors C's sprite->shootcount (bursts)
+    /// <summary>Remaining shoot bursts (C sprite->shootcount). Test-visible for the boss DIFF nerf.</summary>
+    internal int ShootCount => _shootCount;
     private int _shootAgain;       // mirrors C's sprite->shootagain (inter-burst delay)
 
     // Home base for flight-path deltas (mirrors C's new->sy = 100 - new->hly).
@@ -133,7 +135,7 @@ public sealed class EnemyLogic
     public static int InitialShootCountdown(int libCountdown, int mapY) =>
         libCountdown - mapY;
 
-    public EnemyLogic(SpriteMeta meta, int spawnX, int mapY)
+    public EnemyLogic(SpriteMeta meta, int spawnX, int mapY, int curPlayerDiff = 2)
     {
         Meta = meta;
         _maxHits = meta.Hits > 0 ? meta.Hits : 1;
@@ -151,6 +153,17 @@ public sealed class EnemyLogic
         _shootFlag  = meta.ShootStart;
         _shootCount = meta.ShootCnt > 0 ? meta.ShootCnt : 1;
         _shootAgain = -1;  // NORM_SHOOT = -1
+
+        // C ENEMY.C:457-463 — at curplr_diff <= DIFF_1 (training/rookie) a boss is
+        // nerfed at spawn: half HP (hits -= hits>>1) and 3/4 of the shoot bursts
+        // (shootcount -= shootcount>>2). MaxHits (lib->hits) is left unchanged so the
+        // boss health bar (ENEMY.C:1306, hits*100/lib->hits) starts at 50%. Without
+        // this the DIFF_1 boss had double HP and survived the wave (finding #2).
+        if (IsBoss && curPlayerDiff <= 1)
+        {
+            Hits -= Hits >> 1;
+            _shootCount -= _shootCount >> 2;
+        }
 
         // Initial position (C: new->move.x = mapX, new->move.y = mapY
         // before the flight-type switch overrides sy).

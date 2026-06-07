@@ -52,6 +52,38 @@ public class EnemyLogicTests
     }
 
     [Fact]
+    public void Boss_is_nerfed_at_diff_1_half_hp_and_fewer_bursts_like_C()
+    {
+        // Finding #2: ENEMY.C:457-463 — at curplr_diff <= DIFF_1 a boss is nerfed at
+        // spawn: hits -= hits>>1 (half HP) and shootcount -= shootcount>>2 (3/4 of the
+        // bursts). The health-bar max stays lib->hits (ENEMY.C:1306 hits*100/lib->hits),
+        // so MaxHits is UNCHANGED — the boss just starts at 50%. Without this, the wave1
+        // (DIFF_1) boss SHIP10G1 had 300 HP instead of 150 and fired 12 bursts instead
+        // of 9, so it survived the player's fire and the wave never cleared.
+        var bossMeta = new SpriteMeta
+        {
+            Hits = 300, ShootCnt = 12, BossFlag = 1,
+            NumFlight = 1, FlightType = 1, FlightX = new[] { 0 }, FlightY = new[] { 0 },
+        };
+
+        var rookie = new EnemyLogic(bossMeta, 100, 0, curPlayerDiff: 1);
+        Assert.Equal(150, rookie.Hits);        // 300 - (300>>1)
+        Assert.Equal(300, rookie.MaxHits);     // health bar still relative to lib->hits
+        Assert.Equal(9, rookie.ShootCount);    // 12 - (12>>2)
+
+        var veteran = new EnemyLogic(bossMeta, 100, 0, curPlayerDiff: 2);
+        Assert.Equal(300, veteran.Hits);       // no nerf at DIFF_2+
+        Assert.Equal(12, veteran.ShootCount);
+
+        // Non-boss at DIFF_1: untouched.
+        var grunt = new EnemyLogic(
+            new SpriteMeta { Hits = 10, ShootCnt = 4, BossFlag = 0,
+                             NumFlight = 1, FlightX = new[] { 0 }, FlightY = new[] { 0 } },
+            100, 0, curPlayerDiff: 1);
+        Assert.Equal(10, grunt.Hits);
+    }
+
+    [Fact]
     public void Multiple_same_pass_hits_can_overkill_enemy_like_C()
     {
         var meta = SyntheticPath((50, 50));

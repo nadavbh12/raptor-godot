@@ -93,7 +93,7 @@ internal sealed class MapSpawnScroller
     /// set _endWaveFlag = true in WaveController). WaveController applies the flag.
     /// </summary>
     public bool SpawnDueEnemies(SpriteMetaLibrary? slib, List<EnemyLogic> enemies,
-        Func<MapSpriteEntry, bool> shouldSpawn, int bossLowHp)
+        Func<MapSpriteEntry, bool> shouldSpawn, int bossLowHp, int curPlayerDiff = 2)
     {
         if (_mapSprites == null || slib == null) return false;
         int tiley = _tiley;
@@ -136,7 +136,7 @@ internal sealed class MapSpawnScroller
                                  + _mapBlockSize / 2 - meta.HalfX;
                     int mapY   = _tileyoff - ((tiley - cur.Y) * _mapBlockSize) - 97
                                  + _mapBlockSize / 2 - meta.HalfY;
-                    var enemy = new EnemyLogic(meta, spawnX, mapY);
+                    var enemy = new EnemyLogic(meta, spawnX, mapY, curPlayerDiff);
                     if (bossLowHp > 0 && enemy.IsBoss) enemy.DebugClampHits(bossLowHp);
                     enemies.Add(enemy);
                 }

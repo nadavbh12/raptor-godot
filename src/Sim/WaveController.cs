@@ -786,7 +786,7 @@ public partial class WaveController : Node
     {
         // The spawn loop (ENEMY_DoSprites) lives in MapSpawnScroller; it returns
         // whether the sprite list was exhausted, which sets _endWaveFlag here.
-        if (_scroller.SpawnDueEnemies(_slib, _enemies, ShouldSpawn, _bossLowHp))
+        if (_scroller.SpawnDueEnemies(_slib, _enemies, ShouldSpawn, _bossLowHp, _curPlayerDiff))
             _endWaveFlag = true;
     }
 
@@ -948,7 +948,7 @@ public partial class WaveController : Node
         // advance. The collision tile slice above intentionally stays at the
         // pre-scroll tspots for the current SHOTS pass; the scroll cursor is
         // advanced after spawning for subsequent spawning/scroll state.
-        if (_scroller.SpawnDueEnemies(_slib, _enemies, ShouldSpawn, _bossLowHp))
+        if (_scroller.SpawnDueEnemies(_slib, _enemies, ShouldSpawn, _bossLowHp, _curPlayerDiff))
             _endWaveFlag = true;
 
         _scroller.AdvanceScroll();
