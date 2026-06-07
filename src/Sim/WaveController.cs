@@ -127,6 +127,12 @@ public partial class WaveController : Node
     // (set when the recording carries no key data — mouse/joystick play).
     private bool _demoExactReplay = false;
     private bool _demoUseDirs = false;
+    // The player's velocity ramp (g_addx/g_addy) persists across waves in C, but a
+    // per-wave demo replay rebuilds it from zero. So on the FIRST exact-replay frame
+    // we apply the recorded gax/gay directly to seed the ramp (carrying e.g. wave 2's
+    // start, where the ramp is still decaying from wave 1's fly-off: gay=-2,-1,0);
+    // the dir-key recompute then reproduces the decay via Tick's _gAddY/=2 release.
+    private bool _demoSeedRampPending = false;
     // ── Capture/test-only hooks (env-gated, OFF by default → parity-inert) ──
     // Used only by the cosmetic visual-capture harness to force states that are
     // unreachable in the parity scenarios (reaching late-wave bosses, owning
@@ -626,6 +632,7 @@ public partial class WaveController : Node
         // v2 (exact-parity) demos recompute movement; legacy demos force position.
         _demoExactReplay = replay.Header.V >= 2;
         _demoUseDirs = _demoExactReplay && AnyDirectionalInput(replay);
+        _demoSeedRampPending = _demoExactReplay;   // seed the ramp on the first frame
 
         _waveNum = replay.Header.DemoWave + 1;
         SeedRngForWave(replay.Header.DemoWave, OS.GetEnvironment("RAPTOR_RNG_SEED_OVERRIDE"));
@@ -851,7 +858,17 @@ public partial class WaveController : Node
             {
                 // Recompute movement so Godot's own movement code is exercised and
                 // its result (X/Y/Pic) is compared against the recorded px/py oracle.
-                if (_demoUseDirs)
+                if (_demoSeedRampPending)
+                {
+                    // First frame: apply the recorded gax/gay directly to seed the
+                    // velocity ramp from C's wave-start state (cross-wave carryover —
+                    // wave 2 starts mid-decay from wave 1's fly-off). Just one frame:
+                    // applying gax/gay for every frame drifts under the position clamp
+                    // (wave1 regresses), so the rest recompute from the dir keys.
+                    PlayerLogic.TickDelta(frame.Gax, frame.Gay);
+                    _demoSeedRampPending = false;
+                }
+                else if (_demoUseDirs)
                 {
                     // dirs bits: 1=Left 2=Right 4=Up 8=Down. Left/Up win ties,
                     // mirroring IPT_GetKeyBoard's if-else order (INPUT.C:508-556).
