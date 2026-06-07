@@ -109,7 +109,6 @@ public class BonusEffectDispatcherTests
     [InlineData(21, 35200u)]
     [InlineData(22, 122500u)]
     [InlineData(23, 50u)]
-    [InlineData(24, 50u)]
     public void ItemBuy_adds_cost_to_score(int objType, uint expectedCost)
     {
         var inv = new Inventory();
@@ -140,5 +139,31 @@ public class BonusEffectDispatcherTests
         Assert.Equal(0, r.HealAmount);
         Assert.Equal(0u, r.ScoreAdd);
         Assert.False(r.DetectorActivated);
+    }
+
+    [Fact]
+    public void IsMoneyBonus_rejects_type_24_S_LAST_OBJECT()
+    {
+        // Finding #29: C money bonuses are S_ITEMBUY1..S_ITEMBUY6 = 18..23. type 24
+        // = S_LAST_OBJECT, rejected by BONUS_Add/OBJS_Add (`>= S_LAST_OBJECT`,
+        // BONUS.C:172) and never a money bonus. (Already unreachable via the #6
+        // BonusAddPasses gate, which rejects >= 24 at admission — this aligns the
+        // classifier with C's bound.)
+        Assert.False(BonusEffectDispatcher.IsMoneyBonus(17));
+        Assert.True(BonusEffectDispatcher.IsMoneyBonus(18));
+        Assert.True(BonusEffectDispatcher.IsMoneyBonus(23));
+        Assert.False(BonusEffectDispatcher.IsMoneyBonus(24));
+    }
+
+    [Fact]
+    public void Apply_type_24_S_LAST_OBJECT_is_a_noop_not_a_money_bonus()
+    {
+        // The real $50 money bonus is objType 23 (BonusForExplosionType →
+        // ItemBuy6ObjType=23). The legacy `case 24 → 50` was dead pre-#6 cruft;
+        // C rejects 24 entirely. Apply(24) must now score nothing.
+        var inv = new Inventory();
+        var ps = new PlayerShooter(inv);
+        var r = BonusEffectDispatcher.Apply(objType: 24, ps, inv, MaxShield);
+        Assert.Equal(0u, r.ScoreAdd);
     }
 }

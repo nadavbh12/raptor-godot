@@ -338,6 +338,16 @@ public class WaveControllerTests
     }
 
     [Fact]
+    public void Spark_value_zero_maps_to_blue_matching_TILE_IsHit()
+    {
+        // Finding #28: TILE.C:511-518 — random(2) case 0 → A_BLUE_SPARK, case 1 →
+        // A_ORANGE_SPARK. Godot's branch was inverted (spark != 0 ? Blue : Orange).
+        // The single random(2) draw is unchanged; only the value→color flips.
+        Assert.Equal(101 /*SparkBlueExpType*/, WaveController.SparkExpTypeFor(0));
+        Assert.Equal(102 /*SparkOrangeExpType*/, WaveController.SparkExpTypeFor(1));
+    }
+
+    [Fact]
     public void Explosion_animation_age_uses_game_loop_iterations_not_framecount()
     {
         int startIter = WaveController.AnimationStartIterForSpawn(currentGameLoopIter: 42);

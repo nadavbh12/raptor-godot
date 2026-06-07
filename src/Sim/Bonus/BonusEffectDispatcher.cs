@@ -13,7 +13,7 @@ namespace Raptor.Sim.Bonus;
 ///   S_SUPER_SHIELD (15)       — OBJS_Add: persistent absorbing object (BONUS.C:251).
 ///   S_ENERGY (16)             — Heal = MaxShield / 4 via AddEnergy (BONUS.C:214,249).
 ///   S_DETECT (17)             — records the obj slot in Inventory and sets DetectorActivated; moneyflag = FALSE → no score.
-///   S_ITEMBUY1..S_ITEMBUY6 (18..24 in extracted map data) — adds lib->cost to plr.score (OBJECTS.C:706-710).
+///   S_ITEMBUY1..S_ITEMBUY6 (18..23) — adds lib->cost to plr.score (OBJECTS.C:706-710).
 ///
 /// Lives outside <see cref="WaveController"/> so it can be unit-tested without
 /// constructing a Godot Node.
@@ -26,7 +26,10 @@ public static class BonusEffectDispatcher
     /// </summary>
     public static readonly int[] ItemBuyCost = { 93800, 76000, 55700, 35200, 122500, 50 };
 
-    public static bool IsMoneyBonus(int objType) => objType is >= 18 and <= 24;
+    // C money bonuses are S_ITEMBUY1..S_ITEMBUY6 = 18..23 (each has lib->moneyflag
+    // = TRUE). type 24 = S_LAST_OBJECT, rejected by BONUS_Add/OBJS_Add
+    // (`>= S_LAST_OBJECT`, BONUS.C:172) and never a money bonus (finding #29).
+    public static bool IsMoneyBonus(int objType) => objType is >= 18 and <= 23;
 
     public struct Result
     {
@@ -68,11 +71,10 @@ public static class BonusEffectDispatcher
                 inventory.Add(ObjType.Detect);
                 r.DetectorActivated = true;
                 break;
-            case >= 18 and <= 23:       // S_ITEMBUY1..6
+            case >= 18 and <= 23:       // S_ITEMBUY1..6 (money bonuses; type 24 =
+                                        // S_LAST_OBJECT is rejected upstream by the
+                                        // #6 BonusAddPasses gate and never reaches here).
                 r.ScoreAdd = (uint)ItemBuyCost[objType - 18];
-                break;
-            case 24:                    // Extracted S_ITEMBUY6 map value.
-                r.ScoreAdd = 50;
                 break;
         }
         return r;

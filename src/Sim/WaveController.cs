@@ -1080,6 +1080,14 @@ public partial class WaveController : Node
         _ => 13,                  // EXPLO2_BLK default (unused EXP_ slots 6/7/9)
     };
 
+    /// <summary>
+    /// Maps a tile-hit spark random(2) value to its spark exptype, faithful to
+    /// TILE.C:511-518 — case 0 → A_BLUE_SPARK, case 1 → A_ORANGE_SPARK
+    /// (finding #28). The draw itself is unchanged; only the value→color mapping.
+    /// </summary>
+    internal static int SparkExpTypeFor(int sparkValue)
+        => sparkValue == 0 ? SparkBlueExpType : SparkOrangeExpType;
+
     private void AddExplosion(int expType, int x, int y, int startDelayIters = 0)
     {
         int startIter = AnimationStartIterForSpawn(_gameLoopIter) + startDelayIters;
@@ -1125,7 +1133,7 @@ public partial class WaveController : Node
         foreach (var (x, y) in collision.RandomSparkPositions)
         {
             int spark = PlayerShooter.NextRandom(_shooterRng, 2, "spark.hit_color");
-            AddExplosion(spark != 0 ? SparkBlueExpType : SparkOrangeExpType, x, y);
+            AddExplosion(SparkExpTypeFor(spark), x, y);   // TILE.C:513 case 0 → blue (finding #28)
         }
         foreach (var (x, y) in collision.OrangeSparkPositions)
             AddExplosion(SparkOrangeExpType, x, y);
