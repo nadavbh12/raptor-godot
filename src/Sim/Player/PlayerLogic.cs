@@ -69,9 +69,10 @@ public sealed class PlayerLogic
     {
         X = InitX;
         Y = InitY;
-        // Create-or-overwrite the energy slot to InitShield (per-wave "shield → 75").
-        // Only the energy slot is touched; other inventory slots are left intact.
-        _inv.Load(Raptor.Sim.ObjType.Energy, InitShield, inuse: true);
+        // Create-or-overwrite the energy node to InitShield (per-wave "shield → 75").
+        // Only the energy node is touched; other inventory nodes are left intact.
+        // SetSingle (not Load) so a re-reset does not stack duplicate Energy nodes.
+        _inv.SetSingle(Raptor.Sim.ObjType.Energy, InitShield, inuse: true);
         Pic = 4;
         _oldX = InitX;
         _gAddX = 0;
@@ -106,9 +107,9 @@ public sealed class PlayerLogic
 
     public void SetShield(int shield)
     {
-        // Load creates-or-overwrites the energy slot (needed when the slot is
+        // SetSingle creates-or-overwrites the energy node (needed when the node is
         // absent, e.g. the demo loadout grants no energy). Mirrors today's clamp.
-        _inv.Load(Raptor.Sim.ObjType.Energy, System.Math.Clamp(shield, 0, MaxShield), inuse: true);
+        _inv.SetSingle(Raptor.Sim.ObjType.Energy, System.Math.Clamp(shield, 0, MaxShield), inuse: true);
     }
 
     /// <summary>

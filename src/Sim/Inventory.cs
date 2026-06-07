@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 
 namespace Raptor.Sim;
 
@@ -14,78 +15,46 @@ public enum BuyStuff
 }
 
 /// <summary>
-/// Per-pilot inventory. Mirrors the C p_objs[] pointer array and the linked-list
-/// of OBJ nodes. Because each type can appear at most once in our single-slot
-/// model, Dictionary&lt;ObjType, ObjSlot&gt; replaces both.
+/// Per-pilot inventory. Mirrors the C OBJ linked list (first_objs..last_objs) and
+/// the p_objs[] pointer array. Each owned unit is a real <see cref="ObjNode"/> in
+/// insertion order: onlyflag items (Energy, MegaBomb) stack into ONE node whose Num
+/// holds the count, while non-onlyflag items (SuperShield, OBJECTS.C:489) get a
+/// FRESH node per buy. <c>p_objs[type]</c> is modelled as the first InUse node of a
+/// type (<see cref="Equipped"/>). Insertion order is load-bearing for obj_hash parity.
 ///
 /// No engine RNG / delta / _Process / wall-clock — sim-safe.
 /// </summary>
 public sealed class Inventory
 {
     /// <summary>
-    /// Single inventory slot — mirrors the fields of C's OBJ struct that matter for
-    /// ownership/quantity tracking: num (count) and inuse (equipped flag).
-    /// Nested + private: nothing outside Inventory should touch a slot directly.
-    /// Fields stay mutable — Inventory mutates Num/InUse in later tasks.
+    /// One OBJ node — mirrors the fields of C's OBJ struct that matter for
+    /// ownership/quantity tracking: type, num (count) and inuse (equipped flag).
+    /// Nested + private: nothing outside Inventory touches a node directly.
     /// </summary>
-    private sealed class ObjSlot
+    private sealed class ObjNode
     {
-        public int  Num;
-        public bool InUse;
+        public ObjType Type;
+        public int     Num;
+        public bool    InUse;
     }
 
-    // p_objs[] equivalent: slot present + InUse == equipped. Insertion-ordered so
-    // obj_hash can walk it in C linked-list order (see SlotMap / ComputeObjHash).
-    private readonly SlotMap _slots = new();
+    // first_objs..last_objs: every owned unit is a node, in C insertion order.
+    private readonly List<ObjNode> _objs = new();
 
-    /// <summary>
-    /// Insertion-ordered ObjType→ObjSlot map mirroring C's OBJ linked list
-    /// (OBJECTS.C): a new key links at the tail; Remove unlinks; a re-added key
-    /// links a fresh node at the tail. Exposes exactly the surface Inventory uses
-    /// (indexer, TryGetValue, Remove, Clear, ordered enumeration) so every existing
-    /// call site is unchanged. Ordering is load-bearing for obj_hash parity.
-    /// </summary>
-    private sealed class SlotMap : IEnumerable<KeyValuePair<ObjType, ObjSlot>>
+    /// <summary>p_objs[type] equivalent: the first equipped (InUse) node of a type, or null.</summary>
+    private ObjNode? Equipped(ObjType type)
     {
-        private readonly Dictionary<ObjType, ObjSlot> _map = new();
-        private readonly List<ObjType> _order = new();
+        foreach (var n in _objs)
+            if (n.Type == type && n.InUse) return n;
+        return null;
+    }
 
-        public ObjSlot this[ObjType key]
-        {
-            get => _map[key];
-            set
-            {
-                if (!_map.ContainsKey(key))
-                    _order.Add(key);
-                _map[key] = value;
-            }
-        }
-
-        public bool TryGetValue(ObjType key,
-            [System.Diagnostics.CodeAnalysis.MaybeNullWhen(false)] out ObjSlot value)
-            => _map.TryGetValue(key, out value);
-
-        public bool Remove(ObjType key)
-        {
-            if (!_map.Remove(key)) return false;
-            _order.Remove(key);
-            return true;
-        }
-
-        public void Clear()
-        {
-            _map.Clear();
-            _order.Clear();
-        }
-
-        public IEnumerator<KeyValuePair<ObjType, ObjSlot>> GetEnumerator()
-        {
-            foreach (var key in _order)
-                yield return new KeyValuePair<ObjType, ObjSlot>(key, _map[key]);
-        }
-
-        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator()
-            => GetEnumerator();
+    /// <summary>The first node of a type regardless of InUse (onlyflag stacking target / Equip target).</summary>
+    private ObjNode? FirstOfType(ObjType type)
+    {
+        foreach (var n in _objs)
+            if (n.Type == type) return n;
+        return null;
     }
 
     /// <summary>
@@ -108,7 +77,7 @@ public sealed class Inventory
 
         var lib = ObjLib.Of(type);
 
-        // C:755-759  moneyflag: credit score elsewhere; no slot created.
+        // C:755-759  moneyflag: credit score elsewhere; no node created.
         if (lib.MoneyFlag)
             return BuyStuff.GotIt;
 
@@ -116,14 +85,13 @@ public sealed class Inventory
         // We always run as "registered", so this branch is skipped (matches
         // the full-game code path, consistent with existing test data).
 
-        // C:767-783  onlyflag: stack into existing slot; cap at max_cnt.
+        // C:767-783  onlyflag: stack into the first existing node of this type; cap at max_cnt.
         if (lib.OnlyFlag)
         {
-            if (_slots.TryGetValue(type, out var existing))
+            var existing = FirstOfType(type);
+            if (existing != null)
             {
                 // C:773-774  if already at cap, return ShipFull.
-                // DEVIATION FROM TASK DESCRIPTION: the task says "clamp"; C
-                // actually returns ShipFull when num >= max_cnt before adding.
                 if (existing.Num >= lib.MaxCnt)
                     return BuyStuff.ShipFull;
 
@@ -133,21 +101,18 @@ public sealed class Inventory
 
                 return BuyStuff.GotIt;
             }
-            // No existing slot: fall through to create a new one below.
+            // No existing node: fall through to create a new one below.
         }
 
-        // C:785-803  Get a free OBJ slot and initialise it.
-        if (!_slots.TryGetValue(type, out var slot))
-        {
-            slot = new ObjSlot { Num = lib.StartCnt };
-            _slots[type] = slot;
-        }
-        // Weapons: if a slot already existed, C leaves num as-is (owned once).
+        // C:785-803  OBJS_Get → a fresh node appended at the tail (non-onlyflag types
+        // like SuperShield therefore get one node per buy).
+        var node = new ObjNode { Type = type, Num = lib.StartCnt, InUse = false };
+        _objs.Add(node);
 
-        // C:793-803  Equip if not already equipped (p_objs[type] == NUL).
-        if (!slot.InUse)
+        // C:793-803  Equip if no node of this type is equipped yet (p_objs[type] == NUL).
+        if (Equipped(type) == null)
         {
-            slot.InUse = true;
+            node.InUse = true;
 
             // C:798-802  auto-set sweapon when first special weapon is added.
             if (EquippedSpecial == null && lib.SpecialW)
@@ -161,16 +126,18 @@ public sealed class Inventory
     // OBJS_Equip — OBJECTS.C:688-706
     // -----------------------------------------------------------------------
     /// <summary>
-    /// Equips an existing slot that is not yet equipped. Mirrors OBJS_Equip.
-    /// Only sets InUse if the slot exists and is currently un-equipped (InUse=false).
-    /// Does NOT create a new slot (C iterates the existing linked list).
+    /// Equips the first un-equipped node of a type, but only if no node of that type
+    /// is currently equipped. Mirrors OBJS_Equip (the loop runs while p_objs[type]==NUL).
+    /// Does NOT create a node. Returns true if a node was newly equipped.
     /// </summary>
     public bool Equip(ObjType type)
     {
-        // C:695-703  finds first matching OBJ where p_objs[type]==NUL, sets inuse.
-        if (_slots.TryGetValue(type, out var slot) && !slot.InUse)
+        // C:695-703  if p_objs[type]==NUL, equip the first node of type.
+        if (Equipped(type) != null) return false;
+        var n = FirstOfType(type);
+        if (n != null)
         {
-            slot.InUse = true;
+            n.InUse = true;
             return true;
         }
         return false;
@@ -180,53 +147,38 @@ public sealed class Inventory
     // OBJS_IsEquip — OBJECTS.C:1202-1214
     // -----------------------------------------------------------------------
     /// <summary>
-    /// Returns true if the type has an equipped slot (p_objs[type] != NULL).
-    /// Mirrors C: the pointer is only set when InUse=true, so we check both.
+    /// Returns true if the type has an equipped node (p_objs[type] != NULL).
     /// </summary>
-    public bool IsEquip(ObjType type)
-    {
-        return _slots.TryGetValue(type, out var slot) && slot.InUse;
-    }
+    public bool IsEquip(ObjType type) => Equipped(type) != null;
 
     // -----------------------------------------------------------------------
     // OBJS_GetAmt — OBJECTS.C:1007-1021
     // -----------------------------------------------------------------------
     /// <summary>
-    /// Returns the Num of the slot for <paramref name="type"/>, or 0 if no slot exists.
-    ///
-    /// DEVIATION FROM C OBJS_GetAmt: C's version reads p_objs[type] which is only set
-    /// when inuse=true, so it returns 0 for un-equipped items. We return Num regardless
-    /// of InUse so that save/load round-trips are correct: OBJS_Load can restore a slot
-    /// with inuse=false (representing a purchased-but-not-equipped item) and GetAmt
-    /// must still report the saved quantity. No existing test relied on GetAmt returning
-    /// 0 for an un-equipped-but-owned slot; InUse=false means IsEquip returns false,
-    /// which is the meaningful gameplay predicate.
+    /// Returns the Num of the EQUIPPED node for <paramref name="type"/> (C reads
+    /// p_objs[type]->num). DEVIATION (preserved from the single-slot model): if the
+    /// type is owned but un-equipped (e.g. a save loaded with inuse=false), report
+    /// the first node's Num so save/load round-trips read the saved quantity. Returns
+    /// 0 only when no node of the type exists.
     /// </summary>
     public int GetAmt(ObjType type)
     {
-        if (_slots.TryGetValue(type, out var slot))
-            return slot.Num;
-        return 0;
+        var eq = Equipped(type);
+        if (eq != null) return eq.Num;
+        var first = FirstOfType(type);
+        return first?.Num ?? 0;
     }
 
     // -----------------------------------------------------------------------
-    // OBJS_GetTotal — OBJECTS.C:1023-1043
+    // OBJS_GetTotal — OBJECTS.C:1062-1080
     // -----------------------------------------------------------------------
     /// <summary>
-    /// In C, GetTotal counts the NUMBER OF OBJ ENTRIES for a type across the linked
-    /// list (each unit is a separate OBJ node). In THIS port a type occupies exactly
-    /// ONE slot whose Num field holds the count, so the node-count is folded into Num
-    /// and GetTotal == GetAmt under the one-slot model.
-    ///
-    /// This equivalence is load-bearing: the SuperShield purchase cap (Task 5.2,
-    /// Phase-0 finding 0.2) is `GetTotal(SuperShield) >= 5 → ShipFull`. In C that
-    /// counts 5 separate nodes; here it must read the single slot's Num. Returning a
-    /// slot-count (0/1) would make `>= 5` unreachable and silently break the cap.
+    /// Returns the NUMBER OF NODES of a type across the list (C OBJS_GetTotal:
+    /// `for cur: if cur->type==type total++`). For onlyflag items (one stacked node)
+    /// this is 1; for SuperShield it is the number of discrete shields. The
+    /// SuperShield Buy cap (`GetTotal(SuperShield) >= 5`) counts shields, as in C.
     /// </summary>
-    public int GetTotal(ObjType type)
-    {
-        return GetAmt(type);
-    }
+    public int GetTotal(ObjType type) => _objs.Count(n => n.Type == type);
 
     // -----------------------------------------------------------------------
     // OBJS_GetNext — OBJECTS.C:829-865
@@ -255,7 +207,7 @@ public sealed class Inventory
                 pos = firstSpecial;
 
             var type = (ObjType)pos;
-            if (_slots.TryGetValue(type, out var slot) && slot.InUse && slot.Num > 0 && ObjLib.Of(type).SpecialW)
+            if (Equipped(type) is { Num: > 0 } && ObjLib.Of(type).SpecialW)
             {
                 setval = type;
                 break;
@@ -271,9 +223,10 @@ public sealed class Inventory
     // OBJS_Load — OBJECTS.C:708-732
     // -----------------------------------------------------------------------
     /// <summary>
-    /// Rebuilds one inventory slot from a saved OBJ record.
-    /// Mirrors C OBJS_Load: allocates/overwrites the slot, sets Num and InUse,
-    /// and — if inuse — registers the type as equipped (p_objs[type] = cur).
+    /// Rebuilds one inventory node from a saved OBJ record by APPENDING it at the
+    /// tail (mirrors OBJS_Load → OBJS_Get). Replaying a save's node list therefore
+    /// reconstructs multi-node types (e.g. two SuperShields) exactly. Sets Num and
+    /// InUse from the record.
     ///
     /// Does NOT touch EquippedSpecial (sweapon). In C, RAP_LoadPlayer restores
     /// sweapon after the OBJS_Load loop via <c>if (!OBJS_IsEquip(plr.sweapon)) OBJS_GetNext()</c>.
@@ -281,40 +234,65 @@ public sealed class Inventory
     /// </summary>
     public void Load(ObjType type, int num, bool inuse)
     {
-        // Overwrite any existing slot for this type (mirrors OBJS_Get() + fresh assignment).
-        var slot = new ObjSlot { Num = num, InUse = inuse };
-        _slots[type] = slot;
+        _objs.Add(new ObjNode { Type = type, Num = num, InUse = inuse });
         // Note: EquippedSpecial deliberately not set here — mirrors C OBJS_Load.
     }
 
     // -----------------------------------------------------------------------
-    // Read-only slot enumerator — used by PilotSaveStore.Save to write OBJ records.
-    // Keeps ObjSlot private; exposes the minimal triple (type, num, inuse).
+    // SetSingle — create-or-overwrite the single node of a type
     // -----------------------------------------------------------------------
     /// <summary>
-    /// Enumerates all owned slots as (type, num, inuse) triples.
+    /// Creates or overwrites the SINGLE node of a type to (num, inuse) — used to
+    /// "set the energy bar" (PlayerLogic.Reset / SetShield) without stacking nodes.
+    /// Distinct from <see cref="Load"/> (which APPENDS per C OBJS_Load, for save
+    /// replay where each saved record is a node): SetSingle replaces the existing
+    /// node so a per-wave shield reset does not accumulate duplicate Energy nodes.
+    /// Only valid for onlyflag/single-node types (Energy); never used for SuperShield.
+    /// </summary>
+    public void SetSingle(ObjType type, int num, bool inuse)
+    {
+        var existing = FirstOfType(type);
+        if (existing != null)
+        {
+            existing.Num = num;
+            existing.InUse = inuse;
+        }
+        else
+        {
+            _objs.Add(new ObjNode { Type = type, Num = num, InUse = inuse });
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Read-only node enumerator — used by PilotSaveStore.Save to write OBJ records.
+    // Keeps ObjNode private; exposes the minimal triple (type, num, inuse).
+    // -----------------------------------------------------------------------
+    /// <summary>
+    /// Enumerates all owned nodes as (type, num, inuse) triples in list order.
     /// Used by <see cref="Raptor.Sim.PilotSaveStore"/> to persist the inventory.
+    /// Multi-node types yield one triple per node.
     /// </summary>
     public IEnumerable<(ObjType type, int num, bool inuse)> Slots()
     {
-        foreach (var kvp in _slots)
-            yield return (kvp.Key, kvp.Value.Num, kvp.Value.InUse);
+        foreach (var n in _objs)
+            yield return (n.Type, n.Num, n.InUse);
     }
 
     // -----------------------------------------------------------------------
     // obj_hash — mirrors C compute_obj_hash (port/platform/parity.c:160)
     // -----------------------------------------------------------------------
     /// <summary>
-    /// FNV-1a 64-bit hash over the owned objects in C linked-list order, folding
-    /// (type &amp; 0xff) then (num &amp; 0xff) per object. Matches the C parity
-    /// emitter's obj_hash field exactly (empty inventory → 0xcbf29ce484222325).
+    /// FNV-1a 64-bit hash over the owned nodes in C linked-list order, folding
+    /// (type &amp; 0xff) then (num &amp; 0xff) per node. Matches the C parity emitter's
+    /// obj_hash field exactly (empty inventory → 0xcbf29ce484222325). Each node folds
+    /// separately, so two SuperShields fold two (15, num) entries.
     /// </summary>
     public ulong ComputeObjHash() => ObjHash.Compute(HashObjs());
 
     private IEnumerable<(int type, int num)> HashObjs()
     {
-        foreach (var kvp in _slots)
-            yield return ((int)kvp.Key, kvp.Value.Num);
+        foreach (var n in _objs)
+            yield return ((int)n.Type, n.Num);
     }
 
     // -----------------------------------------------------------------------
@@ -342,12 +320,12 @@ public sealed class Inventory
     // OBJS_Clear — OBJECTS.C:77-99
     // -----------------------------------------------------------------------
     /// <summary>
-    /// Removes all slots and resets the equipped special weapon.
+    /// Removes all nodes and resets the equipped special weapon.
     /// Mirrors OBJS_Clear (memset of objs[] and p_objs[]).
     /// </summary>
     public void Clear()
     {
-        _slots.Clear();
+        _objs.Clear();
         EquippedSpecial = null;
     }
 
@@ -374,7 +352,8 @@ public sealed class Inventory
     // -----------------------------------------------------------------------
     /// <summary>
     /// Adds energy, mirroring OBJS_AddEnergy. PURE inventory math; no game-state
-    /// gates. "Owned" == IsEquip (p_objs[type] != NULL in C).
+    /// gates. "Owned" == IsEquip (p_objs[type] != NULL in C). Operates on the
+    /// equipped Energy / SuperShield nodes.
     ///
     /// If energy is owned and below max: add the FULL <paramref name="amt"/>, clamp
     /// to MaxCnt. A dead (Num==0) energy slot is NOT revived. If energy is already at
@@ -385,10 +364,10 @@ public sealed class Inventory
     public int AddEnergy(int amt)
     {
         // C:1282-1283  if (!cur) return 0  — no energy slot owned → no-op.
-        if (!IsEquip(ObjType.Energy))
+        var energy = Equipped(ObjType.Energy);
+        if (energy == null)
             return 0;
 
-        var energy = _slots[ObjType.Energy];
         int energyMax = ObjLib.Of(ObjType.Energy).MaxCnt;
 
         // C:1285  energy NOT full.
@@ -408,10 +387,9 @@ public sealed class Inventory
 
         // C:1296-1305  energy AT max → spill a quarter into an existing super-shield.
         // C:1298-1299  if (!cur) return 0 — does NOT create a super-shield.
-        if (!IsEquip(ObjType.SuperShield))
+        var shield = Equipped(ObjType.SuperShield);
+        if (shield == null)
             return 0;
-
-        var shield = _slots[ObjType.SuperShield];
 
         // C:1301-1302  if (num == 0) return 0 — does NOT revive a dead super-shield.
         if (shield.Num == 0)
@@ -433,30 +411,32 @@ public sealed class Inventory
     /// Subtracts energy, mirroring OBJS_SubEnergy's damage routing. PURE inventory
     /// math; "owned" == IsEquip (p_objs[type] != NULL in C).
     ///
-    /// If a super-shield is owned, drain it; when it goes negative the slot is DELETED
-    /// (via _slots.Remove) with NO spill-back to energy — exactly like
-    /// C's OBJS_Del(S_SUPER_SHIELD). Otherwise drain energy, clamping at 0.
-    /// Returns the resulting Num (0 once the super-shield slot is deleted, or on the
-    /// no-slot early-return).
+    /// If a super-shield is equipped, drain that node; when it goes negative the node
+    /// is removed via <see cref="Del"/> which OBJS_Equip-promotes the NEXT SuperShield
+    /// node (so a second shield takes over) — NO spill-back to energy. Otherwise drain
+    /// the equipped energy node, clamping at 0. Returns the resulting Num (0 once the
+    /// drained super-shield node is removed, or on the no-slot early-return; C's
+    /// `return cur->num` after the delete is use-after-free, so 0 is the safe value).
     ///
     /// DELIBERATELY OMITTED (out of scope, see Task 4.1): the C game-state gates
     /// `if (godmode) return 0`, `if (startendwave != EMPTY) return 0`, and the
     /// `curplr_diff == DIFF_0 && amt &gt; 1 → amt &gt;&gt;= 1` difficulty halving.
-    /// These depend on game state the pure Inventory model has no access to and are
-    /// not present in today's damage path; adding them would regress parity.
+    /// These depend on game state the pure Inventory model has no access to and live in
+    /// WaveController.GateSubEnergyDamage on the damage path.
     /// </summary>
     public int SubEnergy(int amt)
     {
-        // C:1238  if (cur)  — super-shield owned → drain it (no spill-back to energy).
-        if (IsEquip(ObjType.SuperShield))
+        // C:1238  if (cur)  — super-shield owned → drain the equipped node.
+        var shield = Equipped(ObjType.SuperShield);
+        if (shield != null)
         {
-            var shield = _slots[ObjType.SuperShield];
             shield.Num -= amt;
 
-            // C:1248-1249  if (num < 0) OBJS_Del(S_SUPER_SHIELD).
+            // C:1248-1249  if (num < 0) OBJS_Del(S_SUPER_SHIELD) — remove this node,
+            // OBJS_Equip promotes the next SuperShield node if one exists.
             if (shield.Num < 0)
             {
-                _slots.Remove(ObjType.SuperShield);
+                Del(ObjType.SuperShield);
                 return 0;
             }
 
@@ -464,10 +444,10 @@ public sealed class Inventory
         }
 
         // C:1255-1256  else: no super-shield. if (!cur) return 0 — no energy → no-op.
-        if (!IsEquip(ObjType.Energy))
+        var energy = Equipped(ObjType.Energy);
+        if (energy == null)
             return 0;
 
-        var energy = _slots[ObjType.Energy];
         energy.Num -= amt;
 
         // C:1263-1264  if (num < 0) num = 0 — clamp to 0.
@@ -482,18 +462,17 @@ public sealed class Inventory
     // -----------------------------------------------------------------------
     /// <summary>
     /// Consumes one unit of <paramref name="type"/>, mirroring the inventory side of
-    /// OBJS_Use. For a non-Forever weapon, decrements Num; when Num reaches 0 the slot
-    /// is removed (OBJS_Remove + p_objs[type]=NUL) and, if THIS type was the equipped
-    /// special (plr.sweapon == type), cycles to the next owned special via
-    /// <see cref="GetNext"/>. Forever weapons are never consumed.
+    /// OBJS_Use. For a non-Forever weapon, decrements the equipped node's Num; when it
+    /// reaches 0 the node is removed (OBJS_Remove + p_objs[type]=NUL), the next node of
+    /// the same type is OBJS_Equip-promoted, and if THIS type was the equipped special
+    /// (plr.sweapon == type) and none remains, it cycles via <see cref="GetNext"/>.
+    /// Forever weapons are never consumed.
     ///
     /// DELIBERATELY OMITTED (out of scope):
     ///   • objuse_flag = TRUE; think_cnt = 0 — game-state side effects (shield-recharge
     ///     timing), NOT inventory, and not in today's path. Adding them would change timing.
     ///   • lib->actf(type) — the firing/detonation EFFECT is Task 5.4. Here we decrement
     ///     unconditionally on use (the actf-gating of the decrement is deferred to 5.4).
-    ///   • OBJS_Equip(type) re-equip — a no-op in our one-slot model: we remove the whole
-    ///     slot at 0 (no second node to re-equip), so it is correctly omitted.
     ///
     /// PARITY NOTE: MegaBomb (the only shipped non-Forever weapon) has SpecialW=false, so
     /// EquippedSpecial is never MegaBomb and the cycle-on-zero branch never fires for it —
@@ -501,17 +480,13 @@ public sealed class Inventory
     /// </summary>
     public void Use(ObjType type)
     {
-        if (!IsEquip(type)) return;                       // mirror !cur (p_objs[type]==NULL)
+        var node = Equipped(type);
+        if (node == null) return;                         // mirror !cur (p_objs[type]==NULL)
         var lib = ObjLib.Of(type);
-        var slot = _slots[type];
         if (!lib.Forever)
-            slot.Num--;                                   // (actf gating is Task 5.4; here we decrement on use)
-        if (slot.Num <= 0 && !lib.Forever)
-        {
-            _slots.Remove(type);                          // OBJS_Remove + p_objs[type]=NUL
-            if (EquippedSpecial == type)                  // if plr.sweapon == type
-                GetNext();                                // cycle to next owned special
-        }
+            node.Num--;                                   // (actf gating is Task 5.4; here we decrement on use)
+        if (node.Num <= 0 && !lib.Forever)
+            Del(type);                                    // OBJS_Remove + OBJS_Equip next + cycle if special gone
     }
 
     // -----------------------------------------------------------------------
@@ -562,6 +537,7 @@ public sealed class Inventory
     public BuyStuff Buy(ObjType type, ref uint score)
     {
         // C:967-972  super-shield cap: GetTotal(SuperShield) >= 5 → ShipFull.
+        // GetTotal now counts NODES, so this is the C-faithful 5-shield cap.
         if (type == ObjType.SuperShield && GetTotal(ObjType.SuperShield) >= 5)
             return BuyStuff.ShipFull;
 
@@ -584,65 +560,62 @@ public sealed class Inventory
     /// <summary>
     /// Sells an object, mirroring OBJS_Sell. Returns the amount left of the type.
     /// Adds GetResale (computed from the PRE-sell state, since resale is read
-    /// before any slot mutation) to the live player <paramref name="score"/>.
+    /// before any node mutation) to the live player <paramref name="score"/>.
     ///
     /// Branches mirror C exactly:
     ///   • not owned (!IsEquip)        → return 0, no score change.
-    ///   • Detect                      → remove slot, return 0.
+    ///   • Detect                      → un-equip the node (p_objs[type]=NUL) but DO
+    ///                                    NOT remove it — the node STAYS in the list
+    ///                                    and still folds into obj_hash. return 0.
     ///   • onlyflag                    → num -= start_cnt; on &lt;= 0 clamp to 0 and,
-    ///                                    if !forever, remove slot + cycle the equipped
+    ///                                    if !forever, remove node + cycle the equipped
     ///                                    special (OBJS_GetNext) when it was this type.
     ///                                    (Energy is onlyflag+forever: never removed.)
-    ///   • non-onlyflag                → OBJS_Del (remove whole slot + GetNext if equipped),
-    ///                                    return GetTotal (0 in the one-slot model).
+    ///   • non-onlyflag                → OBJS_Del (remove the equipped node, promote the
+    ///                                    next node of the type), return GetTotal.
     /// </summary>
     public int Sell(ObjType type, ref uint score)
     {
         // C:915-916  if (!cur) return 0 — not owned.
-        if (!IsEquip(type))
+        var node = Equipped(type);
+        if (node == null)
             return 0;
 
         var lib = ObjLib.Of(type);
         int rval = 0;
 
-        // C:918  resale added from PRE-sell state (slot still present here).
+        // C:918  resale added from PRE-sell state (node still equipped here).
         score += (uint)GetResale(type);
 
-        // C:920-924  Detect: drop the slot, return 0.
+        // C:920-924  Detect: un-equip (p_objs[type]=NUL) but keep the node. return 0.
         if (type == ObjType.Detect)
         {
-            _slots.Remove(type);
+            node.InUse = false;
             return 0;
         }
 
         if (lib.OnlyFlag)
         {
             // C:928  cur->num -= lib->start_cnt.
-            var slot = _slots[type];
-            slot.Num -= lib.StartCnt;
+            node.Num -= lib.StartCnt;
 
-            if (slot.Num <= 0)
+            if (node.Num <= 0)
             {
                 // C:930-942  clamp to 0; if !forever, remove + re-cycle special.
-                slot.Num = 0;
+                node.Num = 0;
                 rval = 0;
                 if (!lib.Forever)
-                {
-                    _slots.Remove(type);                  // OBJS_Remove + p_objs[type]=NUL
-                    // OBJS_Equip(type) here is a no-op in the one-slot model (slot gone).
-                    if (EquippedSpecial == type)          // if (plr.sweapon == type)
-                        GetNext();
-                }
+                    Del(type);
             }
             else
             {
-                rval = slot.Num;
+                rval = node.Num;
             }
         }
         else
         {
-            // C:948-950  OBJS_Del removes the whole slot, re-cycles the equipped
-            // special if it was this type, then return GetTotal (== 0 here).
+            // C:948-950  OBJS_Del removes the equipped node (promoting the next node
+            // of the type via OBJS_Equip), then return GetTotal (remaining nodes).
             Del(type);
             rval = GetTotal(type);
         }
@@ -654,18 +627,21 @@ public sealed class Inventory
     // OBJS_Del — OBJECTS.C:811-826
     // -----------------------------------------------------------------------
     /// <summary>
-    /// Removes the slot for <paramref name="type"/> entirely, mirroring OBJS_Del:
-    /// OBJS_Remove + p_objs[type]=NUL, then OBJS_Equip(type) (a no-op here — the
-    /// slot is gone, so there is no second node to re-equip), then if this type
-    /// was the equipped special (plr.sweapon == type), OBJS_GetNext to cycle.
-    /// No-op when the type is not owned (C: cur == NUL).
+    /// Removes the equipped node for <paramref name="type"/>, mirroring OBJS_Del:
+    /// OBJS_Remove(p_objs[type]) + p_objs[type]=NUL + OBJS_Equip(type) — the latter
+    /// promotes the next node of the SAME type if one remains (so a second SuperShield
+    /// takes over). If the type was the equipped special and no node of it remains,
+    /// cycle the special weapon via OBJS_GetNext. No-op when the type is not equipped.
     /// </summary>
     private void Del(ObjType type)
     {
-        if (!IsEquip(type)) return;            // C: if (cur == NUL) return
-        _slots.Remove(type);                   // OBJS_Remove + p_objs[type]=NUL
-        // OBJS_Equip(type): no-op in one-slot model (no remaining node to equip).
-        if (EquippedSpecial == type)           // if (type == plr.sweapon)
+        var eq = Equipped(type);
+        if (eq == null) return;                // C: if (cur == NUL) return
+        _objs.Remove(eq);                      // OBJS_Remove
+        Equip(type);                           // OBJS_Equip(type): promote next node of this type
+        // The cycle-to-next-special is a port concern: only when this special type is
+        // now fully gone (no remaining node) and it was the equipped special.
+        if (EquippedSpecial == type && Equipped(type) == null)
             GetNext();
     }
 
@@ -677,7 +653,7 @@ public sealed class Inventory
     /// no RNG (Phase-0 finding 0.5 corrected the old "RNG" task text).
     ///
     /// If a special weapon is equipped (plr.sweapon != EMPTY), <see cref="Del"/> it.
-    /// Otherwise walk type LastObject-1 (23) down to 0 and Del the FIRST slot that is
+    /// Otherwise walk type LastObject-1 (23) down to 0 and Del the FIRST node that is
     /// both owned (p_objs[type] != NULL → IsEquip) AND flagged loseit; then stop.
     ///
     /// C QUIRK (mirrored faithfully — do NOT "fix"): rval is initialised to TRUE and the
@@ -694,7 +670,7 @@ public sealed class Inventory
                 var type = (ObjType)t;
                 if (IsEquip(type) && ObjLib.Of(type).LoseIt)         // owned (p_objs!=NULL) && loseit
                 {
-                    Del(type);                                       // remove + cycle equipped special if it was equipped
+                    Del(type);                                       // remove + promote/cycle
                     return true;
                 }
             }
@@ -710,8 +686,8 @@ public sealed class Inventory
     // -----------------------------------------------------------------------
     /// <summary>
     /// Replaces all state in this instance with the state of <paramref name="other"/>.
-    /// Clears this inventory first, then copies every slot (Num, InUse) and
-    /// EquippedSpecial from <paramref name="other"/>.
+    /// Clears this inventory first, then deep-copies every node (Type, Num, InUse) in
+    /// order and EquippedSpecial from <paramref name="other"/>.
     ///
     /// Preserves reference identity: callers holding a reference to this
     /// instance see the updated data without the field needing to be reassigned.
@@ -721,9 +697,9 @@ public sealed class Inventory
     public void CopyFrom(Inventory other)
     {
         System.ArgumentNullException.ThrowIfNull(other);
-        _slots.Clear();
-        foreach (var kvp in other._slots)
-            _slots[kvp.Key] = new ObjSlot { Num = kvp.Value.Num, InUse = kvp.Value.InUse };
+        _objs.Clear();
+        foreach (var n in other._objs)
+            _objs.Add(new ObjNode { Type = n.Type, Num = n.Num, InUse = n.InUse });
         EquippedSpecial = other.EquippedSpecial;
     }
 }

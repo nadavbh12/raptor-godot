@@ -76,12 +76,18 @@ public class InventoryCoreTests
     }
 
     [Fact]
-    public void GetTotal_equals_count_under_one_slot_model()
+    public void GetTotal_counts_nodes_not_points()
     {
+        // C OBJS_GetTotal counts the NUMBER OF NODES of a type (finding #20).
+        // MegaBomb is onlyflag → Add×4 stacks into ONE node (Num=4): GetTotal==1,
+        // GetAmt==4. SuperShield is non-onlyflag → Add×3 makes THREE nodes.
         var inv = new Inventory();
         for (int i = 0; i < 4; i++) inv.Add(ObjType.MegaBomb);
-        Assert.Equal(4, inv.GetAmt(ObjType.MegaBomb));
-        Assert.Equal(4, inv.GetTotal(ObjType.MegaBomb));   // NOT 1
+        Assert.Equal(4, inv.GetAmt(ObjType.MegaBomb));     // stacked count in one node
+        Assert.Equal(1, inv.GetTotal(ObjType.MegaBomb));   // ONE node (was 4 in the one-slot model)
+
+        for (int i = 0; i < 3; i++) inv.Add(ObjType.SuperShield);
+        Assert.Equal(3, inv.GetTotal(ObjType.SuperShield));   // three discrete nodes
     }
 
     // NOTE: In Task 1.3's public surface, Add always auto-equips, so there is no
@@ -492,13 +498,15 @@ public class InventoryBuySellTests
     public void Buy_super_shield_cap_blocks_at_five_with_no_deduction()
     {
         var inv = new Inventory();
-        // GetTotal(SuperShield) == Num under the one-slot model; 5 hits the cap.
-        inv.Load(ObjType.SuperShield, 5, inuse: true);
+        // Five discrete SuperShield NODES hit the cap (C OBJS_Buy: GetTotal >= 5
+        // counts nodes — finding #20).
+        for (int i = 0; i < 5; i++) inv.Load(ObjType.SuperShield, 100, inuse: i == 0);
+        Assert.Equal(5, inv.GetTotal(ObjType.SuperShield));
         uint score = 1_000_000;
         var rval = inv.Buy(ObjType.SuperShield, ref score);
         Assert.Equal(BuyStuff.ShipFull, rval);
-        Assert.Equal(1_000_000u, score);                   // no deduction
-        Assert.Equal(5, inv.GetAmt(ObjType.SuperShield));  // unchanged
+        Assert.Equal(1_000_000u, score);                     // no deduction
+        Assert.Equal(5, inv.GetTotal(ObjType.SuperShield));  // node count unchanged
     }
 
     [Fact]
