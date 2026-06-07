@@ -70,4 +70,25 @@ public class EndWaveSequenceTests
     {
         Assert.False(EndWaveSequence.InputLocked(countdown: -1));
     }
+
+    [Fact]
+    public void Sequencer_runs_40_flyoff_moves_and_completes_one_iter_after_value_zero()
+    {
+        // Findings #8/#16: C step B (countdown decrement, RAP.C:1046) runs BEFORE
+        // step D (fly-off, RAP.C:599), so PlayerDelta is evaluated on the
+        // POST-decrement startendwave (values 39..0 → 40 moves), and end_wave fires
+        // on the PRE-decrement value 0 — one iter AFTER the value-0 move, with NO
+        // move on the completion iter (startendwave is EMPTY by then).
+        var seq = new EndWaveSequencer();
+        int moves = 0, lastMoveTick = -1, completeAtTick = -1;
+        for (int tick = 0; tick < 100; tick++)
+        {
+            var r = seq.Tick(waveActive: true, demoActive: false, spawnExhausted: true,
+                             playerAlive: true, playerX: 160, enemiesRemaining: false);
+            if (r.ForcedDy != 0) { moves++; lastMoveTick = tick; }
+            if (r.MissionComplete) { completeAtTick = tick; break; }
+        }
+        Assert.Equal(40, moves);                        // post-decrement 39..0
+        Assert.Equal(lastMoveTick + 1, completeAtTick); // completion one iter after the value-0 move
+    }
 }

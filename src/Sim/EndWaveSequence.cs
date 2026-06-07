@@ -29,6 +29,9 @@ public static class EndWaveSequence
     /// <param name="shieldAlive">True iff shield &gt; 0.</param>
     public static (int dx, int dy) PlayerDelta(int countdown, int playerX, bool shieldAlive)
     {
+        // No motion once the countdown reaches EMPTY (post-decrement -1 on the
+        // completion iter) — C's `if (startendwave != EMPTY ...)` guard (RAP.C:599).
+        if (countdown < 0) return (0, 0);
         // No motion while shield is dead (C: `if (startendwave != EMPTY && shield > 0)`).
         if (!shieldAlive) return (0, 0);
         // Motion only kicks in once countdown crosses below END_FLYOFF.

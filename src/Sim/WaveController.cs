@@ -449,6 +449,13 @@ public partial class WaveController : Node
     private readonly PlayerDeathSequence _playerDeath = new();
     private readonly EndWaveSequencer _endWave = new();
     public int                    EndWaveCountdown => _endWave.Countdown;
+    // The fly-off forced displacement persisted from the prior iter's PhaseCleanup,
+    // so the next iter's PhaseMovement can re-apply it (C step A: IPT_MovePlayer
+    // re-uses the g_addx/g_addy that the prior iter's IPT_FMovePlayer set). This gives
+    // the C two-phase ~-8 px/iter unclamped descent (finding #8); both phases use
+    // ApplyForcedMove so the Y clamp is bypassed during fly-off (finding #17).
+    private int                   _flyoffDx = 0;
+    private int                   _flyoffDy = 0;
 
     // ── Scheduler ─────────────────────────────────────────────────────────────
     private readonly GamePhaseScheduler _scheduler;
@@ -721,6 +728,8 @@ public partial class WaveController : Node
         _endWaveFlag = false;
         _playerDeath.Reset();
         _endWave.Reset();
+        _flyoffDx = 0;
+        _flyoffDy = 0;
         DrawPlayer = true;
         _subTick = 0;
         _gameLoopIter = 0;
@@ -871,12 +880,18 @@ public partial class WaveController : Node
             playthroughSpecial: _playthrough?.IsFireSpHeld ?? false,
             playthroughMega: _playthrough?.IsMegaHeld ?? false,
             interactive);
-        // During end-of-wave fly-off, C calls IPT_PauseControl(TRUE) and the
-        // ship's motion comes entirely from RAP_DisplayStats' IPT_FMovePlayer
-        // (applied later in PhaseCleanup). Zero out directional input so the
-        // forced glide isn't fought by residual velocity.
+        // During end-of-wave fly-off, C calls IPT_PauseControl(TRUE) and the ship's
+        // motion is applied TWICE per iter: step A (RAP.C:891 IPT_MovePlayer re-applies
+        // the g_addx/g_addy that the prior iter's IPT_FMovePlayer set) and step D
+        // (RAP.C:615 IPT_FMovePlayer sets a fresh -4 and applies again). Both run
+        // through the clamp gated on startendwave==EMPTY, so during fly-off Y is
+        // UNCLAMPED. Mirror step A here by re-applying the persisted fly-off
+        // displacement via ApplyForcedMove (unclamped at top), and let PhaseCleanup
+        // apply step D. The persisted value starts at 0, so the first fly-off move-iter
+        // applies only -4 and the doubling (~-8/iter) begins the next iter — exactly as
+        // in C (findings #8/#17).
         if (EndWaveSequence.InputLocked(_endWave.Countdown))
-            PlayerLogic.Tick(0, 0);
+            PlayerLogic.ApplyForcedMove(_flyoffDx, _flyoffDy);
         else
             PlayerLogic.Tick(input.Dx, input.Dy);
 
@@ -1558,7 +1573,14 @@ public partial class WaveController : Node
         if (PlayerLogic.Alive && _endWave.Countdown == EndWaveSequence.FlyOff)
             SoundEmitter.Emit("sound.fx_flyby");
         if (endWave.ForcedDx != 0 || endWave.ForcedDy != 0)
+        {
+            // C step D (RAP.C:615): IPT_FMovePlayer sets g_addx/g_addy and applies them
+            // (unclamped during fly-off). Persist the displacement so next iter's
+            // PhaseMovement re-applies it as step A — the two-phase ~-8/iter descent (#8).
             PlayerLogic.ApplyForcedMove(endWave.ForcedDx, endWave.ForcedDy);
+            _flyoffDx = endWave.ForcedDx;
+            _flyoffDy = endWave.ForcedDy;
+        }
         if (endWave.MissionComplete)
         {
             _waveActive = false;

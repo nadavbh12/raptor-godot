@@ -44,24 +44,30 @@ internal sealed class EndWaveSequencer
 
         // Start the fly-off countdown once the wave-end conditions are met, instead
         // of jumping straight to the hangar (mirrors RAP.C:1039-1047 where
-        // startendwave counts down from END_DURATION before end_wave fires).
-        if (_countdown < 0
-            && ShouldCompleteMission(waveActive, demoActive, spawnExhausted, playerAlive, enemiesRemaining))
+        // startendwave counts down from END_DURATION before end_wave fires). C arms
+        // startendwave at step C (ENEMY.C:392), AFTER step B's decrement and BEFORE
+        // step D's fly-off — so the arming iter does NOT decrement and runs no move
+        // (step D sees the freshly-armed 60, which is >= FlyOff). Return immediately.
+        if (_countdown < 0)
         {
-            _countdown = EndWaveSequence.Duration;
+            if (ShouldCompleteMission(waveActive, demoActive, spawnExhausted, playerAlive, enemiesRemaining))
+                _countdown = EndWaveSequence.Duration;
+            return default;
         }
 
-        if (_countdown < 0) return default;
+        // C step B (RAP.C:1046-1053): end_wave fires when the PRE-decrement
+        // startendwave is 0, THEN startendwave--. So completion is latched on the
+        // value-0 tick (one iter after the value-0 move below).
+        bool missionComplete = _countdown == 0;
+        _countdown--;
 
-        // Per-tick fly-off displacement (RAP.C:599-617).
+        // C step D (RAP.C:599-616): the fly-off check runs AFTER step B and uses the
+        // POST-decrement startendwave. On the completion iter the post-decrement value
+        // is -1 (EMPTY), so PlayerDelta yields no move — matching C's `!= EMPTY` guard.
         var (dx, dy) = EndWaveSequence.PlayerDelta(_countdown, playerX, playerAlive);
 
-        _countdown--;
-        if (_countdown > 0) return new TickResult(dx, dy, false);
-
-        // Countdown hit zero: the mission ends (mirrors end_wave=TRUE, RAP.C:1041-1046).
-        _notified = true;
-        return new TickResult(dx, dy, true);
+        if (missionComplete) _notified = true;
+        return new TickResult(dx, dy, missionComplete);
     }
 
     internal static bool ShouldCompleteMission(bool waveActive, bool demoActive, bool endWave,

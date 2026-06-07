@@ -180,4 +180,25 @@ public class PlayerTests
                 && p.Y >= PlayerLogic.MinY && p.Y <= PlayerLogic.MaxY;
         });
     }
+
+    [Fact]
+    public void Flyoff_two_phase_forced_move_drives_player_off_top_unclamped()
+    {
+        // Findings #8/#17: during the end-wave fly-off C applies the forced -4 TWICE
+        // per iter (step A re-applies the persisted g_addy, step D applies a fresh -4)
+        // and the Y clamp is gated off (startendwave != EMPTY), so the ship glides off
+        // the TOP of the screen. Model one fly-off iter as two ApplyForcedMove(0,-4)
+        // calls and confirm Y is driven well below MinY=0 — unlike the input-driven
+        // Tick path (the bounds property above) which clamps at MinY. WaveController
+        // wires these two phases (PhaseMovement step A + PhaseCleanup step D); that
+        // phase interaction is not unit-testable headless, so this guards the
+        // PlayerLogic primitive the wiring depends on.
+        var p = new PlayerLogic();   // Y starts at InitY=160
+        for (int iter = 0; iter < 30; iter++)
+        {
+            p.ApplyForcedMove(0, -4);   // step A (persisted)
+            p.ApplyForcedMove(0, -4);   // step D (fresh)
+        }
+        Assert.True(p.Y <= -50, $"fly-off must leave Y unclamped below MinY; got {p.Y}");
+    }
 }
