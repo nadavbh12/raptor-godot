@@ -302,4 +302,90 @@ public class PlayerBulletCollisionDispatcherTests
         Assert.True(bullet.DeferredDoneFlag);
     }
 
+    private static BulletLogic WeaponBullet(HitType ht, int damage)
+        => new BulletLogic(BulletKind.Player, x: 110, y: 60, velX: 0, velY: 0, damage: damage) { HitType = ht };
+
+    [Fact]
+    public void Gtile_bomb_damages_ground_enemy_by_hardcoded_five()
+    {
+        // Finding #21: SHOTS.C:1241 ENEMY_DamageGround(x, y, 5) — a GTILE bomb deals
+        // a HARDCODED 5 to ground enemies (lib->hits=50 goes only to TILE_Bomb).
+        var ground = EnemyAt(100, 50, hits: 20, flightType: 3);
+        var r = PlayerBulletCollisionDispatcher.Collect(
+            new List<BulletLogic> { WeaponBullet(HitType.GTile, 50) },
+            new List<EnemyLogic> { ground }, new List<TileState>(), mapCols: 9,
+            curPlayerDiff: 2);
+        Assert.Equal(15, ground.Hits);   // 20 - 5 (NOT 20 - 50)
+    }
+
+    [Fact]
+    public void Gtile_bomb_ground_damage_doubles_at_diff0()
+    {
+        // SHOTS.C:1241 routes through ENEMY_DamageGround, so the hardcoded 5 is
+        // ALSO doubled at DIFF_0 (5 → 10).
+        var ground = EnemyAt(100, 50, hits: 20, flightType: 3);
+        var r = PlayerBulletCollisionDispatcher.Collect(
+            new List<BulletLogic> { WeaponBullet(HitType.GTile, 50) },
+            new List<EnemyLogic> { ground }, new List<TileState>(), mapCols: 9,
+            curPlayerDiff: 0);
+        Assert.Equal(10, ground.Hits);   // 20 - 5 - 5
+    }
+
+    [Fact]
+    public void Suck_skips_ground_enemies()
+    {
+        // Finding #21: ENEMY_DamageEnergy `if (cur->groundflag) continue;` skips
+        // ground enemies entirely.
+        var ground = EnemyAt(100, 50, hits: 10, flightType: 3);
+        var r = PlayerBulletCollisionDispatcher.Collect(
+            new List<BulletLogic> { WeaponBullet(HitType.Suck, 3) },
+            new List<EnemyLogic> { ground }, new List<TileState>(), mapCols: 9,
+            curPlayerDiff: 2);
+        Assert.Empty(r.HitEnemies);
+        Assert.Equal(10, ground.Hits);
+    }
+
+    [Fact]
+    public void Suck_decrements_air_enemy_by_exactly_one()
+    {
+        // Finding #21: ENEMY_DamageEnergy decrements `cur->hits--` (exactly 1), NOT
+        // by lib->hits (=3, which only feeds the unported suckagain effect).
+        var air = EnemyAt(100, 50, hits: 10, flightType: 1);
+        var r = PlayerBulletCollisionDispatcher.Collect(
+            new List<BulletLogic> { WeaponBullet(HitType.Suck, 3) },
+            new List<EnemyLogic> { air }, new List<TileState>(), mapCols: 9,
+            curPlayerDiff: 2);
+        Assert.Single(r.HitEnemies);
+        Assert.Equal(9, air.Hits);   // 10 - 1 (NOT 10 - 3)
+    }
+
+    [Theory]
+    [InlineData(HitType.Air, 6)]      // 10 - 2 - 2 = 6 (doubled, ENEMY_DamageAir)
+    [InlineData(HitType.Ground, 6)]   // 10 - 2 - 2 = 6 (doubled, ENEMY_DamageGround)
+    [InlineData(HitType.All, 8)]      // 10 - 2 = 8 (NOT doubled, ENEMY_DamageAll)
+    [InlineData(HitType.GrAll, 8)]    // 10 - 2 = 8 (NOT doubled)
+    public void Diff0_doubles_air_and_ground_not_all(HitType ht, int expectedHits)
+    {
+        // Finding #22: at DIFF_0 (training) C ENEMY_DamageAir/Ground subtract damage
+        // TWICE (ENEMY.C); ENEMY_DamageAll does NOT double.
+        int flightType = ht == HitType.Ground ? 3 : 1;   // Ground needs a ground enemy
+        var enemy = EnemyAt(100, 50, hits: 10, flightType: flightType);
+        var r = PlayerBulletCollisionDispatcher.Collect(
+            new List<BulletLogic> { WeaponBullet(ht, 2) },
+            new List<EnemyLogic> { enemy }, new List<TileState>(), mapCols: 9,
+            curPlayerDiff: 0);
+        Assert.Equal(expectedHits, enemy.Hits);
+    }
+
+    [Fact]
+    public void Diff2_does_not_double_air_or_ground()
+    {
+        // Guard: at the normal difficulty (DIFF_2) there is no doubling.
+        var air = EnemyAt(100, 50, hits: 10, flightType: 1);
+        var r = PlayerBulletCollisionDispatcher.Collect(
+            new List<BulletLogic> { WeaponBullet(HitType.Air, 2) },
+            new List<EnemyLogic> { air }, new List<TileState>(), mapCols: 9,
+            curPlayerDiff: 2);
+        Assert.Equal(8, air.Hits);   // 10 - 2 (single)
+    }
 }

@@ -28,7 +28,8 @@ internal static class PlayerBulletCollisionDispatcher
     public static Result Collect(IList<BulletLogic> bullets,
                                  IList<EnemyLogic> enemies,
                                  IList<TileState> tiles,
-                                 int mapCols)
+                                 int mapCols,
+                                 int curPlayerDiff = 2)
     {
         var result = new Result();
         var damageableAtPassStart = new HashSet<EnemyLogic>();
@@ -40,14 +41,20 @@ internal static class PlayerBulletCollisionDispatcher
         foreach (var b in bullets)
         {
             if (!b.Alive || b.IsBeam || b.DeferredDoneFlag) continue;
+            // C ENEMY_Damage* damage model (ENEMY.C):
+            //   S_ALL/S_GRALL → ENEMY_DamageAll — subtract lib->hits, NO DIFF_0 double.
+            //   S_AIR → ENEMY_DamageAir, S_GROUND → ENEMY_DamageGround — subtract
+            //     lib->hits, DOUBLE at DIFF_0 (curplr_diff==0 → subtract a 2nd time).
+            //   S_SUCK → ENEMY_DamageEnergy — skip ground (groundflag), `cur->hits--`
+            //     (exactly 1, not lib->hits), NO DIFF_0 double.
             bool hitEnemy = b.HitType switch
             {
-                HitType.All    => TryHitEnemy(b, enemies, damageableAtPassStart, e => true, result),
-                HitType.Air    => TryHitEnemy(b, enemies, damageableAtPassStart, e => !e.IsGround, result),
-                HitType.Ground => TryHitEnemy(b, enemies, damageableAtPassStart, e => e.IsGround, result),
-                HitType.GrAll  => TryHitEnemy(b, enemies, damageableAtPassStart, e => true, result),
+                HitType.All    => TryHitEnemy(b, enemies, damageableAtPassStart, e => true, result, curPlayerDiff),
+                HitType.Air    => TryHitEnemy(b, enemies, damageableAtPassStart, e => !e.IsGround, result, curPlayerDiff, applyDiff0Double: true),
+                HitType.Ground => TryHitEnemy(b, enemies, damageableAtPassStart, e => e.IsGround, result, curPlayerDiff, applyDiff0Double: true),
+                HitType.GrAll  => TryHitEnemy(b, enemies, damageableAtPassStart, e => true, result, curPlayerDiff),
                 HitType.GTile  => false,
-                HitType.Suck   => TryHitEnemy(b, enemies, damageableAtPassStart, e => true, result),
+                HitType.Suck   => TryHitEnemy(b, enemies, damageableAtPassStart, e => !e.IsGround, result, curPlayerDiff, overrideDamage: 1),
                 _              => false,
             };
             if (hitEnemy && UsesRandomSparkColor(b.HitType))
@@ -80,7 +87,11 @@ internal static class PlayerBulletCollisionDispatcher
             {
                 tileHit = TileDamageDispatcher.TileBomb(tiles, b.X, b.Y, b.Damage, mapCols);
                 checkTile = true;
-                TryHitEnemy(b, enemies, damageableAtPassStart, e => e.IsGround, result);
+                // SHOTS.C:1241 ENEMY_DamageGround(x, y, 5) — GTILE deals a HARDCODED 5
+                // to ground enemies (TileBomb above already took b.Damage=50). Routes
+                // through ENEMY_DamageGround, so it ALSO doubles at DIFF_0 (5 → 10).
+                TryHitEnemy(b, enemies, damageableAtPassStart, e => e.IsGround, result, curPlayerDiff,
+                            overrideDamage: 5, applyDiff0Double: true);
             }
 
             if (!checkTile || !tileHit.Hit) continue;
@@ -111,7 +122,10 @@ internal static class PlayerBulletCollisionDispatcher
                                     IList<EnemyLogic> enemies,
                                     HashSet<EnemyLogic> damageableAtPassStart,
                                     System.Func<EnemyLogic, bool> hitTypeMatches,
-                                    Result result)
+                                    Result result,
+                                    int curPlayerDiff,
+                                    int? overrideDamage = null,
+                                    bool applyDiff0Double = false)
     {
         foreach (var e in enemies)
         {
@@ -122,8 +136,15 @@ internal static class PlayerBulletCollisionDispatcher
 
             b.MarkDoneFlagForNextPass();
             TraceHit(b, e);
-            e.TakeDamage(b.Damage, deferRemovalForDump: true);
-            result.HitEnemies.Add(new EnemyHit(e, b.Damage));
+            // C ENEMY_DamageGround/Air: `cur->hits -= damage; if (curplr_diff ==
+            // DIFF_0) cur->hits -= damage;`. overrideDamage carries the GTILE-5 /
+            // SUCK-1 hardcodes; b.Damage otherwise. TakeDamage never sets Done, so
+            // two calls faithfully mirror C's two subtractions.
+            int dmg = overrideDamage ?? b.Damage;
+            bool doubled = applyDiff0Double && curPlayerDiff == 0;
+            e.TakeDamage(dmg, deferRemovalForDump: true);
+            if (doubled) e.TakeDamage(dmg, deferRemovalForDump: true);
+            result.HitEnemies.Add(new EnemyHit(e, doubled ? dmg * 2 : dmg));
             return true;
         }
         return false;

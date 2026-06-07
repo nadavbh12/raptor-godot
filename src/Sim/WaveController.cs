@@ -1129,7 +1129,7 @@ public partial class WaveController : Node
         _hitEnemies.Clear();
         PlayerBulletCollisionDispatcher.TraceIter = _gameLoopIter;
         TileDamageDispatcher.TraceIter = _gameLoopIter;
-        var collision = PlayerBulletCollisionDispatcher.Collect(_playerBullets, _enemies, _tiles.Slice, MAP_COLS);
+        var collision = PlayerBulletCollisionDispatcher.Collect(_playerBullets, _enemies, _tiles.Slice, MAP_COLS, _curPlayerDiff);
         foreach (var (x, y) in collision.RandomSparkPositions)
         {
             int spark = PlayerShooter.NextRandom(_shooterRng, 2, "spark.hit_color");
