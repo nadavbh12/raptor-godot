@@ -919,7 +919,11 @@ public partial class WaveController : Node
         if (!_scroller.HasSprites || _slib == null || _endWaveFlag) return;
 
         _tiles.RefreshTileSliceForThink(_mapTiles, _scroller.TilePos, _scroller.TileYOff);
-        Score += (uint)_tiles.ProcessTileDelayExplosions(AddTileExplosion);
+        // C TILE_Think (RAP.C:1058, before SHOTS_Think): the per-iter award scan
+        // first (the SOLE tile-money award site, finding #1), then the delay-fuse
+        // processing. Both run before this iter's bullet/collision phase.
+        Score += (uint)_tiles.TileThinkAwardScan(OnTileDestroyed);
+        _tiles.ProcessTileDelayExplosions(OnTileFuseFired);
 
         // This method combines Godot's spawn phase with C's TILE_Think scroll
         // advance. The collision tile slice above intentionally stays at the
@@ -1123,17 +1127,10 @@ public partial class WaveController : Node
             AddExplosion(SparkOrangeExpType, x, y);
         foreach (var (x, y) in collision.BlueSparkPositions)
             AddExplosion(SparkBlueExpType, x, y);
-        if (collision.TileBounty > 0) Score += (uint)collision.TileBounty;
+        // TILE_IsHit only decremented tile hits this pass; push those into the
+        // backing arrays so next iter's TileThinkAwardScan (PhaseSpawn) awards and
+        // explodes any tile now at hits<0 — the faithful C order (finding #1).
         _tiles.SyncTileSliceToBacking();
-        foreach (int mapspot in collision.DestroyedTileMapSpots)
-        {
-            _tiles.SpawnTileExplosion(mapspot, AddTileExplosion);
-            // Tiles destroyed by the explosion chain also pay bounty (C TILE_Think
-            // awards money for any tile reaching hits<0, not just direct hits).
-            Score += (uint)_tiles.ApplyTileExplosionDamage(mapspot, damage: 5, AddTileExplosion);
-            _tiles.ScheduleTileDelayExplosion(mapspot);
-        }
-        _tiles.RefreshTileSliceValuesFromBacking();
 
         // Beam-vs-enemy column damage. SHOTS.C:1068-1088 — for each VerticalBeam,
         // find the first enemy whose x range contains the beam X and whose
@@ -1244,8 +1241,9 @@ public partial class WaveController : Node
     private void HandleShotDone(BulletLogic b)
     {
         var result = ShotDoneDispatcher.Dispatch(b, _enemyBullets, _enemies, _shooterRng, _tiles.Slice);
-        if (result.TileBounty > 0) Score += (uint)result.TileBounty;
         if (result.MegaBombDetonated) _megaFlash.Signal();
+        // MegaBomb's TILE_DamageAll only decremented tile hits; the next-iter
+        // TileThinkAwardScan awards them (finding #1/#23). Push to backing here.
         _tiles.SyncTileSliceToBacking();
     }
 
@@ -1327,6 +1325,7 @@ public partial class WaveController : Node
     internal const int ExpAirLarge  = 2;  // EXP_AIRLARGE → LGFLAK_BLK
     internal const int ExpAirSmall2 = 10; // EXP_AIRSMALL2 → SMFLAK_BLK
     internal const int ExpAirMed2   = 10; // A_MED_AIR_EXPLO2 uses SMFLAK_BLK in ANIMS.C.
+    internal const int ExpGrdLarge  = 5;  // EXP_GRDLARGE → GEXPLO_BLK (A_LARGE_GROUND_EXPLO1)
 
     private void ProcessPendingEnemyRemovalsForParity()
     {
@@ -1397,6 +1396,29 @@ public partial class WaveController : Node
     // Explosion sink handed to TileDamageState so the tile-destruction cascade
     // can spawn ground explosions without owning the explosion list.
     private void AddTileExplosion(int expType, int x, int y) => AddExplosion(expType, x, y);
+
+    /// <summary>
+    /// TileThinkAwardScan callback: a tile reached hits&lt;0 and is being destroyed.
+    /// Mirrors C TILE_Think on-destroy (TILE.C:388/395): SND_3DPatch(FX_GEXPLO) —
+    /// one random(40) draw on the shared stream (finding #2) — then the
+    /// A_LARGE_GROUND_EXPLO1 ground explosion at the tile center.
+    /// </summary>
+    private void OnTileDestroyed(int mapspot, int screenX, int screenY)
+    {
+        PlayerShooter.NextRandom(_shooterRng, 40, "sound3d.fx_gexplo");
+        SoundEmitter.Emit("sound3d.fx_gexplo", screenX + 16, screenY + 16);
+        AddExplosion(ExpGrdLarge, screenX + 16, screenY + 16);
+    }
+
+    /// <summary>
+    /// ProcessTileDelayExplosions callback: a delayed-explosion fuse fired. Mirrors
+    /// C (TILE.C:412): tx = ts->x + 8 + random(8) — one random(8) draw on the shared
+    /// stream (finding #3). The spark/flare anims it positions are cosmetic (View).
+    /// </summary>
+    private void OnTileFuseFired()
+    {
+        PlayerShooter.NextRandom(_shooterRng, 8, "tile.spark.pos");
+    }
 
     private void TraceBonus(string eventName, BonusLogic b)
     {

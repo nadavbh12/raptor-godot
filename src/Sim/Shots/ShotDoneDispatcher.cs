@@ -26,13 +26,10 @@ internal static class ShotDoneDispatcher
 {
     public readonly struct DispatchResult
     {
-        public DispatchResult(int tileBounty, bool megaBombDetonated = false)
+        public DispatchResult(bool megaBombDetonated = false)
         {
-            TileBounty = tileBounty;
             MegaBombDetonated = megaBombDetonated;
         }
-
-        public int TileBounty { get; }
 
         /// True only on the tick a MEGA_BOMB shot_done actually detonates.
         /// Parity-inert: drives a transient View flash, never sim state.
@@ -50,38 +47,35 @@ internal static class ShotDoneDispatcher
             int scatter = DeterministicRandom.NextOrMidpoint(rng, 32, 16) - 16;
             b.ReInitBresenhamTarget(b.Mx + scatter, 0);
             b.Delayed = false;
-            return new DispatchResult(0);
+            return new DispatchResult();
         }
         switch (b.PlayerWeapon)
         {
             case ObjType.MegaBomb:
                 foreach (var eb in enemyBullets) eb.Kill();
                 foreach (var e in enemies) if (e.Alive) e.TakeDamage(b.Damage, deferRemovalForDump: true);
-                int bounty = tiles == null ? 0 : DamageAllTiles(tiles, damage: 20);
+                if (tiles != null) DamageAllTiles(tiles, damage: 20);
                 b.Kill();
-                return new DispatchResult(bounty, megaBombDetonated: true);
+                return new DispatchResult(megaBombDetonated: true);
             case ObjType.Turret:
-                return new DispatchResult(0);
+                return new DispatchResult();
             default:
                 b.Kill();
-                return new DispatchResult(0);
+                return new DispatchResult();
         }
     }
 
-    private static int DamageAllTiles(IList<TileState> tiles, int damage)
+    /// <summary>
+    /// C TILE_DamageAll (TILE.C:336-351): decrement-only, hits -= 20 for every
+    /// destructible on-screen tile. The award/explode is deferred to the next-iter
+    /// TileThinkAwardScan (finding #1/#23) — never done inline here.
+    /// </summary>
+    private static void DamageAllTiles(IList<TileState> tiles, int damage)
     {
-        int bounty = 0;
         foreach (var tile in tiles)
         {
             if (!tile.IsDestructible) continue;
-            int before = tile.Hits;
             tile.Hits -= damage;
-            if (before >= 0 && tile.Hits < 0 && !tile.Dead)
-            {
-                bounty += tile.Bounty;
-                tile.Dead = true;
-            }
         }
-        return bounty;
     }
 }

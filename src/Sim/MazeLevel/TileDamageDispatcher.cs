@@ -67,57 +67,39 @@ public static class TileDamageDispatcher
         public bool Hit;
         /// <summary>Tile index in the on-screen slice (TileState list index), or -1.</summary>
         public int HitIndex;
-        /// <summary>Score to add when the tile is fully destroyed (Hits ≤ 0).</summary>
-        public int Bounty;
-        /// <summary>True iff this hit reduced the tile's Hits to ≤ 0 for the first time.</summary>
-        public bool JustDestroyed;
         /// <summary>Absolute MAP_SIZE index of the damaged tile, or -1.</summary>
         public int MapSpot;
     }
 
     /// <summary>
-    /// Tile-IsHit dispatch. Ports SOURCE/TILE.C:458-493.
-    /// `tiles` is the on-screen tile slice (MAP_ONSCREEN * MAP_COLS entries
-    /// from top-left → bottom-right, row-major).
+    /// Tile-IsHit dispatch. Ports SOURCE/TILE.C:492-529. ONLY decrements the tile's
+    /// hits (+ the random(2) spark, drawn by the caller). The award / explode / tdead
+    /// are deferred to the per-iter TileThinkAwardScan (finding #1) — never done here.
+    /// `tiles` is the on-screen tile slice (MAP_ONSCREEN * MAP_COLS entries,
+    /// top-left → bottom-right, row-major).
     /// </summary>
     public static DamageResult TileIsHit(IList<TileState> tiles, int x, int y, int damage)
-        => DispatchHit(tiles, x, y, damage, splashAbove: false, splashDamage: 0,
-            mapCols: 9, deadAtPassStart: null);
-
-    internal static DamageResult TileIsHit(IList<TileState> tiles, int x, int y, int damage,
-                                           ISet<TileState> deadAtPassStart)
-        => DispatchHit(tiles, x, y, damage, splashAbove: false, splashDamage: 0,
-            mapCols: 9, deadAtPassStart: deadAtPassStart);
+        => DispatchHit(tiles, x, y, damage, splashAbove: false, splashDamage: 0, mapCols: 9);
 
     /// <summary>
-    /// Tile-Bomb dispatch. Ports SOURCE/TILE.C:499-540.
-    /// On hit also splashes (damage &gt;&gt; 1) onto the tile above (mapspot − cols).
+    /// Tile-Bomb dispatch. Ports SOURCE/TILE.C:534-565. Decrements the tile and
+    /// splashes (damage &gt;&gt; 1) onto the tile above. Award/explode deferred to the scan.
     /// </summary>
     public static DamageResult TileBomb(IList<TileState> tiles, int x, int y, int damage, int mapCols)
-        => DispatchHit(tiles, x, y, damage, splashAbove: true, splashDamage: damage >> 1,
-            mapCols: mapCols, deadAtPassStart: null);
-
-    internal static DamageResult TileBomb(IList<TileState> tiles, int x, int y, int damage,
-                                          int mapCols, ISet<TileState> deadAtPassStart)
-        => DispatchHit(tiles, x, y, damage, splashAbove: true, splashDamage: damage >> 1,
-            mapCols: mapCols, deadAtPassStart: deadAtPassStart);
+        => DispatchHit(tiles, x, y, damage, splashAbove: true, splashDamage: damage >> 1, mapCols: mapCols);
 
     private static DamageResult DispatchHit(IList<TileState> tiles, int x, int y, int damage,
-                                            bool splashAbove, int splashDamage, int mapCols,
-                                            ISet<TileState>? deadAtPassStart)
+                                            bool splashAbove, int splashDamage, int mapCols)
     {
         for (int i = 0; i < tiles.Count; i++)
         {
             var t = tiles[i];
             if (x < t.ScreenX || x >= t.ScreenX + 32) continue;
             if (y < t.ScreenY || y >= t.ScreenY + 32) continue;
-            if (!t.IsDestructible) continue;
-            if (t.Dead && (deadAtPassStart == null || deadAtPassStart.Contains(t))) continue;
+            if (!t.IsDestructible) continue;   // C: eitems != titems (exploded tiles are skipped)
             int hitsBefore = t.Hits;
-            t.Hits -= damage;
+            t.Hits -= damage;                  // decrement only — TILE_Think awards later
             Trace("hit", t, x, y, damage, hitsBefore, t.Hits);
-            bool justDestroyed = hitsBefore >= 0 && t.Hits < 0 && !t.Dead;
-            if (justDestroyed) t.Dead = true;
 
             // Splash to the tile one row above (i - mapCols). C: `if (ts->mapspot > MAP_COLS)`.
             if (splashAbove && i >= mapCols && tiles[i - mapCols].IsDestructible)
@@ -127,14 +109,7 @@ public static class TileDamageDispatcher
                 Trace("splash", tiles[i - mapCols], -1, -1, splashDamage, splashBefore, tiles[i - mapCols].Hits);
             }
 
-            return new DamageResult
-            {
-                Hit = true,
-                HitIndex = i,
-                Bounty = justDestroyed ? t.Bounty : 0,
-                JustDestroyed = justDestroyed,
-                MapSpot = t.MapSpot,
-            };
+            return new DamageResult { Hit = true, HitIndex = i, MapSpot = t.MapSpot };
         }
         return new DamageResult { Hit = false, HitIndex = -1, MapSpot = -1 };
     }

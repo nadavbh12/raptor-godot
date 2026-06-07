@@ -124,11 +124,11 @@ public class ShotDoneDispatcherTests
     }
 
     [Fact]
-    public void MegaBomb_dispatch_damages_all_destructible_tiles_by_twenty_and_reports_bounty()
+    public void MegaBomb_dispatch_damages_all_destructible_tiles_by_twenty_decrement_only()
     {
-        // SHOTS.C:1234: MegaBomb calls TILE_DamageAll(), which subtracts 20
-        // from every destructible on-screen tile. TILE_Think later awards
-        // bounty only for tiles whose hits fall below zero.
+        // SHOTS.C:1234: MegaBomb calls TILE_DamageAll() (TILE.C:336-351), which only
+        // subtracts 20 from every destructible on-screen tile. The award/explode is
+        // deferred to the next-iter TileThinkAwardScan (finding #1/#23) — never inline.
         var b = BulletLogic.AimedAt(BulletKind.Player, x: 160, y: 176,
             x2: 160, y2: 75, initSpeed: 1, maxSpeed: 1, damage: 8);
         b.PlayerWeapon = ObjType.MegaBomb;
@@ -144,8 +144,8 @@ public class ShotDoneDispatcherTests
         Assert.Equal(10, tiles[0].Hits);
         Assert.Equal(30, tiles[1].Hits);   // indestructible: unchanged
         Assert.Equal(-10, tiles[2].Hits);
-        Assert.Equal(300, result.TileBounty);
-        Assert.True(tiles[2].Dead);
+        Assert.False(tiles[2].Dead);       // decrement only — destroyed later by the scan
+        Assert.True(result.MegaBombDetonated);
     }
 
     [Fact]

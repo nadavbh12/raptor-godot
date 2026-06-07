@@ -60,28 +60,29 @@ public class TileDamageDispatcherTests
         Assert.True(r.Hit);
         Assert.Equal(0, r.HitIndex);
         Assert.Equal(5, s[0].Hits);
-        Assert.False(r.JustDestroyed);
-        Assert.Equal(0, r.Bounty);
+        Assert.False(s[0].Dead);   // decrement only — award/explode deferred to the scan
     }
 
     [Fact]
-    public void TileIsHit_reports_JustDestroyed_with_Bounty_on_killing_blow()
+    public void TileIsHit_decrements_below_zero_without_marking_dead_or_awarding()
     {
+        // C TILE_IsHit (TILE.C:505-521) decrements only; even a killing blow leaves
+        // the tile alive-but-negative until the next TILE_Think scan destroys it.
         var s = Slice(8, 9);
         s[0].IsDestructible = true; s[0].Hits = 5; s[0].Bounty = 250;
         var r = TileDamageDispatcher.TileIsHit(s, x: 32, y: -40, damage: 6);
         Assert.True(r.Hit);
-        Assert.True(r.JustDestroyed);
-        Assert.Equal(250, r.Bounty);
         Assert.Equal(-1, s[0].Hits);
-        Assert.True(s[0].Dead);
+        Assert.False(s[0].Dead);   // NOT killed at hit time (was Bug E)
     }
 
     [Fact]
-    public void TileIsHit_skips_dead_tile_from_prior_tile_think()
+    public void TileIsHit_skips_exploded_indestructible_tile()
     {
+        // After TILE_Think destroys a tile it sets eitems=titems (IsDestructible=false),
+        // so TILE_IsHit's `eitems != titems` check skips it on later passes.
         var s = Slice(8, 9);
-        s[0].IsDestructible = true; s[0].Hits = -1; s[0].Dead = true;
+        s[0].IsDestructible = false; s[0].Hits = -1; s[0].Dead = true;
 
         var r = TileDamageDispatcher.TileIsHit(s, x: 32, y: -40, damage: 5);
 
@@ -90,17 +91,16 @@ public class TileDamageDispatcherTests
     }
 
     [Fact]
-    public void TileIsHit_does_not_report_destroyed_at_exactly_zero_hits()
+    public void TileIsHit_at_exactly_zero_hits_is_not_yet_lethal()
     {
+        // C destroys on hits<0, so hits reaching exactly 0 is still alive.
         var s = Slice(8, 9);
         s[0].IsDestructible = true; s[0].Hits = 1; s[0].Bounty = 250;
 
         var r = TileDamageDispatcher.TileIsHit(s, x: 32, y: -40, damage: 1);
 
         Assert.True(r.Hit);
-        Assert.False(r.JustDestroyed);
         Assert.False(s[0].Dead);
-        Assert.Equal(0, r.Bounty);
         Assert.Equal(0, s[0].Hits);
     }
 

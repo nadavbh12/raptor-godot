@@ -6,10 +6,16 @@ using Xunit;
 namespace Raptor.Tests;
 
 /// <summary>
-/// Unit tests for the tile-destructibility cascade extracted into
-/// <see cref="TileDamageState"/> (E11). Covers the explosion-splash neighbor
-/// cascade, the 10-frame delayed-explosion fuse, and the skip rules for
-/// non-destructible / already-dead tiles. Mirrors C TILE.C splash damage.
+/// Tile destruction parity vs C TILE.C, after the TILE_Think post-pass refactor
+/// (structural-parity-review finding #1). The faithful model:
+///   - TileIsHit ONLY decrements hits (the award/explode/tdead are deferred).
+///   - TileThinkAwardScan is the SOLE award site (C TILE.C:386-398), run once per
+///     iter before the bullet phase: for each tile hits&lt;0 &amp;&amp; !dead it awards
+///     bounty, splashes 5 NON-recursively to 3 neighbors, schedules a 10-frame
+///     fuse, and marks the tile dead.
+///   - The fuse later splashes 20 NON-recursively (TILE.C:410-437).
+/// So a connected structure (the wave-1 bridge) dies ring-by-ring over many iters,
+/// never all at once — which is what fixes the Bug E score-timing lead.
 /// </summary>
 public class TileDamageStateTests
 {
@@ -47,96 +53,100 @@ public class TileDamageStateTests
     }
 
     [Fact]
-    public void Lethal_splash_marks_tile_dead_and_schedules_delay_explosion()
+    public void Tile_hit_only_decrements_does_not_award_or_kill()
     {
-        // 3 rows × 9 cols = 27 spots so the center has left/up/right neighbors.
-        var (tiles, mapTiles, exps) = BuildState(count: 27, hits: 1, bounty: 50);
-        void Add(int e, int x, int y) => exps.Add((e, x, y));
+        // C TILE_IsHit (TILE.C:505-521) ONLY decrements hits (+random(2) spark).
+        // The award / explode / tdead are deferred to the next-iter TILE_Think.
+        // Awarding or marking dead at hit time was Bug E.
+        var (tiles, _, _) = BuildState(count: 27, hits: 15, bounty: 50);
 
-        // Center spot 10 (row 1, col 1). Its right neighbor is spot 11.
-        // damage=20 (> hits=1) so each destructible neighbor dies on first hit.
-        tiles.ApplyTileExplosionDamage(mapspot: 10, damage: 20, Add);
+        var r = TileDamageDispatcher.TileIsHit(
+            tiles.Slice, tiles.Slice[10].ScreenX, tiles.Slice[10].ScreenY, damage: 20);
 
-        // The right neighbor (11), left (9) and up (1) are all destructible and
-        // should now be Dead in the slice after syncing values back.
-        tiles.RefreshTileSliceValuesFromBacking();
-        Assert.True(tiles.Slice[11].Dead);
-        Assert.True(tiles.Slice[9].Dead);
-        Assert.True(tiles.Slice[1].Dead);
-
-        // Each destruction spawns a ground explosion at the tile center.
-        Assert.Contains((5 /* ExpGrdLarge */, tiles.Slice[11].ScreenX + 16, tiles.Slice[11].ScreenY + 16), exps);
-        Assert.NotEmpty(exps);
+        Assert.True(r.Hit);
+        Assert.Equal(-5, tiles.Slice[10].Hits);  // 15 - 20
+        Assert.False(tiles.Slice[10].Dead);       // NOT killed/awarded at hit time
     }
 
     [Fact]
-    public void Explosion_chain_destroyed_tiles_award_bounty_like_C_TILE_Think()
+    public void Think_scan_is_sole_award_site_for_negative_tiles()
     {
-        // C TILE_Think (TILE.C:386-398) awards money[mapspot] for EVERY tile that
-        // reaches hits<0 && !tdead — including tiles destroyed by the explosion
-        // chain / delayed blast, not just the directly-shot tile. Godot previously
-        // awarded bounty only on direct DispatchHit, so a contiguous structure
-        // (the wave-1 bridge) destroyed mostly by the chain scored ~0. The cascade
-        // must return the total bounty of all tiles it destroys.
-        var (tiles, _, exps) = BuildState(count: 27, hits: 1, bounty: 50);
-        void Add(int e, int x, int y) => exps.Add((e, x, y));
+        // C TILE_Think (TILE.C:386-398): for each tile hits<0 && !tdead, award
+        // money, splash, schedule the fuse, mark tdead. The directly-shot tile is
+        // awarded HERE (the iter after the hit), not at hit time.
+        var (tiles, _, exps) = BuildState(count: 27, hits: 15, bounty: 50);
+        tiles.Slice[10].Hits = -5;                 // as the prior iter's bullet left it
+        tiles.SyncTileSliceToBacking();
 
-        int bounty = tiles.ApplyTileExplosionDamage(mapspot: 10, damage: 20, Add);
+        int destroyed = 0;
+        int bounty = tiles.TileThinkAwardScan((ms, x, y) => { destroyed++; exps.Add((5, x + 16, y + 16)); });
 
-        tiles.RefreshTileSliceValuesFromBacking();
-        int dead = 0;
-        foreach (var t in tiles.Slice) if (t.Dead) dead++;
-        Assert.True(dead > 1, "the chain should destroy multiple tiles");
-        Assert.Equal(dead * 50, bounty);   // every chain-destroyed tile pays bounty
+        Assert.Equal(50, bounty);                  // exactly one tile awarded
+        Assert.Equal(1, destroyed);
+        Assert.True(tiles.Slice[10].Dead);
+        Assert.Contains((5, tiles.Slice[10].ScreenX + 16, tiles.Slice[10].ScreenY + 16), exps);
     }
 
     [Fact]
-    public void Delay_fuse_fires_after_ten_frame_countdown()
+    public void Think_scan_splash_is_non_recursive_one_ring_per_pass()
     {
-        var (tiles, mapTiles, exps) = BuildState(count: 27, hits: 1, bounty: 0);
-        void Add(int e, int x, int y) => exps.Add((e, x, y));
+        // THE finding-#1 test. A contiguous block of hits=15 tiles, one knocked
+        // lethal. After ONE think-pass: only that tile is awarded+dead; its
+        // immediate neighbors are pushed down by 5 (15→10) but NOT destroyed; tiles
+        // two away are untouched. C never destroys the whole structure in a single
+        // pass — it propagates one ring per iter via the delayed 20-splash.
+        var (tiles, _, exps) = BuildState(count: 27, hits: 15, bounty: 50);
+        tiles.Slice[10].Hits = -1;                 // center lethal
+        tiles.SyncTileSliceToBacking();
 
-        // Schedule a delay explosion on the center tile; its destructible
-        // neighbors (1, 9, 11) are still alive. The fuse fires ApplyTileExplosion
-        // Damage(..., 20) only after Frames counts below 0.
+        int bounty = tiles.TileThinkAwardScan((ms, x, y) => exps.Add((5, x + 16, y + 16)));
+
+        Assert.Equal(50, bounty);                  // ONLY the center tile, not the block
+        Assert.True(tiles.Slice[10].Dead);
+        // left(9), up(1), right(11) decremented 15→10 and still ALIVE.
+        Assert.Equal(10, tiles.Slice[9].Hits);  Assert.False(tiles.Slice[9].Dead);
+        Assert.Equal(10, tiles.Slice[1].Hits);  Assert.False(tiles.Slice[1].Dead);
+        Assert.Equal(10, tiles.Slice[11].Hits); Assert.False(tiles.Slice[11].Dead);
+        // two tiles away (12) untouched.
+        Assert.Equal(15, tiles.Slice[12].Hits);
+    }
+
+    [Fact]
+    public void Delay_fuse_splashes_20_after_ten_frames_non_recursively()
+    {
+        // C TILE_Think delay branch (TILE.C:410-437): a fuse fires after its
+        // countdown, doing a NON-recursive TILE_DoDamage(20) splash. It does NOT
+        // award (that is the scan's job) and does NOT mark neighbors dead.
+        var (tiles, _, _) = BuildState(count: 27, hits: 15, bounty: 50);
         tiles.ScheduleTileDelayExplosion(10);
 
-        // Frames starts at 10. ProcessTileDelayExplosions decrements once per call
-        // and only fires once Frames < 0 — i.e. on the 12th call (10→...→-1).
-        for (int i = 0; i < 11; i++)
-        {
-            tiles.ProcessTileDelayExplosions(Add);
-            Assert.False(tiles.Slice[11].Dead);  // not yet fired
-        }
-        // 12th call: Frames is now -1 (< 0) → fires the damage-20 splash.
-        tiles.ProcessTileDelayExplosions(Add);
-        Assert.True(tiles.Slice[11].Dead);
-        Assert.True(tiles.Slice[9].Dead);
-        Assert.True(tiles.Slice[1].Dead);
+        int fired = 0;
+        for (int i = 0; i < 11; i++) tiles.ProcessTileDelayExplosions(() => fired++);
+        Assert.Equal(0, fired);                    // frames 10..0, not yet < 0
+
+        tiles.ProcessTileDelayExplosions(() => fired++);   // 12th call: frames -1 → fire
+        Assert.Equal(1, fired);
+        // neighbors of spot 10 splashed by 20: 15 → -5 (lethal, awaited by next scan).
+        Assert.Equal(-5, tiles.Slice[9].Hits);
+        Assert.Equal(-5, tiles.Slice[1].Hits);
+        Assert.Equal(-5, tiles.Slice[11].Hits);
+        Assert.False(tiles.Slice[9].Dead);         // destruction is the scan's job
     }
 
     [Fact]
-    public void Non_destructible_and_already_dead_neighbors_are_skipped()
+    public void Splash_guards_on_destructible_only_not_dead()
     {
-        var (tiles, mapTiles, exps) = BuildState(count: 27, hits: 1, bounty: 0);
-        void Add(int e, int x, int y) => exps.Add((e, x, y));
-
-        // Kill the right neighbor (11) first so it is already Dead.
-        tiles.Slice[11].Dead = true;
+        // Finding #15. C TILE_DoDamage (TILE.C:174) guards ONLY on eitems==titems
+        // (indestructible), NOT on tdead — so a tile that is tdead but still
+        // destructible keeps taking splash. Godot previously had an extra Dead gate.
+        var (tiles, _, _) = BuildState(count: 27, hits: 15, bounty: 50);
+        tiles.Slice[11].Dead = true;               // dead but still destructible
         tiles.SyncTileSliceToBacking();
-        int explosionsBefore = exps.Count;
+        tiles.Slice[10].Hits = -1;                 // center lethal
+        tiles.SyncTileSliceToBacking();
 
-        // Now splash from center 10. Up (1) and left (9) die; right (11) is skipped
-        // (already dead) — so no explosion fires for spot 11 a second time.
-        tiles.ApplyTileExplosionDamage(mapspot: 10, damage: 20, Add);
-        tiles.RefreshTileSliceValuesFromBacking();
+        tiles.TileThinkAwardScan((ms, x, y) => { });
 
-        Assert.True(tiles.Slice[1].Dead);
-        Assert.True(tiles.Slice[9].Dead);
-        // No explosion was emitted for the already-dead spot 11.
-        foreach (var (_, x, y) in exps)
-            Assert.False(x == tiles.Slice[11].ScreenX + 16 && y == tiles.Slice[11].ScreenY + 16,
-                "already-dead tile must not spawn a new explosion");
-        Assert.True(exps.Count > explosionsBefore);
+        Assert.Equal(10, tiles.Slice[11].Hits);    // 15 - 5: splash applied despite Dead
     }
 }

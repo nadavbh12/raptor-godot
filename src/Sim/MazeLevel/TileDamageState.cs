@@ -21,9 +21,6 @@ internal sealed class TileDamageState
     private const int MAP_BLOCKSIZE = 32;
     private const int MAP_LEFT      = 16;
 
-    // C exptype constant for the ground-tile destruction explosion (SOURCE/MAP.H).
-    private const int ExpGrdLarge = 5;   // EXP_GRDLARGE → GEXPLO_BLK
-
     // On-screen tile state slice (MAP_ONSCREEN * MAP_COLS = 72 entries).
     // Mirrors C's tspots[]. Rebuilt from _mapTiles + _flatLib in PhaseSpawn
     // whenever the scroll crosses a row boundary; TileBomb / TileIsHit
@@ -161,80 +158,121 @@ internal sealed class TileDamageState
 
     public void RefreshTileSliceValuesFromBacking()
     {
-        if (_tileHitsByMapSpot == null || _tileDeadByMapSpot == null) return;
+        if (_tileHitsByMapSpot == null || _tileDeadByMapSpot == null ||
+            _tileDestructibleByMapSpot == null) return;
         foreach (var t in _tileSlice)
         {
             if (t.MapSpot < 0 || t.MapSpot >= _tileHitsByMapSpot.Length) continue;
             t.Hits = _tileHitsByMapSpot[t.MapSpot];
             t.Dead = _tileDeadByMapSpot[t.MapSpot];
+            // TileThinkAwardScan/TileExplode flips a destroyed tile indestructible in
+            // the backing (C eitems=titems). Mirror it into the slice so TileIsHit
+            // (which reads the slice) stops absorbing bullets into the dead tile —
+            // C makes the tile indestructible in TILE_Think before that iter's shots.
+            t.IsDestructible = _tileDestructibleByMapSpot[t.MapSpot];
         }
     }
 
     /// <summary>
-    /// Splash damage to the left/up/right neighbors of <paramref name="mapspot"/>.
-    /// Returns the total <c>money[mapspot]</c> bounty of tiles destroyed by this
-    /// splash (and its recursive chain). Mirrors C, where TILE_Think awards
-    /// money for EVERY tile reaching hits&lt;0 (TILE.C:386-398), not just the
-    /// directly-shot one — so explosion-chain-destroyed tiles pay out too.
+    /// The single per-iter award scan, mirroring C TILE_Think (TILE.C:386-398). Run
+    /// once at the top of the tick BEFORE the bullet/collision phase (as C runs
+    /// TILE_Think before SHOTS_Think). For each on-screen tile with hits&lt;0 &amp;&amp;
+    /// !dead, in row-major scan order: invoke <paramref name="onDestroyed"/>
+    /// (mapspot, screenX, screenY) so the caller can draw the FX_GEXPLO sound RNG +
+    /// spawn the ground-explosion anim, splash 5 NON-recursively to the 3 neighbors,
+    /// accumulate bounty, schedule the 10-frame fuse + flip the tile indestructible
+    /// (TILE_Explode), and mark it dead. Returns the total bounty to add to Score.
+    ///
+    /// This is the SOLE award site (the inversion fixed in finding #1). Splash is
+    /// non-recursive: a splashed neighbor is only awarded once a later scan finds it
+    /// at hits&lt;0, so a connected structure dies ring-by-ring, never all at once.
     /// </summary>
-    public int ApplyTileExplosionDamage(int mapspot, int damage, Action<int, int, int> addExplosion)
-    {
-        if (_tileHitsByMapSpot == null || _tileDeadByMapSpot == null ||
-            _tileDestructibleByMapSpot == null)
-            return 0;
-
-        int ix = mapspot % MAP_COLS;
-        int bounty = 0;
-        bounty += ApplyTileExplosionNeighbor(mapspot - 1, ix - 1, damage, addExplosion);
-        bounty += ApplyTileExplosionNeighbor(mapspot - MAP_COLS, ix, damage, addExplosion);
-        bounty += ApplyTileExplosionNeighbor(mapspot + 1, ix + 1, damage, addExplosion);
-        return bounty;
-    }
-
-    private int ApplyTileExplosionNeighbor(int spot, int x, int damage, Action<int, int, int> addExplosion)
+    public int TileThinkAwardScan(Action<int, int, int> onDestroyed)
     {
         if (_tileHitsByMapSpot == null || _tileDeadByMapSpot == null ||
             _tileDestructibleByMapSpot == null || _tileBountyByMapSpot == null)
             return 0;
-        if (spot < 0 || spot >= _tileHitsByMapSpot.Length) return 0;
-        if (x < 0 || x >= MAP_COLS) return 0;
-        if (!_tileDestructibleByMapSpot[spot]) return 0;
-        if (_tileDeadByMapSpot[spot]) return 0;
 
+        int bounty = 0;
+        foreach (var t in _tileSlice)   // row-major (slot) order, matching C tspots[]
+        {
+            int ms = t.MapSpot;
+            if (ms < 0 || ms >= _tileHitsByMapSpot.Length) continue;
+            if (_tileHitsByMapSpot[ms] < 0 && !_tileDeadByMapSpot[ms])
+            {
+                onDestroyed(ms, t.ScreenX, t.ScreenY);   // FX_GEXPLO sound RNG + anim
+                TileDoDamage(ms, 5);                      // C TILE_DoDamage(ts, 5)
+                bounty += _tileBountyByMapSpot[ms];       // plr.score += money[mapspot]
+                TileExplode(ms, delay: 10);              // schedule fuse + indestructible
+                _tileDeadByMapSpot[ms] = true;           // tdead = 1
+            }
+        }
+        RefreshTileSliceValuesFromBacking();
+        return bounty;
+    }
+
+    /// <summary>
+    /// C TILE_DoDamage (TILE.C:154-186): NON-recursive splash to the left/up/right
+    /// neighbors, decrementing hits. Guards ONLY on destructibility (eitems==titems),
+    /// NOT on tdead (finding #15) — a tdead-but-still-destructible tile keeps taking
+    /// splash in the one-iter window before TILE_Explode flips it indestructible.
+    /// </summary>
+    private void TileDoDamage(int mapspot, int damage)
+    {
+        if (_tileHitsByMapSpot == null || _tileDestructibleByMapSpot == null) return;
+        int ix = mapspot % MAP_COLS;
+        TileDoDamageNeighbor(mapspot - 1, ix - 1, damage);
+        TileDoDamageNeighbor(mapspot - MAP_COLS, ix, damage);
+        TileDoDamageNeighbor(mapspot + 1, ix + 1, damage);
+    }
+
+    private void TileDoDamageNeighbor(int spot, int x, int damage)
+    {
+        if (_tileHitsByMapSpot == null || _tileDestructibleByMapSpot == null ||
+            _tileDeadByMapSpot == null) return;
+        if (spot < 0 || spot >= _tileHitsByMapSpot.Length) return;
+        if (x < 0 || x >= MAP_COLS) return;
+        if (!_tileDestructibleByMapSpot[spot]) return;   // C: eitems==titems guard (no tdead gate)
         int before = _tileHitsByMapSpot[spot];
         _tileHitsByMapSpot[spot] -= damage;
         TileDamageDispatcher.TraceMapSpot("splash", spot, -1, -1, damage, before,
             _tileHitsByMapSpot[spot], _tileDeadByMapSpot[spot]);
-        if (before >= 0 && _tileHitsByMapSpot[spot] < 0)
-        {
-            _tileDeadByMapSpot[spot] = true;
-            // C TILE_Think awards money[mapspot] for any tile reaching hits<0,
-            // regardless of whether a bullet or the explosion chain killed it.
-            int bounty = _tileBountyByMapSpot[spot];
-            SpawnTileExplosion(spot, addExplosion);
-            bounty += ApplyTileExplosionDamage(spot, damage: 5, addExplosion);
-            ScheduleTileDelayExplosion(spot);
-            return bounty;
-        }
-        return 0;
     }
 
-    public void ScheduleTileDelayExplosion(int mapspot)
+    /// <summary>
+    /// C TILE_Explode delay branch (TILE.C:580-591): schedule the fuse and flip the
+    /// tile indestructible immediately (eitems=titems) so further hits/splashes skip
+    /// it before the fuse restores its destroyed graphic.
+    /// </summary>
+    private void TileExplode(int mapspot, int delay)
     {
-        _tileDelayExplosions.Add(new TileDelayExplosion(mapspot, 10));
+        if (_tileDestructibleByMapSpot == null) return;
+        ScheduleTileDelayExplosion(mapspot, delay);
+        if (mapspot >= 0 && mapspot < _tileDestructibleByMapSpot.Length)
+            _tileDestructibleByMapSpot[mapspot] = false;
     }
 
-    /// <summary>Returns the total bounty of tiles destroyed by any delayed blasts
-    /// that fired this call (see <see cref="ApplyTileExplosionDamage"/>).</summary>
-    public int ProcessTileDelayExplosions(Action<int, int, int> addExplosion)
+    public void ScheduleTileDelayExplosion(int mapspot, int delay = 10)
     {
-        int bounty = 0;
+        _tileDelayExplosions.Add(new TileDelayExplosion(mapspot, delay));
+    }
+
+    /// <summary>
+    /// C TILE_Think delay processing (TILE.C:402-440): each fuse counts down, and on
+    /// expiry fires a NON-recursive TILE_DoDamage(20) splash. Invokes
+    /// <paramref name="onFuseFired"/> once per firing fuse so the caller can draw the
+    /// spark random(8) (finding #3). Fuses do NOT award bounty — the next scan awards
+    /// any neighbor the splash pushed below zero.
+    /// </summary>
+    public void ProcessTileDelayExplosions(Action onFuseFired)
+    {
         for (int i = 0; i < _tileDelayExplosions.Count; i++)
         {
             var td = _tileDelayExplosions[i];
             if (td.Frames < 0)
             {
-                bounty += ApplyTileExplosionDamage(td.MapSpot, damage: 20, addExplosion);
+                onFuseFired();              // C: tx = x + 8 + random(8)
+                TileDoDamage(td.MapSpot, 20);
                 _tileDelayExplosions.RemoveAt(i);
                 i--;
                 continue;
@@ -243,16 +281,5 @@ internal sealed class TileDamageState
             _tileDelayExplosions[i] = td with { Frames = td.Frames - 1 };
         }
         RefreshTileSliceValuesFromBacking();
-        return bounty;
-    }
-
-    public void SpawnTileExplosion(int mapspot, Action<int, int, int> addExplosion)
-    {
-        foreach (var tile in _tileSlice)
-        {
-            if (tile.MapSpot != mapspot) continue;
-            addExplosion(ExpGrdLarge, tile.ScreenX + 16, tile.ScreenY + 16);
-            return;
-        }
     }
 }

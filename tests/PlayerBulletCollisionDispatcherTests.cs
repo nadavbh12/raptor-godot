@@ -114,11 +114,12 @@ public class PlayerBulletCollisionDispatcherTests
     }
 
     [Fact]
-    public void Same_collision_pass_bullets_can_absorb_into_tile_destroyed_by_earlier_bullet()
+    public void Same_collision_pass_bullets_both_absorb_and_decrement_without_killing()
     {
-        // C's TILE_IsHit does not consult tdead; tdead is only set later in
-        // TILE_Think. If two shots hit the same destructible tile in one
-        // SHOTS_Think pass, both shots are absorbed, but bounty is awarded once.
+        // C's TILE_IsHit does not consult tdead and only decrements. If two shots
+        // hit the same destructible tile in one SHOTS_Think pass, both are absorbed
+        // and both decrement hits; the tile is not marked dead and no bounty is
+        // awarded here — the next-iter TileThinkAwardScan does that (finding #1).
         var first = new BulletLogic(BulletKind.Player, x: 110, y: 60, velX: 0, velY: 0, damage: 20)
         {
             HitType = HitType.Ground,
@@ -144,9 +145,8 @@ public class PlayerBulletCollisionDispatcherTests
 
         Assert.False(first.Alive);
         Assert.False(second.Alive);
-        Assert.True(tile.Dead);
-        Assert.Equal(-39, tile.Hits);
-        Assert.Equal(250, result.TileBounty);
+        Assert.False(tile.Dead);          // not killed at hit time
+        Assert.Equal(-39, tile.Hits);     // both shots decremented (1 - 20 - 20)
     }
 
     [Fact]

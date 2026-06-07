@@ -18,13 +18,11 @@ internal static class PlayerBulletCollisionDispatcher
     public sealed class Result
     {
         public List<EnemyHit> HitEnemies { get; } = new();
-        public List<int> DestroyedTileMapSpots { get; } = new();
         public List<(int X, int Y)> RandomSparkPositions { get; } = new();
         public List<(int X, int Y)> OrangeSparkPositions { get; } = new();
         public List<(int X, int Y)> BlueSparkPositions { get; } = new();
         public int RandomSparkColorCount { get; set; }
         public bool TileHit { get; set; }
-        public int TileBounty { get; set; }
     }
 
     public static Result Collect(IList<BulletLogic> bullets,
@@ -39,13 +37,6 @@ internal static class PlayerBulletCollisionDispatcher
             if (e.Alive)
                 damageableAtPassStart.Add(e);
         }
-        var deadTilesAtPassStart = new HashSet<TileState>();
-        foreach (var t in tiles)
-        {
-            if (t.Dead)
-                deadTilesAtPassStart.Add(t);
-        }
-
         foreach (var b in bullets)
         {
             if (!b.Alive || b.IsBeam || b.DeferredDoneFlag) continue;
@@ -77,17 +68,17 @@ internal static class PlayerBulletCollisionDispatcher
             bool checkTile = false;
             if (b.HitType == HitType.All && !hitEnemy)
             {
-                tileHit = TileDamageDispatcher.TileIsHit(tiles, b.X, b.Y, b.Damage, deadTilesAtPassStart);
+                tileHit = TileDamageDispatcher.TileIsHit(tiles, b.X, b.Y, b.Damage);
                 checkTile = true;
             }
             else if (b.HitType == HitType.Ground && !hitEnemy)
             {
-                tileHit = TileDamageDispatcher.TileIsHit(tiles, b.X, b.Y, b.Damage, deadTilesAtPassStart);
+                tileHit = TileDamageDispatcher.TileIsHit(tiles, b.X, b.Y, b.Damage);
                 checkTile = true;
             }
             else if (b.HitType == HitType.GTile)
             {
-                tileHit = TileDamageDispatcher.TileBomb(tiles, b.X, b.Y, b.Damage, mapCols, deadTilesAtPassStart);
+                tileHit = TileDamageDispatcher.TileBomb(tiles, b.X, b.Y, b.Damage, mapCols);
                 checkTile = true;
                 TryHitEnemy(b, enemies, damageableAtPassStart, e => e.IsGround, result);
             }
@@ -111,9 +102,7 @@ internal static class PlayerBulletCollisionDispatcher
                 : 0;
             BulletDumper.RecordPlayerRemove(reason, b, tileHit.HitIndex, tileHits);
             if (b.HitType != HitType.GTile) b.Kill();
-            if (tileHit.Bounty > 0) result.TileBounty += tileHit.Bounty;
-            if (tileHit.JustDestroyed && tileHit.MapSpot >= 0)
-                result.DestroyedTileMapSpots.Add(tileHit.MapSpot);
+            // No award here — TILE_Think (TileThinkAwardScan) is the sole award site.
         }
         return result;
     }
