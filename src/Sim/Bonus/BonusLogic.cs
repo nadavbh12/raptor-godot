@@ -38,8 +38,16 @@ public sealed class BonusLogic
     }
 
     /// <summary>
+    /// Why a <see cref="Tick"/> removed a bonus, so callers can mirror C's distinct
+    /// removal traces: countdown expiry is silent (BONUS.C:271) while the off-bottom
+    /// cull emits a "remove_bottom" trace before removal (BONUS.C:280).
+    /// </summary>
+    public enum TickOutcome { None, RemovedExpired, RemovedOffBottom }
+
+    /// <summary>
     /// One game-loop iteration (one BONUS_Think pass). BONUS.C:187 advances y by
     /// 1 each tick. BONUS.C:241-242 despawns when off the bottom of the screen.
+    /// Returns which removal (if any) happened this pass.
     /// </summary>
     /// <param name="advance">
     /// True on the (gcnt &amp; 1) phase. In C, gcnt is a GLOBAL static incremented
@@ -47,9 +55,9 @@ public sealed class BonusLogic
     /// happens for every bonus in lockstep on alternating game iterations —
     /// independent of when each bonus spawned. WaveController owns the counter.
     /// </param>
-    public void Tick(bool advance)
+    public TickOutcome Tick(bool advance)
     {
-        if (!Alive) return;
+        if (!Alive) return TickOutcome.None;
 
         // BONUS.C:220 — the glow center gy is computed from the CURRENT y/pos,
         // BEFORE the y++ (222) and the gcnt&1 pos++ (226). glow_ly = ICNGLW_BLK
@@ -68,12 +76,20 @@ public sealed class BonusLogic
         {
             PickedUpMoneyCountdown--;
             if (PickedUpMoneyCountdown <= 0)
+            {
                 Alive = false;
-            return;
+                return TickOutcome.RemovedExpired;  // BONUS.C:271 — silent removal
+            }
+            return TickOutcome.None;
         }
 
         // BONUS.C:278 — off-bottom cull uses the glow center gy, not raw y.
-        if (gy > 200) Alive = false;
+        if (gy > 200)
+        {
+            Alive = false;
+            return TickOutcome.RemovedOffBottom;  // BONUS.C:280 — emits remove_bottom
+        }
+        return TickOutcome.None;
     }
 
     /// <summary>glow_ly (ICNGLW_BLK height = 32) >> 1, from BONUS.C:220.</summary>
@@ -90,6 +106,20 @@ public sealed class BonusLogic
     {
         DisplayAsPickedUpMoney = true;
         PickedUpMoneyCountdown = 50;
+    }
+
+    /// <summary>
+    /// Applies the C BONUS_Think dflag countdown block (BONUS.C:268-271) that runs
+    /// in the SAME pass a money bonus is picked up. Godot ticks bonuses in
+    /// PhaseMovement (before pickup detection in PhaseCollisionResolve), so that
+    /// pass's decrement is otherwise skipped on the pickup iter — apply it here so
+    /// the post-pickup state reads cnt=49, matching C. Decrements only; the y/pos
+    /// drift already ran this iter in <see cref="Tick"/>.
+    /// </summary>
+    public void DecrementPickupCountdownSamePass()
+    {
+        PickedUpMoneyCountdown--;
+        if (PickedUpMoneyCountdown <= 0) Alive = false;
     }
 
     public bool CanBePickedUpBy(int playerX, int playerY, int playerWidth = 32, int playerHeight = 32)

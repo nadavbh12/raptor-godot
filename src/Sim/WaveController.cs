@@ -1008,7 +1008,13 @@ public partial class WaveController : Node
         // The wobble/sprite-frame advance fires on the global (gcnt & 1) phase,
         // shared across all bonuses; gcnt increments once per pass (BONUS.C:288).
         bool bonusAdvance = (_bonusThinkCnt & 1) != 0;
-        foreach (var bn in _bonuses) bn.Tick(bonusAdvance);
+        foreach (var bn in _bonuses)
+        {
+            // BONUS.C:278-281 — the off-bottom cull emits a "remove_bottom" trace
+            // before removal; countdown expiry (BONUS.C:271) is silent.
+            if (bn.Tick(bonusAdvance) == BonusLogic.TickOutcome.RemovedOffBottom)
+                TraceBonus("remove_bottom", bn);
+        }
         _bonusThinkCnt++;
 
         // Tick enemy bullets (includes newly fired ones from this frame, matching C's
@@ -1296,20 +1302,13 @@ public partial class WaveController : Node
         // CollisionResolve so all death/pickup events fire after collection.
         foreach (var b in _pickedUpBonuses)
         {
-            TraceBonus("pickup", b);
             // BONUS.C:246 plays SND_Patch(FX_BONUS) on pickup; no-op in headless.
             SoundEmitter.Emit("sound.fx_bonus");
             ApplyBonusEffect(b.ObjType);
-            if (Bonus.BonusEffectDispatcher.IsMoneyBonus(b.ObjType))
-            {
-                b.MarkPickedUpMoney();
-                TraceBonus("pickup_money", b);
-            }
-            else
-            {
-                b.Kill();
-                TraceBonus("pickup_remove", b);
-            }
+            // BONUS.C:248-264 — emit the pickup trace + update display state in C
+            // order. C emits NO bare "pickup" event (the prior TraceBonus("pickup")
+            // here was spurious).
+            TracePickupAndUpdate(b, Bonus.BonusEffectDispatcher.IsMoneyBonus(b.ObjType), TraceBonus);
         }
         _pickedUpBonuses.Clear();
 
@@ -1402,6 +1401,31 @@ public partial class WaveController : Node
     private void TraceBonus(string eventName, BonusLogic b)
     {
         OnBonusTrace?.Invoke(BonusTraceLine(eventName, b));
+    }
+
+    /// <summary>
+    /// Emits the BONUS_Think pickup trace event for one bonus in C order and updates
+    /// its display state. Mirrors BONUS.C:253-271. The money branch traces
+    /// pickup_money BEFORE setting dflag/countdown (BONUS.C:255 — snapshot d=0 cnt=0),
+    /// then applies the same-pass dflag-block decrement (BONUS.C:268-271) so the
+    /// post-pickup state reads cnt=49. The non-money branch traces pickup_remove and
+    /// kills. C never emits a bare "pickup" event. Static + trace-sink injected so it
+    /// is unit-testable without the Godot Node.
+    /// </summary>
+    internal static void TracePickupAndUpdate(
+        BonusLogic b, bool isMoney, System.Action<string, BonusLogic> trace)
+    {
+        if (isMoney)
+        {
+            trace("pickup_money", b);              // pre-mutation snapshot (BONUS.C:255)
+            b.MarkPickedUpMoney();                 // dflag=TRUE, countdown=50 (BONUS.C:256-257)
+            b.DecrementPickupCountdownSamePass();  // same-pass dflag block → 49 (BONUS.C:268-271)
+        }
+        else
+        {
+            trace("pickup_remove", b);             // BONUS.C:261
+            b.Kill();                              // BONUS_Remove (BONUS.C:262)
+        }
     }
 
     internal string BonusTraceLine(string eventName, BonusLogic b)

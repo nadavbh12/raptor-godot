@@ -165,4 +165,51 @@ public class BonusTests
         var b = new BonusLogic(objType: 11 /* S_MEGA_BOMB */, x: 0, y: 0);
         Assert.Equal(11, b.ObjType);
     }
+
+    [Fact]
+    public void Money_pickup_applies_c_same_pass_countdown_decrement()
+    {
+        // Finding #10. BONUS.C:256-271 — on the pickup pass C sets countdown=50
+        // (256-257) then the dflag block decrements it to 49 in the SAME pass
+        // (270), so the end-of-iter "state" trace shows cnt=49. Godot ticks
+        // bonuses in PhaseMovement (which decrements) BEFORE pickup detection in
+        // PhaseCollisionResolve, so the pickup pass must apply that decrement
+        // itself or the bonus reads one higher and lingers an extra iter.
+        var b = new BonusLogic(objType: 23 /* S_ITEMBUY6 */, x: 100, y: 50);
+
+        b.MarkPickedUpMoney();
+        Assert.Equal(50, b.PickedUpMoneyCountdown);
+
+        b.DecrementPickupCountdownSamePass();
+
+        Assert.Equal(49, b.PickedUpMoneyCountdown);
+        Assert.True(b.Alive);
+    }
+
+    [Fact]
+    public void Tick_reports_off_bottom_cull_distinctly_from_countdown_expiry()
+    {
+        // Finding #11. BONUS.C:271 (countdown<=0 → silent BONUS_Remove) vs
+        // BONUS.C:278-281 (gy>200 → BONUS_Trace "remove_bottom" THEN BONUS_Remove).
+        // The two removals must be distinguishable so WaveController can emit
+        // remove_bottom only for the off-bottom cull (C emits no trace on expiry).
+
+        // Off-bottom: pos=5 (ypos=0) → gy = y-16; y=217 → gy=201 > 200.
+        var offBottom = new BonusLogic(objType: 16, x: 100, y: 217, initialPos: 5);
+        Assert.Equal(BonusLogic.TickOutcome.RemovedOffBottom, offBottom.Tick(advance: false));
+        Assert.False(offBottom.Alive);
+
+        // Countdown expiry: a displaying money bonus reaching 0 is removed silently.
+        var expiring = new BonusLogic(objType: 23, x: 100, y: 50);
+        expiring.MarkPickedUpMoney();
+        BonusLogic.TickOutcome last = BonusLogic.TickOutcome.None;
+        for (int i = 0; i < 50; i++) last = expiring.Tick(advance: false);
+        Assert.Equal(BonusLogic.TickOutcome.RemovedExpired, last);
+        Assert.False(expiring.Alive);
+
+        // A bonus that neither expires nor drifts off-bottom reports no transition.
+        var alive = new BonusLogic(objType: 16, x: 100, y: 50, initialPos: 5);
+        Assert.Equal(BonusLogic.TickOutcome.None, alive.Tick(advance: false));
+        Assert.True(alive.Alive);
+    }
 }
