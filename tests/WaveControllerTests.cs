@@ -500,4 +500,17 @@ public class WaveControllerTests
     public void StartWave_resolves_override(string? env, int defaultWave, int expected)
         => Assert.Equal(expected, WaveController.ResolveStartWave(env, defaultWave));
 
+    [Fact]
+    public void Player_missile_smoke_uses_down_drift_anim_and_tail_offset()
+    {
+        // SHOTS.C:1078 — a smoking player shot (S_AIR_MISSLE et al, lib->smoke)
+        // spawns A_SMALL_SMOKE_DOWN every tick at (shot->x + hlx, shot->y + hly<<1).
+        // MISRAT_BLK is 8x16 → hlx=4, hly<<1=16 → the puff sits at the missile tail.
+        Assert.Equal((104, 66), WaveController.PlayerMissileSmokePos(100, 50));
+
+        // A_SMALL_SMOKE_DOWN = SSMOKE_BLK+4, 5 frames (ANIMS.C:202). The sim must
+        // cull the sentinel at 5 iters, not the 13-frame default that would leave
+        // the puff lingering long after C has removed it.
+        Assert.Equal(5, WaveController.AnimFramesFor(WaveController.SmokeDownExpType));
+    }
 }

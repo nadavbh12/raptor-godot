@@ -23,6 +23,8 @@ public partial class DebugRenderer : Node2D
     private string? _pendingScriptDumpLabel;
     private int _lastDrawnFc = -1;
     private int _lastDrawnIter = -1;
+    private int _shotIterMin = int.MinValue;
+    private int _shotIterMax = int.MaxValue;
     private uint _lastDrawnScore = 0;
     private int _lastDrawnShield = 0;
     private int _lastDrawnEnemies = 0;
@@ -110,6 +112,9 @@ public partial class DebugRenderer : Node2D
     // smoke entities (would need a new collection); we synthesise a short
     // history by drawing 4 SMOKTRAL_BLK frames stacked behind the missile.
     private readonly Texture2D?[] _smokeFrames = new Texture2D?[4];
+    // Player air-missile down-smoke — A_SMALL_SMOKE_DOWN = SSMOKE_BLK+4 (5 frames,
+    // ANIMS.C:202), drifts downward. Spawned per tick by the sim (SmokeDownExpType).
+    private readonly Texture2D?[] _smokeDownFrames = new Texture2D?[5];
     private readonly Texture2D?[] _bonusGlowFrames = new Texture2D?[4];
     // Score-digit sprites: numbers[0..9] = N0..N9, numbers[10] = N$.
     private readonly Texture2D?[] _digitTex = new Texture2D?[11];
@@ -133,6 +138,12 @@ public partial class DebugRenderer : Node2D
             File.WriteAllText(_shotMapPath,
                 "file\tsaved_fc\tdrawn_fc\tdrawn_iter\tscore\tshield\tenemies\tpbullets\tebullets\n");
         }
+        // Optional capture window by game-loop iter, so a headed capture can skip
+        // the whole wave and only dump a small end-wave slice. Parity-inert (View).
+        var iterMin = OS.GetEnvironment("RAPTOR_SHOT_ITER_MIN");
+        if (!string.IsNullOrEmpty(iterMin) && int.TryParse(iterMin, out var imin)) _shotIterMin = imin;
+        var iterMax = OS.GetEnvironment("RAPTOR_SHOT_ITER_MAX");
+        if (!string.IsNullOrEmpty(iterMax) && int.TryParse(iterMax, out var imax)) _shotIterMax = imax;
 
         BuildSpriteIndex();
         _agxRoot = ProjectSettings.GlobalizePath("res://assets/agx");
@@ -161,6 +172,9 @@ public partial class DebugRenderer : Node2D
         // entities C spawns every other tick via ANIMS_StartAAnim.
         for (int i = 0; i < 4; i++)
             _smokeFrames[i] = LoadSpriteFromPath(Path.Combine(bulletsRoot, $"SMOKTRAL_BLK_{i:D2}.png"));
+        // Player air-missile smoke = A_SMALL_SMOKE_DOWN = SSMOKE_BLK frames 4..8.
+        for (int i = 0; i < 5; i++)
+            _smokeDownFrames[i] = LoadSpriteFromPath(Path.Combine(bulletsRoot, $"SSMOKE_BLK_{i + 4:D2}.png"));
         for (int i = 0; i < 4; i++)
             _bonusGlowFrames[i] = LoadSpriteFromPath(Path.Combine(bulletsRoot, $"ICNGLW_BLK_{i:D2}.png"));
 
@@ -191,6 +205,27 @@ public partial class DebugRenderer : Node2D
         if (_flameLayer == null) return;
         foreach (var (rect, col) in _flameQuads)
             _flameLayer.DrawRect(rect, col);
+
+        // Player air-missile smoke (SmokeDownExpType). C draws SSMOKE via
+        // GFX_ShadeShape(LIGHT) — it BRIGHTENS the background by a small amount (a
+        // light haze), not an opaque dark puff. Draw it here on the additive layer
+        // so the dark-grey SSMOKE_BLK sprite (mean ~75) lightens the scene like C
+        // instead of darkening it. Alpha tuned so one puff ≈ +25 brighten.
+        if (_wave == null) return;
+        int gameIter = _wave.GameLoopIter;
+        foreach (var ex in _wave.GetExplosions())
+        {
+            if (ex.ExpType != SmokeDownExpType) continue;
+            int age = WaveController.AnimationAge(gameIter, ex.StartIter);
+            if (age < 0 || age >= 5) continue;
+            var stex = _smokeDownFrames[age];
+            if (stex == null) continue;
+            // A_SMALL_SMOKE_DOWN drifts down ~2px/tick (ANIMS.C A_MOVEDOWN); the
+            // column trails below the climbing missile.
+            int sx = ex.X - (int)stex.GetWidth() / 2;
+            int sy = ex.Y + age * 2 - (int)stex.GetHeight() / 2;
+            _flameLayer.DrawTexture(stex, new Vector2(sx, sy), new Color(1, 1, 1, 0.42f));
+        }
     }
 
     private void BuildSpriteIndex()
@@ -354,6 +389,11 @@ public partial class DebugRenderer : Node2D
     private void MaybeShoot()
     {
         if (string.IsNullOrEmpty(_shotDir)) return;
+        if (_wave != null && (_shotIterMin != int.MinValue || _shotIterMax != int.MaxValue))
+        {
+            int it = _wave.GameLoopIter;
+            if (it < _shotIterMin || it > _shotIterMax) return;
+        }
         // RAPTOR_SHOT_EVERY_FC=N: dump every N sim frames (fine-grained, for video).
         // RAPTOR_SHOT_EVERY_SEC=N: dump every N simulated seconds (legacy default 1).
         var fcEvery = OS.GetEnvironment("RAPTOR_SHOT_EVERY_FC");
@@ -1052,6 +1092,8 @@ public partial class DebugRenderer : Node2D
     private const int SmokeExpType = 100;
     private const int SparkBlueExpType = 101;
     private const int SparkOrangeExpType = 102;
+    // Player air-missile down-smoke sentinel — matches WaveController.SmokeDownExpType.
+    private const int SmokeDownExpType = 103;
 
     /// <summary>
     /// Spawn the per-game-loop-tick View cosmetics (muzzle flash, megabomb glow,
@@ -1133,6 +1175,10 @@ public partial class DebugRenderer : Node2D
                 DrawTexture(stex, new Vector2(sx, sy), new Color(1, 1, 1, 0.20f));
                 continue;
             }
+            // SmokeDownExpType (player air-missile smoke) is drawn on the ADDITIVE
+            // flame layer (OnFlameLayerDraw), not here — C's GFX_ShadeShape(LIGHT)
+            // BRIGHTENS the background rather than painting an opaque dark puff.
+            if (ex.ExpType == SmokeDownExpType) continue;
             if (ex.ExpType == SparkBlueExpType || ex.ExpType == SparkOrangeExpType)
             {
                 int age = WaveController.AnimationAge(gameIter, ex.StartIter);

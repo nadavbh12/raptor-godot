@@ -1071,6 +1071,16 @@ public partial class WaveController : Node
         {
             if (_shotDoneAfterCollision.Contains(b)) continue;
             b.Tick();
+            // SHOTS.C:1078 — a smoking player shot (lib->smoke) drops an
+            // A_SMALL_SMOKE_DOWN puff every tick at the missile tail. Parity-inert:
+            // a sentinel SmokeDownExpType explosion (no RNG, not in any checkpoint),
+            // aged + drifted by the view. Faithful cadence = every tick (no &1 gate,
+            // unlike the enemy ESHOT smoke).
+            if (b.Alive && b.LeavesSmoke)
+            {
+                var (sx, sy) = PlayerMissileSmokePos(b.X, b.Y);
+                AddExplosion(SmokeDownExpType, sx, sy);
+            }
         }
 
         // Tick bonuses (BONUS_Think — drift down 1 px/iter, despawn at y > 200).
@@ -1116,6 +1126,18 @@ public partial class WaveController : Node
     private const int SmokeExpType = 100;
     private const int SparkBlueExpType = 101;
     private const int SparkOrangeExpType = 102;
+    // A_SMALL_SMOKE_DOWN (SSMOKE_BLK+4, ANIMS.C:202) — the DOWN-drifting smoke a
+    // smoking PLAYER shot (S_AIR_MISSLE, lib->smoke) drops each tick, distinct from
+    // the enemy missile's UP-drifting SmokeExpType. internal so tests assert its life.
+    internal const int SmokeDownExpType = 103;
+
+    /// <summary>
+    /// Spawn point of a player missile's smoke puff — the missile tail. C
+    /// SHOTS.C:1078 uses (shot->x + lib->hlx, shot->y + (lib->hly&lt;&lt;1)); every
+    /// smoking player shot uses MISRAT_BLK (8x16), so hlx=4 and hly&lt;&lt;1=16.
+    /// </summary>
+    internal static (int x, int y) PlayerMissileSmokePos(int bulletX, int bulletY)
+        => (bulletX + 4, bulletY + 16);
 
     /// <summary>
     /// Per-type explosion lifetime in game-loop iters — the source of truth for
@@ -1136,6 +1158,7 @@ public partial class WaveController : Node
         8  => 12,   // EXP_ENERGY    → NRGBANG_BLK
         10 => 14,   // EXP_AIRSMALL2 → SMFLAK_BLK
         SmokeExpType => 4,        // SMOKTRAL_BLK
+        SmokeDownExpType => 5,    // SSMOKE_BLK+4 (A_SMALL_SMOKE_DOWN, ANIMS.C:202)
         SparkBlueExpType => 9,    // BSPARK_BLK
         SparkOrangeExpType => 9,  // OSPARK_BLK
         _ => 13,                  // EXPLO2_BLK default (unused EXP_ slots 6/7/9)
