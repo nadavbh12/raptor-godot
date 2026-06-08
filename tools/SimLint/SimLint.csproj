@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Semantic sim-discipline linter (CLAUDE.md rule #1). Self-contained: references
+    only Roslyn, never raptor.dll, so scripts/lint_sim.sh can run it as a CI gate
+    BEFORE the Godot build. It is excluded from raptor.csproj's compile glob via
+    DefaultItemExcludes (tools/**), so the game assembly never pulls it in.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <RootNamespace>Raptor.SimLint</RootNamespace>
+    <AssemblyName>SimLint</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.8.0" />
+  </ItemGroup>
+</Project>

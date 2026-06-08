@@ -71,7 +71,9 @@ public partial class MenuController : Node
         Menu.EnterMenu(SimClock.Frame);
     }
 
-    public override void _Process(double delta)
+    // Menu/UI driver: polls SimClock.Frame at render rate for the death-movie/quit
+    // check; never reads `delta`, so it's parity-inert (not in-wave sim).
+    public override void _Process(double delta)  // LINT-OK: see above — intentional UI _Process.
     {
         bool deathMovieJustCompleted =
             Menu.CompleteDeathMovieIfDone(SimClock.Frame, MenuStateMachine.DeathMovieFrames);

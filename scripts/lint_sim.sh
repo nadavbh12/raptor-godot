@@ -1,50 +1,35 @@
 #!/usr/bin/env bash
-# Enforce sim-layer discipline (spec §4.2):
-# - No `delta` references in src/Sim/
-# - No `_process` (only `_PhysicsProcess`)
-# - No engine RNG (use the explicit RandomNumberGenerator instance)
-# - No wall-clock time
-# Exit non-zero on violation; whitelist a specific line via the EXACT
-# uppercase token `LINT-OK` in a comment on that line, e.g.
-#   var t = Time.GetTicksMsec();  // LINT-OK: render-only profiling.
-# The marker is case-sensitive — `lint-ok` is rejected on purpose so a
-# casual lowercase mention can't bypass the lint.
+# Enforce sim-layer discipline (CLAUDE.md rule #1, spec §4.2) in src/Sim/:
+#   - no `_Process` override (sim ticks via `_PhysicsProcess`)
+#   - never read the frame timestep (sim counts `SimClock.Frame`)
+#   - no engine RNG (`GD.Rand*` / `Mathf.Rand*`) — use the per-wave RNG instance
+#   - no wall-clock time (`Time`/`OS` `GetTicks*`/`GetUnix*`)
+#
+# This is a SEMANTIC check: tools/SimLint parses each file with Roslyn, so the
+# matches are real C# constructs, not text. The word "delta" in a comment or an
+# unrelated variable (e.g. a UI volume-adjustment `int delta`) is NOT flagged —
+# only actual frame-time / RNG / wall-clock usage is. Whitelist a specific line
+# with the EXACT uppercase token `LINT-OK` in a comment on that line; the marker
+# is case-sensitive so a casual lowercase mention can't bypass the lint.
+#
+# Exits non-zero on any violation (or if the analyzer's own self-test fails).
 
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-SIM_DIR="$REPO_ROOT/src/Sim"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+PROJ="$ROOT/tools/SimLint"
+SIM_DIR="$ROOT/src/Sim"
 
 if [[ ! -d "$SIM_DIR" ]]; then
     echo "[lint_sim] $SIM_DIR not found"
     exit 0  # not yet created; not a failure
 fi
 
-# Patterns that must not appear in sim code without LINT-OK
-PATTERNS=(
-    '\bdelta\b'
-    '\b_Process\b'
-    'GD\.Rand'
-    'Mathf\.Rand'
-    'Time\.GetUnix'
-    'Time\.GetTicks'
-    'OS\.GetTicks'
-)
+# Build the analyzer once (quietly), then run it from the built dll so the only
+# stdout is the lint result.
+dotnet build "$PROJ/SimLint.csproj" --configuration Release --verbosity quiet --nologo
+DLL="$PROJ/bin/Release/net8.0/SimLint.dll"
 
-VIOLATIONS=0
-for pattern in "${PATTERNS[@]}"; do
-    while IFS= read -r line; do
-        # Skip lines containing the LINT-OK marker
-        if [[ "$line" == *"LINT-OK"* ]]; then
-            continue
-        fi
-        echo "[lint_sim] FAIL: $line"
-        VIOLATIONS=$((VIOLATIONS + 1))
-    done < <(grep -rnE "$pattern" "$SIM_DIR" --include='*.cs' || true)
-done
-
-if [[ $VIOLATIONS -gt 0 ]]; then
-    echo "[lint_sim] $VIOLATIONS violation(s)"
-    exit 1
-fi
-echo "[lint_sim] OK"
+# Verify the analyzer itself (embedded fixtures) before trusting its scan.
+dotnet "$DLL" --self-test
+dotnet "$DLL" "$SIM_DIR"

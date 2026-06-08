@@ -19,8 +19,12 @@
                     find xunit/Fact types.
         .godot/** — Godot editor scratch dir; regenerates AssemblyInfo.cs
                     that duplicates the one MSBuild auto-generates.
+        tools/**  — standalone helper projects (e.g. tools/SimLint, the sim
+                    discipline linter) carry their own csproj + Roslyn deps;
+                    compiling their .cs into the game assembly would clash
+                    (a second Main, refs the game doesn't have).
     -->
-    <DefaultItemExcludes>$(DefaultItemExcludes);.godot/**;tests/**</DefaultItemExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);.godot/**;tests/**;tools/**</DefaultItemExcludes>
   </PropertyGroup>
   <ItemGroup>
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
