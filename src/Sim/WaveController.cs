@@ -452,6 +452,14 @@ public partial class WaveController : Node
     public int MapLeftPx     => MAP_LEFT;
     private SpriteMetaLibrary?    _slib;
     private bool                  _endWaveFlag = false;
+    /// <summary>True while any enemy is still alive or pending its removal dump —
+    /// mirrors C's <c>numships &gt;= 1</c>.</summary>
+    private bool AnyEnemyInPlay => _enemies.Exists(e => e.Alive || e.PendingRemovalDump);
+    /// <summary>The wave's spawns are exhausted and no enemy remains this iter —
+    /// C's <c>end_waveflag &amp;&amp; numships &lt; 1</c>, the condition under which
+    /// ENEMY_Remove arms <c>startendwave</c> (the demo fly-off + the OBJS_SubEnergy
+    /// damage suppression both key off it).</summary>
+    private bool WaveCleared => _endWaveFlag && !AnyEnemyInPlay;
     private readonly PlayerDeathSequence _playerDeath = new();
     private readonly EndWaveSequencer _endWave = new();
     public int                    EndWaveCountdown => _endWave.Countdown;
@@ -852,8 +860,7 @@ public partial class WaveController : Node
             // from the recorded dirs. C's DEMO_PLAYBACK forces the recorded position
             // throughout, so during the fly-off (wave cleared: spawns exhausted + no
             // enemies left) we likewise force the recorded px/py instead of recomputing.
-            bool flyoffActive = _endWaveFlag
-                && !_enemies.Exists(e => e.Alive || e.PendingRemovalDump);
+            bool flyoffActive = WaveCleared;
             if (_demoExactReplay && !flyoffActive)
             {
                 // Recompute movement so Godot's own movement code is exercised and
@@ -1342,6 +1349,10 @@ public partial class WaveController : Node
     /// </summary>
     private void ApplyBossLowHealthSmoke()
     {
+        // The gl_cnt&2 frame gate is the same for every enemy, so skip the whole
+        // per-enemy walk on the ~half of ticks where no boss can smoke (the
+        // per-enemy BossSmokeFires still re-checks it — it stays the testable seam).
+        if (((_gameLoopIter + 1) & 2) == 0) return;
         foreach (var e in _enemies)
         {
             if (!e.Alive) continue;
@@ -1398,8 +1409,7 @@ public partial class WaveController : Node
         // iter the wave clears the player still took the in-flight hits (wave 2 ended
         // 4 shield low). The dead boss is already removed in PhaseMovement, so mirror
         // C's arm condition directly here.
-        bool endWaveArmed = _endWave.Active
-            || (_endWaveFlag && !_enemies.Exists(e => e.Alive || e.PendingRemovalDump));
+        bool endWaveArmed = _endWave.Active || WaveCleared;
         int dmg = GateSubEnergyDamage(amt, endWaveActive: endWaveArmed, _curPlayerDiff, deathActive: _playerDeath.Active);
         if (dmg > 0) PlayerLogic.TakeDamage(dmg);
     }
@@ -1661,7 +1671,7 @@ public partial class WaveController : Node
         var endWave = _endWave.Tick(
             _waveActive, _demo.Active, _endWaveFlag,
             PlayerLogic.Alive, PlayerLogic.X,
-            _enemies.Exists(e => e.Alive || e.PendingRemovalDump));
+            AnyEnemyInPlay);
         // RAP.C:601-604 plays SND_Patch(FX_FLYBY) the frame the countdown reaches
         // END_FLYOFF (shield > 0). The counter passes through FlyOff exactly once.
         if (PlayerLogic.Alive && _endWave.Countdown == EndWaveSequence.FlyOff)
