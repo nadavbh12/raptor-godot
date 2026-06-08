@@ -11,6 +11,14 @@
 # its MIDI with a GM soundfont — TimGM6mb.sf2 — so this Godot port's music
 # deliberately sounds different from that reference. Music is not parity-checked.)
 #
+# Tempo: the committed .mid play at 70 Hz (MThd division 35, no tempo event).
+# Raptor sets its DMX music rate via DMX_Init(70, ...) (dosraptor SOURCE/FX.C:1076),
+# i.e. 70 Hz. WARNING: dosraptor's extract_assets tool converts MUS with
+# mus2mid(rate=140) — the DMX *library* default (apodmx/DMX.C: mus_rate=140), NOT
+# Raptor's actual value — which renders the music 2x TOO FAST. The .mid here were
+# corrected to division 35 (== mus2mid rate 70). If you re-extract from the GLB,
+# use rate 70, not 140, or the music will play at double speed.
+#
 # Requirements:
 #   - cmake, make, a C++ toolchain (to build libADLMIDI)
 #   - ffmpeg (with the built-in experimental 'vorbis' encoder)
