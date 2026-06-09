@@ -103,9 +103,21 @@ fi
 echo "[menu_event] building..."
 dotnet build "$REPO/raptor.csproj" --nologo --verbosity quiet 2>&1
 
+# Hermetic save environment. Menu paths that touch LOAD/SAVE (e.g. Return on the
+# main-menu LOAD item) branch on which CHAR*.FIL pilot files exist; without
+# control, Godot's sibling-probe finds the dosraptor CHAR000*.FIL and takes the
+# LoadMission path while the C golden took the empty "No Pilots" path. Pin an
+# isolated save dir so replay matches capture. Default = empty (no pilots); a
+# committed per-scenario fixture at tests/parity/menu_fixtures/<name>/ overrides.
+SAVE_DIR="$OUT/saves"
+FIXTURE="$REPO/tests/parity/menu_fixtures/$NAME"
+if [[ -d "$FIXTURE" ]]; then cp -R "$FIXTURE" "$SAVE_DIR"; else mkdir -p "$SAVE_DIR"; fi
+echo "[menu_event] save dir: $SAVE_DIR ($( ls "$SAVE_DIR" 2>/dev/null | wc -l | tr -d ' ') files)"
+
 echo "[menu_event] running godot..."
 env RAPTOR_PLAYTHROUGH="$SCRIPT" \
     RAPTOR_MENU_OUT="$OUT/godot.menu.ndjson" \
+    RAPTOR_SAVE_DIR="$SAVE_DIR" \
     RAPTOR_TEST_FAST=1 \
     RAPTOR_DETERMINISTIC_RNG=1 \
     "$GODOT_BIN" --path "$REPO" --headless \

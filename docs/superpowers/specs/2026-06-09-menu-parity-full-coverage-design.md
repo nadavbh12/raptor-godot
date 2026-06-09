@@ -94,6 +94,18 @@ DEMO_DELAY attract timer, `HANG_PIC random(3)` portrait flicker, and
 `WIN_Msg/Order/Credits` `IMS_WaitTimed` timeouts. These must not perturb the
 event stream under 30-frame pacing.
 
+**Save-environment hermeticity (found while landing Phase 0.3).** Menu paths
+branch on which pilot saves exist — e.g. Return on the main-menu LOAD item goes
+to the LoadMission panel when `CHAR*.FIL` files exist, or the "No Pilots" message
+when none do, and those report *different* `selected_item` values. C reads
+`CHAR%04u.FIL` from its save path; Godot reads `RAPTOR_SAVE_DIR` (falling back to
+a sibling probe that finds dosraptor's `CHAR000*.FIL`). The harness MUST pin an
+isolated save dir on **both** sides so replay matches capture:
+`run_menu_event_parity.sh` sets `RAPTOR_SAVE_DIR` to an empty dir by default, or
+to a committed per-scenario fixture at `tests/parity/menu_fixtures/<name>/` when
+one exists (e.g. `load_navigate_and_load` needs a fixed pilot set). The batch
+capture tool must run C against the matching save dir.
+
 ### C. Input-modality script commands (extend both playthrough engines)
 
 | Command | C side (`port/platform/playthrough.c`) | Godot side (`src/Test/Playthrough.cs` + `PlaythroughDriver`) |
