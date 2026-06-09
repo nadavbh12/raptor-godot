@@ -94,6 +94,22 @@ DEMO_DELAY attract timer, `HANG_PIC random(3)` portrait flicker, and
 `WIN_Msg/Order/Credits` `IMS_WaitTimed` timeouts. These must not perturb the
 event stream under 30-frame pacing.
 
+**Audit result (Phase 0.4, no code change):** the menu RNG/timers do not perturb
+the event stream. `random(3)`@WINDOWS.C:1123 is the Hangar portrait flicker
+(cosmetic, never touches `active_field`/`dlg.keypress`); `IMS_WaitTimed` drives
+the any-key popup waits (Msg/Order/Credits — see popup caveat); `DEMO_DELAY`=4000
+frames is the attract-mode timeout, and every scenario script (~500 frames at
+30-frame gaps) stays far under it, so attract mode never fires.
+
+**Reachability (Phase 0.4):** deep screens are reached keyboard-only.
+`PilotCreationFlow` advances on `Return` even with empty name/callsign, so
+`NEW → Return → Return → Return` walks Register → callsign → AskDiff → (accept) →
+Hangar, and Hangar→SUPPLIES→Store / Hangar→MISSION→ShipComp follow. No text entry
+(Phase 2) is needed to *reach* any screen — only to test actual typing. The lone
+exception is `load_navigate_and_load`, which needs an existing pilot to load: that
+needs a committed fixture **and** reconciling C's binary `CHAR%04u.FIL` format
+with Godot's JSON save format, so it is deferred to a Phase 1b.
+
 **Save-environment hermeticity (found while landing Phase 0.3).** Menu paths
 branch on which pilot saves exist — e.g. Return on the main-menu LOAD item goes
 to the LoadMission panel when `CHAR*.FIL` files exist, or the "No Pilots" message
