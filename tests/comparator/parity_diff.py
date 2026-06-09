@@ -77,12 +77,29 @@ EXACT_TOLERANCES = {f: _exact for f in
                      "enemies", "pbullets", "ebullets", "obj_hash"]}
 EXACT_ADVISORY = {"fc"}
 
+# Menu-event mode: one row per processed menu INPUT EVENT (schema differs from
+# the gameplay checkpoint — see ParityEmitter.EmitMenuEvent / parity.c
+# raptor_parity_menu_event). Rows are keyed by event_index, not fc. The
+# load-bearing fields (the menu's win-state, the highlighted item, the event
+# ordering and its kind) must match exactly; screen is redundant with win, and
+# scancode/x/y/button are input echoes kept advisory for debugging. PASS = 100%.
+MENU_TOLERANCES = {
+    "event_index":   _exact,
+    "kind":          _exact,
+    "win":           _exact,
+    "selected_item": _exact,
+}
+MENU_ADVISORY = {"screen", "scancode", "x", "y", "button"}
+
 
 def compare(c: list[dict], g: list[dict],
-            tolerances=TOLERANCES, advisory=ADVISORY_FIELDS) -> tuple[int, int, list[str]]:
+            tolerances=TOLERANCES, advisory=ADVISORY_FIELDS,
+            label_field="fc") -> tuple[int, int, list[str]]:
     """
     Returns (n_total, n_passed, diagnostics).
-    Iterates by index — fc-misalignment is reported as a divergence.
+    Iterates by index — misalignment on label_field is reported as a divergence.
+    label_field names the per-row key used in diagnostics ('fc' for gameplay
+    checkpoints, 'event_index' for menu events).
     """
     diags: list[str] = []
     n = max(len(c), len(g))
@@ -91,28 +108,29 @@ def compare(c: list[dict], g: list[dict],
     n_passed = 0
     for i in range(n):
         if i >= len(c):
-            diags.append(f"#{i}: godot has extra checkpoint {g[i].get('fc','?')}, no C counterpart")
+            diags.append(f"#{i}: godot has extra row {label_field}={g[i].get(label_field,'?')}, no C counterpart")
             continue
         if i >= len(g):
-            diags.append(f"#{i}: C has extra checkpoint {c[i].get('fc','?')}, no godot counterpart")
+            diags.append(f"#{i}: C has extra row {label_field}={c[i].get(label_field,'?')}, no godot counterpart")
             continue
 
         cc, gg = c[i], g[i]
+        lbl = cc.get(label_field)
         ok = True
         for field, cmp in tolerances.items():
             if field not in cc:
-                diags.append(f"#{i} fc={cc.get('fc')}: C output missing field '{field}'")
+                diags.append(f"#{i} {label_field}={lbl}: C output missing field '{field}'")
                 ok = False; continue
             if field not in gg:
-                diags.append(f"#{i} fc={cc.get('fc')}: godot output missing field '{field}'")
+                diags.append(f"#{i} {label_field}={lbl}: godot output missing field '{field}'")
                 ok = False; continue
             if not cmp(cc[field], gg[field]):
-                diags.append(f"#{i} fc={cc.get('fc')}: {field} c={cc[field]} godot={gg[field]} (out of tolerance)")
+                diags.append(f"#{i} {label_field}={lbl}: {field} c={cc[field]} godot={gg[field]} (out of tolerance)")
                 ok = False
         # Advisory: log mismatches, don't count as failure.
         for field in advisory:
             if field in cc and field in gg and cc[field] != gg[field]:
-                diags.append(f"#{i} fc={cc.get('fc')}: {field} c={cc[field]} godot={gg[field]} (advisory mismatch)")
+                diags.append(f"#{i} {label_field}={lbl}: {field} c={cc[field]} godot={gg[field]} (advisory mismatch)")
         if ok:
             n_passed += 1
     return (n, n_passed, diags)
@@ -127,11 +145,18 @@ def main():
     p.add_argument("--exact", action="store_true",
                    help="exact-parity mode: every required field (incl. obj_hash) "
                         "must match bit-for-bit; PASS requires 100%%.")
+    p.add_argument("--menu", action="store_true",
+                   help="menu-event mode: compare per-event menu rows "
+                        "(win/selected_item/event_index/kind exact); PASS requires 100%%.")
     args = p.parse_args()
 
     c = read_ndjson(args.c_golden)
     g = read_ndjson(args.godot_out)
-    if args.exact:
+    if args.menu:
+        n_total, n_passed, diags = compare(c, g, MENU_TOLERANCES, MENU_ADVISORY,
+                                           label_field="event_index")
+        pass_threshold = 1.0
+    elif args.exact:
         n_total, n_passed, diags = compare(c, g, EXACT_TOLERANCES, EXACT_ADVISORY)
         pass_threshold = 1.0
     else:

@@ -21,6 +21,8 @@ namespace Raptor.Test;
 internal class ParityEmitWorker : IDisposable
 {
     private StreamWriter? _out;
+    private StreamWriter? _menuOut;       // RAPTOR_MENU_OUT — event-keyed menu rows
+    private int _menuEventIndex;
     private int _lastEmitSec = -1;
     private int _lastAnchor  = -1;  // tracks anchor changes to auto-reset _lastEmitSec
 
@@ -81,6 +83,35 @@ internal class ParityEmitWorker : IDisposable
         } catch (Exception e) {
             GD.PrintErr($"ParityEmitter: failed to open {path}: {e.Message}");
         }
+    }
+
+    /// <summary>Opens the menu-event stream (RAPTOR_MENU_OUT) — one row per menu
+    /// input event, separate from the gameplay RAPTOR_PARITY_OUT stream.</summary>
+    public void OpenMenu(string? path)
+    {
+        if (string.IsNullOrEmpty(path)) return;
+        try {
+            _menuOut = new StreamWriter(path, append: false) { AutoFlush = true };
+        } catch (Exception e) {
+            GD.PrintErr($"ParityEmitter: failed to open menu out {path}: {e.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Emit one menu-state row per menu INPUT EVENT (post-event snapshot),
+    /// mirroring C's raptor_parity_menu_event. Event-keyed, not fc-bucketed —
+    /// win/screen/selected_item are load-bearing; scancode is an input echo.
+    /// </summary>
+    public void EmitMenuEvent(string action)
+    {
+        if (_menuOut == null || Menu == null) return;
+        int scancode = action switch {
+            "Down" => 80, "Up" => 72, "Return" => 28, "Escape" => 1, _ => 0,
+        };
+        var line = string.Create(CultureInfo.InvariantCulture,
+            $"{{\"type\":\"menu\",\"event_index\":{_menuEventIndex},\"kind\":\"key\",\"win\":\"{Menu.State.ToParityString()}\",\"screen\":{(int)Menu.State},\"selected_item\":{Menu.CurrentItem},\"scancode\":{scancode},\"x\":0,\"y\":0,\"button\":0}}");
+        _menuOut.WriteLine(line);
+        _menuEventIndex++;
     }
 
     /// <summary>
@@ -260,6 +291,8 @@ internal class ParityEmitWorker : IDisposable
     {
         _out?.Dispose();
         _out = null;
+        _menuOut?.Dispose();
+        _menuOut = null;
     }
 }
 
@@ -305,6 +338,9 @@ public partial class ParityEmitter : Node
     /// <summary>Notify the emitter that the menu context has changed.</summary>
     public void OnStateChanged() => _worker.OnStateChanged();
 
+    /// <summary>Emit one menu-parity row for a processed menu input event.</summary>
+    public void EmitMenuEvent(string action) => _worker.EmitMenuEvent(action);
+
     /// <summary>
     /// Signal that the playthrough has ended. Closes the output immediately
     /// so no further checkpoints are emitted (mirrors the C version's
@@ -315,6 +351,7 @@ public partial class ParityEmitter : Node
     public override void _Ready()
     {
         _worker.Open(OS.GetEnvironment("RAPTOR_PARITY_OUT"));
+        _worker.OpenMenu(OS.GetEnvironment("RAPTOR_MENU_OUT"));
     }
 
     public override void _PhysicsProcess(double _) { _worker.Tick(); }
