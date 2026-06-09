@@ -211,6 +211,25 @@ public sealed class MenuStateMachine
     /// </summary>
     public event Action<int>? OnGameEnter;   // arg: gameNum (0=Mission1)
 
+    /// <summary>The highlighted index C's active_field-1 reports for the
+    /// currently-active menu window. Per-screen so menu-event parity holds
+    /// outside the main menu. Exact per-screen alignment to the C goldens is
+    /// pinned by tests in a later task; this returns each screen's natural index.</summary>
+    public int EffectiveSelectedItem()
+    {
+        if (_inAskBool)          return _askBoolYes ? 0 : 1;
+        if (_options.Active)     return _options.Field;
+        if (_loadMission.Active) return _loadMission.SelectedIndex;
+        if (_pilotCreate.Active) return _pilotCreate.DifficultyFieldId;
+        return State switch
+        {
+            WinState.Hangar => _hangar.Position,
+            WinState.Store  => Store?.CurItem ?? 0,
+            WinState.Help   => _help.PageIndex,
+            _               => CurrentItem,   // Menu / Unknown(sector) / Credits
+        };
+    }
+
     public void CompleteMission(int currentFrame)
     {
         InGame = false;

@@ -102,17 +102,17 @@ internal class ParityEmitWorker : IDisposable
     /// mirroring C's raptor_parity_menu_event. Event-keyed, not fc-bucketed —
     /// win/screen/selected_item are load-bearing; scancode is an input echo.
     /// </summary>
-    public void EmitMenuEvent(string action)
+    public void EmitMenuEvent(string action, string winBefore, int selectedItem)
     {
-        if (_menuOut == null || Menu == null) return;
-        int scancode = action switch {
-            "Down" => 80, "Up" => 72, "Return" => 28, "Escape" => 1, _ => 0,
-        };
+        if (_menuOut == null) return;
+        int scancode = action switch { "Down"=>80, "Up"=>72, "Return"=>28, "Escape"=>1, _=>0 };
         var line = string.Create(CultureInfo.InvariantCulture,
-            $"{{\"type\":\"menu\",\"event_index\":{_menuEventIndex},\"kind\":\"key\",\"win\":\"{Menu.State.ToParityString()}\",\"screen\":{(int)Menu.State},\"selected_item\":{Menu.CurrentItem},\"scancode\":{scancode},\"x\":0,\"y\":0,\"button\":0}}");
+            $"{{\"type\":\"menu\",\"event_index\":{_menuEventIndex},\"kind\":\"key\",\"win\":\"{winBefore}\",\"screen\":{ScreenInt(winBefore)},\"selected_item\":{selectedItem},\"scancode\":{scancode},\"x\":0,\"y\":0,\"button\":0}}");
         _menuOut.WriteLine(line);
         _menuEventIndex++;
     }
+    private static int ScreenInt(string win) => win switch {
+        "MENU"=>1,"CREDITS"=>2,"HELP"=>3,"ORDER"=>4,"HANGAR"=>5,"STORE"=>6,_=>0 };
 
     /// <summary>
     /// Resets the per-context emit counter. Retained for compatibility.
@@ -339,7 +339,8 @@ public partial class ParityEmitter : Node
     public void OnStateChanged() => _worker.OnStateChanged();
 
     /// <summary>Emit one menu-parity row for a processed menu input event.</summary>
-    public void EmitMenuEvent(string action) => _worker.EmitMenuEvent(action);
+    public void EmitMenuEvent(string action, string winBefore, int selectedItem)
+        => _worker.EmitMenuEvent(action, winBefore, selectedItem);
 
     /// <summary>
     /// Signal that the playthrough has ended. Closes the output immediately

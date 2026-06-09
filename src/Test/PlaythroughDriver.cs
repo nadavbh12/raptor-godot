@@ -211,14 +211,10 @@ public partial class PlaythroughDriver : Node
         {
             string key = _pendingKey;
             _pendingKey = null;
+            string winBefore = _menu.State.ToParityString();   // pre-transition
             _menu.HandleInput(key, Sim.SimClock.Frame);
-            // Mirror C's per-keypress menu-event hook in WIN_MainMenu's
-            // SWD_Dialog loop (WINDOWS.C): emit one row per processed menu key,
-            // post-event (win/selected_item snapshot after the key is applied).
-            // The C golden for Down/Down/Up/Return stays in MENU throughout, so
-            // the post-event snapshot matches. Faithful pre-transition-win /
-            // sub-dialog gating is a follow-up once recordings leave the main menu.
-            _emitter?.EmitMenuEvent(key);
+            int sel = _menu.EffectiveSelectedItem();            // post-nav highlight
+            _emitter?.EmitMenuEvent(key, winBefore, sel);
         }
         _pt?.Tick(Sim.SimClock.Frame);
     }
