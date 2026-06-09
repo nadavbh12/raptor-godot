@@ -1,0 +1,1647 @@
+{
+  "master_catalog": [
+    {
+      "menu": "MAIN_MENU (WIN_MainMenu / WinState.Menu)",
+      "elements": [
+        {
+          "label": "NEW (New Pilot / Register)",
+          "kind": "button",
+          "input": "keyboard_or_mouse",
+          "action": "F_SELECT MAIN_NEW -> WIN_Register / PilotCreationFlow.Begin",
+          "godot_implemented": true,
+          "drivable_keyboard_now": true
+        },
+        {
+          "label": "LOAD (Load Pilot)",
+          "kind": "button",
+          "input": "keyboard_or_mouse",
+          "action": "F_SELECT MAIN_LOAD -> RAP_LoadWin / LoadMissionPanel or 'No Pilots' WIN_Msg",
+          "godot_implemented": true,
+          "drivable_keyboard_now": true
+        },
+        {
+          "label": "OPTIONS",
+          "kind": "button",
+          "input": "keyboard_or_mouse",
+          "action": "F_SELECT MAIN_OPTS -> WIN_Opts / OptionsPanel.Open",
+          "godot_implemented": true,
+          "drivable_keyboard_now": true
+        },
+        {
+          "label": "ORDER (Ordering Info)",
+          "kind": "button",
+          "input": "keyboard_or_mouse",
+          "action": "F_SELECT MAIN_ORDER -> HELP_Win(RAP1/REG_VER1) / EnterHelp(RAP1_TXT)",
+          "godot_implemented": true,
+          "drivable_keyboard_now": true
+        },
+        {
+          "label": "CREDITS",
+          "kind": "button",
+          "input": "keyboard_or_mouse",
+          "action": "F_SELECT MAIN_CREDITS -> WIN_Credits / EnterState(Credits)",
+          "godot_implemented": true,
+          "drivable_keyboard_now": true
+        },
+        {
+          "label": "QUIT",
+          "kind": "button",
+          "input": "keyboard_or_mouse",
+          "action": "F_SELECT MAIN_QUIT -> WIN_AskExit / OpenAskBoolQuit",
+          "godot_implemented": true,
+          "drivable_keyboard_now": true
+        },
+        {
+          "label": "RETURN (Return to Game, in-game only)",
+          "kind": "button",
+          "input": "keyboard_or_mouse",
+          "action": "F_SELECT MAIN_RETURN -> exit menu to game (ingameflag only)",
+          "godot_implemented": false,
+          "drivable_keyboard_now": false
+        },
+        {
+          "label": "Menu cursor up/down nav",
+          "kind": "list_nav",
+          "input": "keyboard",
+          "action": "SC_UP/SC_DOWN move active_field / CurrentItem",
+          "godot_implemented": true,
+          "drivable_keyboard_now": true
+        },
+        {
+          "label": "Start Demo (D hotkey)",
+          "kind": "button",
+          "input": "keyboard",
+          "action": "SC_D sets cur_opt=DEM_DEMO1G1, forces attract demo",
+          "godot_implemented": false,
+          "drivable_keyboard_now": false
+        },
+        {
+          "label": "Help (F1)",
+          "kind": "button",
+          "input": "keyboard",
+          "action": "SC_F1 -> HELP_Win(HELP1_TXT) / EnterHelp(HELP1_TXT)",
+          "godot_implemented": true,
+          "drivable_keyboard_now": true
+        },
+        {
+          "label": "Alt+X exit (chord)",
+          "kind": "button",
+          "input": "keyboard",
+          "action": "KBD_Key(SC_X)&&KBD_Key(SC_ALT) -> WIN_AskExit",
+          "godot_implemented": false,
+          "drivable_keyboard_now": false
+        },
+        {
+          "label": "Escape (in-game close / menu reset)",
+          "kind": "button",
+          "input": "keyboard",
+          "action": "SC_ESC: in-game menu_exit; Godot EnterMenu re-anchor",
+          "godot_implemented": true,
+          "drivable_keyboard_now": true
+        },
+        {
+          "label": "DEMO idle-prompt text (MAIN_DEMO)",
+          "kind": "info",
+          "input": "unknown",
+          "action": "FLD_TEXT static label, cleared in-game; not selectable",
+          "godot_implemented": true,
+          "drivable_keyboard_now": false
+        },
+        {
+          "label": "RAPTOR logo / icon (MAIN_0000)",
+          "kind": "info",
+          "input": "unknown",
+          "action": "FLD_ICON decorative; swaps on tai_flag",
+          "godot_implemented": true,
+          "drivable_keyboard_now": false
+        },
+        {
+          "label": "Idle demo timeout (attract mode)",
+          "kind": "info",
+          "input": "unknown",
+          "action": "Frame-count timer (DEMO_DELAY), not input; resets on any input",
+          "godot_implemented": false,
+          "drivable_keyboard_now": false
+        }
+      ]
+    },
+    {
+      "menu": "OPTIONS (WIN_Opts / OptionsPanel)",
+      "elements": [
+        {
+          "label": "Detail toggle (LOW/HIGH)",
+          "kind": "toggle",
+          "input": "keyboard_or_mouse",
+          "action": "SC_ENTER when cur_field==0 toggles OPTS_DETAIL / OptionDetailHigh",
+          "godot_implemented": true,
+          "drivable_keyboard_now": true
+        },
+        {
+          "label": "Music Volume slider (OPTS_VMUSIC)",
+          "kind": "slider",
+          "input": "keyboard_or_mouse",
+          "action": "Keyboard SC_LEFT/SC_RIGHT +/-8 on music row; mouse drag absolute = PTR_X - x",
+          "godot_implemented": true,
+          "drivable_keyboard_now": true
+        },
+        {
+          "label": "Sound FX Volume slider (OPTS_VFX)",
+          "kind": "slider",
+          "input": "keyboard_or_mouse",
+          "action": "Keyboard SC_LEFT/SC_RIGHT +/-8 on FX row; mouse drag absolute = PTR_X - x",
+          "godot_implemented": true,
+          "drivable_keyboard_now": true
+        },
+        {
+          "label": "Row navigation (cursor up)",
+          "kind": "list_nav",
+          "input": "keyboard",
+          "action": "SC_UP decrements cur_field (first press only primes kbactive)",
+          "godot_implemented": true,
+          "drivable_keyboard_now": true
+        },
+        {
+          "label": "Row navigation (cursor down)",
+          "kind": "list_nav",
+          "input": "keyboard",
+          "action": "SC_DOWN increments cur_field (first press only primes kbactive)",
+          "godot_implemented": true,
+          "drivable_keyboard_now": true
+        },
+        {
+          "label": "EXIT button (OPTS_EXIT/OPTS_OK)",
+          "kind": "button",
+          "input": "keyboard_or_mouse",
+          "action": "SC_ESC synthesizes F_SELECT OPTS_EXIT; persists INI prefs",
+          "godot_implemented": true,
+          "drivable_keyboard_now": true
+        },
+        {
+          "label": "Selection pointer row 1 (OPTS_PIC1)",
+          "kind": "info",
+          "input": "keyboard",
+          "action": "FLD_ICON POINT_PIC when cur_field==0; indirect via SC_UP/DOWN",
+          "godot_implemented": false,
+          "drivable_keyboard_now": false
+        },
+        {
+          "label": "Selection pointer row 2 (OPTS_PIC2)",
+          "kind": "info",
+          "input": "keyboard",
+          "action": "FLD_ICON POINT_PIC when cur_field==1; indirect via SC_UP/DOWN",
+          "godot_implemented": false,
+          "drivable_keyboard_now": false
+        },
+        {
+          "label": "Selection pointer row 3 (OPTS_PIC3)",
+          "kind": "info",
+          "input": "keyboard",
+          "action": "FLD_ICON POINT_PIC when cur_field==2; indirect via SC_UP/DOWN",
+          "godot_implemented": false,
+          "drivable_keyboard_now": false
+        }
+      ]
+    },
+    {
+      "menu": "REGISTER - Pilot Creation (WIN_Register / PilotCreationFlow step 1-2)",
+      "elements": [
+        {
+          "label": "Pilot NAME (REG_NAME)",
+          "kind": "text_field",
+          "input": "text_entry",
+          "action": "FLD_INPUT: type ASCII, SC_BACKSPACE, SC_ENTER commits -> CALLSIGN",
+          "godot_implemented": true,
+          "drivable_keyboard_now": false
+        },
+        {
+          "label": "CALLSIGN (REG_CALLSIGN)",
+          "kind": "text_field",
+          "input": "text_entry",
+          "action": "FLD_INPUT: type ASCII, SC_ENTER submits pilot -> AskDiff",
+          "godot_implemented": true,
+          "drivable_keyboard_now": false
+        },
+        {
+          "label": "ID Picture cycle via keyboard (REG_IDPIC, SC_ALT/SC_CTRL)",
+          "kind": "picture_cycle",
+          "input": "keyboard",
+          "action": "SC_ALT or SC_CTRL cycles cur_id=(cur_id+1)%4",
+          "godot_implemented": false,
+          "drivable_keyboard_now": false
+        },
+        {
+          "label": "ID Picture cycle via mouse (REG_VIEWID)",
+          "kind": "picture_cycle",
+          "input": "mouse_click",
+          "action": "PTR_B1 over view area cycles cur_id (mouse-only twin)",
+          "godot_implemented": false,
+          "drivable_keyboard_now": false
+        },
+        {
+          "label": "REGISTER/Accept view area (REG_VIEWEXIT)",
+          "kind": "button",
+          "input": "mouse_click",
+          "action": "PTR_B1 over view area commits pilot (mouse-only twin of CALLSIGN Enter)",
+          "godot_implemented": false,
+          "drivable_keyboard_now": false
+        },
+        {
+          "label": "Registration info/help view area (REG_VIEWREG)",
+          "kind": "info",
+          "input": "mouse_click",
+          "action": "Hover sets REG_TEXT=regtext[0]; no value change",
+          "godot_implemented": false,
+          "drivable_keyboard_now": false
+        },
+        {
+          "label": "Registration help text display (REG_TEXT)",
+          "kind": "info",
+          "input": "unknown",
+          "action": "FLD_TEXT updated by view-area hovers; display-only",
+          "godot_implemented": false,
+          "drivable_keyboard_now": false
+        },
+        {
+          "label": "Help (F1)",
+          "kind": "button",
+          "input": "keyboard",
+          "action": "SC_F1 -> HELP_Win(NEWPLAY1_TXT)",
+          "godot_implemented": true,
+          "drivable_keyboard_now": true
+        },
+        {
+          "label": "Abort/Cancel registration (ESC)",
+          "kind": "button",
+          "input": "keyboard",
+          "action": "SC_ESC -> rval=FALSE, reg_exit; Godot step-back/cancel",
+          "godot_implemented": true,
+          "drivable_keyboard_now": true
+        },
+        {
+          "label": "Quit game (Alt+X chord)",
+          "kind": "button",
+          "input": "keyboard",
+          "action": "SC_X+SC_ALT -> WIN_AskExit",
+          "godot_implemented": false,
+          "drivable_keyboard_now": false
+        }
+      ]
+    },
+    {
+      "menu": "ASKDIFF - Difficulty Select (WIN_AskDiff / PilotCreationFlow step 3)",
+      "elements": [
+        {
+          "label": "TRAINING (OKREG_TRAIN, DIFF_0)",
+          "kind": "button",
+          "input": "keyboard_or_mouse",
+          "action": "F_SELECT -> rval=DIFF_0 -> HANGAR; kb needs usekb_flag",
+          "godot_implemented": true,
+          "drivable_keyboard_now": true
+        },
+        {
+          "label": "ROOKIE (OKREG_EASY, DIFF_1)",
+          "kind": "button",
+          "input": "keyboard_or_mouse",
+          "action": "F_SELECT -> rval=DIFF_1 -> HANGAR",
+          "godot_implemented": true,
+          "drivable_keyboard_now": true
+        },
+        {
+          "label": "VETERAN (OKREG_MED, DIFF_2, default focus)",
+          "kind": "button",
+          "input": "keyboard_or_mouse",
+          "action": "F_SELECT -> rval=DIFF_2; initial active field",
+          "godot_implemented": true,
+          "drivable_keyboard_now": true
+        },
+        {
+          "label": "ELITE (OKREG_HARD, DIFF_3)",
+          "kind": "button",
+          "input": "keyboard_or_mouse",
+          "action": "F_SELECT -> rval=DIFF_3 -> HANGAR",
+          "godot_implemented": true,
+          "drivable_keyboard_now": true
+        },
+        {
+          "label": "ABORT (OKREG_ABORT)",
+          "kind": "button",
+          "input": "keyboard_or_mouse",
+          "action": "F_SELECT -> rval=EMPTY; or SC_ESC anywhere",
+          "godot_implemented": true,
+          "drivable_keyboard_now": true
+        },
+        {
+          "label": "Difficulty field nav",
+          "kind": "list_nav",
+          "input": "keyboard",
+          "action": "Up/Left/Down/Right cycle DifficultyFieldId 1..5 (Godot); C TAB",
+          "godot_implemented": true,
+          "drivable_keyboard_now": true
+        },
+        {
+          "label": "Abort via ESC",
+          "kind": "button",
+          "input": "keyboard",
+          "action": "KBD_IsKey(SC_ESC) -> rval=EMPTY (always available)",
+          "godot_implemented": true,
+          "drivable_keyboard_now": true
+        },
+        {
+          "label": "Decorative bumpins/icons (OKREG_0000..0005)",
+          "kind": "info",
+          "input": "unknown",
+          "action": "FLD_BUMPIN/FLD_ICON static decoration",
+          "godot_implemented": false,
+          "drivable_keyboard_now": false
+        },
+        {
+          "label": "Difficulty prompt text (OKREG_000B)",
+          "kind": "info",
+          "input": "unknown",
+          "action": "FLD_TEXT static label",
+          "godot_implemented": false,
+          "drivable_keyboard_now": false
+        }
+      ]
+    },
+    {
+      "menu": "HANGAR (WIN_Hangar / HangarController)",
+      "elements": [
+        {
+          "label": "Fly Mission (HANG_MISSION)",
+          "kind": "list_nav",
+          "input": "keyboard_or_mouse",
+          "action": "pos cursor + SC_ENTER/SC_SPACE -> launch mission / InSectorSelect",
+          "godot_implemented": true,
+          "drivable_keyboard_now": true
+        },
+        {
+          "label": "Supplies/Store (HANG_SUPPLIES)",
+          "kind": "list_nav",
+          "input": "keyboard_or_mouse",
+          "action": "pos cursor + SC_ENTER -> STORE_Enter / EnterState(Store)",
+          "godot_implemented": true,
+          "drivable_keyboard_now": true
+        },
+        {
+          "label": "Main Menu (HANG_MAIN_MENU)",
+          "kind": "list_nav",
+          "input": "keyboard_or_mouse",
+          "action": "C: SC_ENTER -> opt=-99 exit to menu; Godot: Return STUB (return false)",
+          "godot_implemented": false,
+          "drivable_keyboard_now": false
+        },
+        {
+          "label": "Quick Save Pilot (HANG_QSAVE)",
+          "kind": "list_nav",
+          "input": "keyboard_or_mouse",
+          "action": "C: SC_ENTER -> WIN_AskBool save; Godot: Return STUB (no save)",
+          "godot_implemented": false,
+          "drivable_keyboard_now": false
+        },
+        {
+          "label": "Hangar cursor nav",
+          "kind": "list_nav",
+          "input": "keyboard",
+          "action": "SC_UP/LEFT/TAB pos++, SC_DOWN/RIGHT pos-- (wrap mod 4)",
+          "godot_implemented": true,
+          "drivable_keyboard_now": true
+        },
+        {
+          "label": "Help (F1)",
+          "kind": "button",
+          "input": "keyboard",
+          "action": "SC_F1 -> HELP_Win(HANGHLP1_TXT)",
+          "godot_implemented": true,
+          "drivable_keyboard_now": true
+        },
+        {
+          "label": "Save Pilot (F2 / S)",
+          "kind": "button",
+          "input": "keyboard",
+          "action": "SC_F2/SC_S -> WIN_AskBool save / OpenAskBoolSave",
+          "godot_implemented": true,
+          "drivable_keyboard_now": true
+        },
+        {
+          "label": "Exit hangar / cancel (ESC)",
+          "kind": "button",
+          "input": "keyboard",
+          "action": "SC_ESC -> opt=-99 exit to menu / EnterMenu",
+          "godot_implemented": true,
+          "drivable_keyboard_now": true
+        },
+        {
+          "label": "Quit to DOS (Alt+X chord)",
+          "kind": "dialog",
+          "input": "keyboard",
+          "action": "SC_X+SC_ALT -> WIN_AskExit",
+          "godot_implemented": false,
+          "drivable_keyboard_now": false
+        },
+        {
+          "label": "Hangar dude picture flicker (HANG_PIC)",
+          "kind": "picture_cycle",
+          "input": "unknown",
+          "action": "random(3) RNG-driven icon flicker; not user input",
+          "godot_implemented": false,
+          "drivable_keyboard_now": false
+        },
+        {
+          "label": "Hangar info text (HANG_TEXT)",
+          "kind": "info",
+          "input": "unknown",
+          "action": "FLD_TEXT hangtext[pos]; side-effect of nav",
+          "godot_implemented": false,
+          "drivable_keyboard_now": false
+        }
+      ]
+    },
+    {
+      "menu": "STORE / SUPPLY ROOM (STORE_Enter / StoreLogic)",
+      "elements": [
+        {
+          "label": "EXIT (door / leave store, STOR_VEXIT)",
+          "kind": "button",
+          "input": "keyboard_or_mouse",
+          "action": "SC_ESC -> store_exit; mouse PTR_B1 on view area",
+          "godot_implemented": true,
+          "drivable_keyboard_now": true
+        },
+        {
+          "label": "Activate BUY mode (STOR_BUY)",
+          "kind": "button",
+          "input": "keyboard_or_mouse",
+          "action": "SC_SPACE toggle into BUY_MODE; mouse click STOR_BUY",
+          "godot_implemented": true,
+          "drivable_keyboard_now": true
+        },
+        {
+          "label": "Activate SELL mode (STOR_SELL)",
+          "kind": "button",
+          "input": "keyboard_or_mouse",
+          "action": "SC_SPACE toggle into SELL_MODE; mouse click STOR_SELL",
+          "godot_implemented": true,
+          "drivable_keyboard_now": true
+        },
+        {
+          "label": "Next item (STOR_NEXT)",
+          "kind": "list_nav",
+          "input": "keyboard_or_mouse",
+          "action": "SC_RIGHT/UP/PAGEUP cur_item++; mouse click STOR_NEXT",
+          "godot_implemented": true,
+          "drivable_keyboard_now": true
+        },
+        {
+          "label": "Previous item (STOR_PREV)",
+          "kind": "list_nav",
+          "input": "keyboard_or_mouse",
+          "action": "SC_LEFT/DOWN/PAGEDN cur_item--; mouse click STOR_PREV",
+          "godot_implemented": true,
+          "drivable_keyboard_now": true
+        },
+        {
+          "label": "Buy/Sell an item (STOR_BUYIT)",
+          "kind": "button",
+          "input": "keyboard_or_mouse",
+          "action": "SC_ENTER -> OBJS_Buy/OBJS_Sell; mouse click STOR_BUYIT",
+          "godot_implemented": true,
+          "drivable_keyboard_now": true
+        },
+        {
+          "label": "Help (F1)",
+          "kind": "dialog",
+          "input": "keyboard",
+          "action": "SC_F1 -> HELP_Win(STORHLP1_TXT)",
+          "godot_implemented": true,
+          "drivable_keyboard_now": true
+        },
+        {
+          "label": "Quit game (Alt+X chord)",
+          "kind": "dialog",
+          "input": "keyboard",
+          "action": "SC_X+SC_ALT -> WIN_AskExit",
+          "godot_implemented": false,
+          "drivable_keyboard_now": false
+        },
+        {
+          "label": "Hide/Show main display (STOR_VSCREEN)",
+          "kind": "info",
+          "input": "mouse_click",
+          "action": "View-area hover hint only; no F_SELECT handler",
+          "godot_implemented": false,
+          "drivable_keyboard_now": false
+        },
+        {
+          "label": "Hover hint text line (STOR_TEXT)",
+          "kind": "info",
+          "input": "mouse_click",
+          "action": "Mouse-driven hover hint; keyboard never sets it",
+          "godot_implemented": false,
+          "drivable_keyboard_now": false
+        },
+        {
+          "label": "Item/cost display (STOR_COMP/NUM/COST/TEXTCOST/SCORE/STATS/CALLSIGN/ID)",
+          "kind": "info",
+          "input": "unknown",
+          "action": "Read-only display fields reflecting transaction state",
+          "godot_implemented": true,
+          "drivable_keyboard_now": false
+        }
+      ]
+    },
+    {
+      "menu": "LOAD PILOT dialog (RAP_LoadWin / LoadMissionPanel)",
+      "elements": [
+        {
+          "label": "Next pilot (LOAD_NEXT)",
+          "kind": "list_nav",
+          "input": "keyboard_or_mouse",
+          "action": "SC_LEFT/PAGEDN/DOWN -> pos++; mouse click",
+          "godot_implemented": true,
+          "drivable_keyboard_now": true
+        },
+        {
+          "label": "Previous pilot (LOAD_PREV)",
+          "kind": "list_nav",
+          "input": "keyboard_or_mouse",
+          "action": "SC_RIGHT/PAGEUP/UP -> pos--; mouse click",
+          "godot_implemented": true,
+          "drivable_keyboard_now": true
+        },
+        {
+          "label": "Delete pilot (LOAD_DEL)",
+          "kind": "button",
+          "input": "keyboard_or_mouse",
+          "action": "SC_DELETE -> WIN_AskBool confirm + remove file; mouse click",
+          "godot_implemented": false,
+          "drivable_keyboard_now": false
+        },
+        {
+          "label": "Load pilot (LOAD_LOAD, default focus)",
+          "kind": "button",
+          "input": "keyboard_or_mouse",
+          "action": "SC_ENTER -> RAP_LoadPlayer, return 1 / ApplyLoadedPilot -> HANGAR",
+          "godot_implemented": true,
+          "drivable_keyboard_now": true
+        },
+        {
+          "label": "Cancel (LOAD_CANCEL)",
+          "kind": "button",
+          "input": "mouse_click",
+          "action": "Mouse-only field path -> return 0 (no scancode in switch)",
+          "godot_implemented": false,
+          "drivable_keyboard_now": false
+        },
+        {
+          "label": "Escape / exit dialog",
+          "kind": "button",
+          "input": "keyboard",
+          "action": "KBD_IsKey(SC_ESC) -> return 0; Godot LoadMission close",
+          "godot_implemented": true,
+          "drivable_keyboard_now": true
+        },
+        {
+          "label": "Quit game (Alt+X chord)",
+          "kind": "button",
+          "input": "keyboard",
+          "action": "SC_ALT+SC_X -> WIN_AskExit",
+          "godot_implemented": false,
+          "drivable_keyboard_now": false
+        },
+        {
+          "label": "ID Picture preview (LOAD_IDPIC)",
+          "kind": "info",
+          "input": "unknown",
+          "action": "FLD_ICON portrait; side-effect of NEXT/PREV",
+          "godot_implemented": true,
+          "drivable_keyboard_now": false
+        },
+        {
+          "label": "Pilot name preview (LOAD_NAME)",
+          "kind": "info",
+          "input": "unknown",
+          "action": "FLD_TEXT; side-effect of NEXT/PREV",
+          "godot_implemented": true,
+          "drivable_keyboard_now": false
+        },
+        {
+          "label": "Pilot callsign preview (LOAD_CALL)",
+          "kind": "info",
+          "input": "unknown",
+          "action": "FLD_TEXT; side-effect of NEXT/PREV",
+          "godot_implemented": true,
+          "drivable_keyboard_now": false
+        },
+        {
+          "label": "Pilot credits/score preview (LOAD_CREDITS)",
+          "kind": "info",
+          "input": "unknown",
+          "action": "FLD_TEXT 7-digit score; side-effect of NEXT/PREV",
+          "godot_implemented": true,
+          "drivable_keyboard_now": false
+        }
+      ]
+    },
+    {
+      "menu": "LEVEL-LOAD PROGRESS (WIN_LoadComp / WIN_SetLoadLevel / WIN_EndLoad)",
+      "elements": [
+        {
+          "label": "Loading progress bar (LCOMP_LEVEL)",
+          "kind": "info",
+          "input": "unknown",
+          "action": "Non-interactive; filled 20/40/60/80/100 by RAP_LoadMap",
+          "godot_implemented": false,
+          "drivable_keyboard_now": false
+        },
+        {
+          "label": "Sector name (LCOMP_SECTOR)",
+          "kind": "info",
+          "input": "unknown",
+          "action": "Static text BRAVO/TANGO/OUTER by cur_game",
+          "godot_implemented": false,
+          "drivable_keyboard_now": false
+        },
+        {
+          "label": "Wave label (LCOMP_WAVE)",
+          "kind": "info",
+          "input": "unknown",
+          "action": "Static 'WAVE N'/'FINAL WAVE N'",
+          "godot_implemented": false,
+          "drivable_keyboard_now": false
+        },
+        {
+          "label": "End-of-load fade",
+          "kind": "info",
+          "input": "unknown",
+          "action": "WIN_EndLoad GFX_FadeOut + palette; no input",
+          "godot_implemented": false,
+          "drivable_keyboard_now": false
+        }
+      ]
+    },
+    {
+      "menu": "HELP / ORDER viewer (HELP_Win / HelpSystemController)",
+      "elements": [
+        {
+          "label": "Home (first page)",
+          "kind": "button",
+          "input": "keyboard",
+          "action": "SC_HOME -> curpage=0",
+          "godot_implemented": true,
+          "drivable_keyboard_now": true
+        },
+        {
+          "label": "Page Down / Next page",
+          "kind": "list_nav",
+          "input": "keyboard",
+          "action": "SC_DOWN/RIGHT/PAGEDN -> curpage++ (wrap)",
+          "godot_implemented": true,
+          "drivable_keyboard_now": true
+        },
+        {
+          "label": "Page Up / Previous page",
+          "kind": "list_nav",
+          "input": "keyboard",
+          "action": "SC_UP/LEFT/PAGEUP -> curpage-- (wrap)",
+          "godot_implemented": true,
+          "drivable_keyboard_now": true
+        },
+        {
+          "label": "End (last page)",
+          "kind": "button",
+          "input": "keyboard",
+          "action": "SC_END -> curpage=maxpages-1",
+          "godot_implemented": true,
+          "drivable_keyboard_now": true
+        },
+        {
+          "label": "F1 jump-to-page-2",
+          "kind": "button",
+          "input": "keyboard",
+          "action": "SC_F1 -> curpage=1 (in-viewer jump)",
+          "godot_implemented": true,
+          "drivable_keyboard_now": true
+        },
+        {
+          "label": "UP arrow on-screen button (HELP_UP)",
+          "kind": "button",
+          "input": "keyboard_or_mouse",
+          "action": "F_SELECT -> curpage-- (Enter on active field / mouse click); kb redundant with PageUp",
+          "godot_implemented": true,
+          "drivable_keyboard_now": true
+        },
+        {
+          "label": "DOWN arrow on-screen button (HELP_DOWN)",
+          "kind": "button",
+          "input": "keyboard_or_mouse",
+          "action": "F_SELECT -> curpage++ (Enter on active field / mouse click); kb redundant with PageDown",
+          "godot_implemented": true,
+          "drivable_keyboard_now": true
+        },
+        {
+          "label": "DONE button (HELP_DONE)",
+          "kind": "button",
+          "input": "keyboard_or_mouse",
+          "action": "F_SELECT -> exit help; kb redundant with ESC/Return",
+          "godot_implemented": true,
+          "drivable_keyboard_now": true
+        },
+        {
+          "label": "Escape / Return (exit help)",
+          "kind": "button",
+          "input": "keyboard",
+          "action": "SC_ESC -> func_exit / Return; Godot EnterState(Unknown)",
+          "godot_implemented": true,
+          "drivable_keyboard_now": true
+        },
+        {
+          "label": "Alt+X (quit-to-DOS chord)",
+          "kind": "dialog",
+          "input": "keyboard",
+          "action": "SC_X+SC_ALT -> WIN_AskExit",
+          "godot_implemented": false,
+          "drivable_keyboard_now": false
+        },
+        {
+          "label": "HELP_TEXT page-body display",
+          "kind": "info",
+          "input": "unknown",
+          "action": "FLD_TEXT page item startitem+curpage",
+          "godot_implemented": true,
+          "drivable_keyboard_now": false
+        },
+        {
+          "label": "HELP_HEADER page-counter display",
+          "kind": "info",
+          "input": "unknown",
+          "action": "FLD_TEXT 'PAGE : NN'",
+          "godot_implemented": true,
+          "drivable_keyboard_now": false
+        }
+      ]
+    },
+    {
+      "menu": "SHIPCOMP / Sector-Game Select (WIN_ShipComp / InSectorSelect)",
+      "elements": [
+        {
+          "label": "AUTO / continue (COMP_AUTO, default focus)",
+          "kind": "button",
+          "input": "keyboard_or_mouse",
+          "action": "SC_ENTER on active field -> return TRUE keep cur_game",
+          "godot_implemented": true,
+          "drivable_keyboard_now": true
+        },
+        {
+          "label": "GAME 1 / Bravo Sector (COMP_GAME1)",
+          "kind": "button",
+          "input": "keyboard_or_mouse",
+          "action": "F_SELECT -> cur_game=0 exit TRUE; kb only via TAB-cycle",
+          "godot_implemented": false,
+          "drivable_keyboard_now": false
+        },
+        {
+          "label": "GAME 2 / Tango Sector (COMP_GAME2)",
+          "kind": "button",
+          "input": "keyboard_or_mouse",
+          "action": "F_SELECT -> cur_game=1 or WIN_Order if locked; kb only via TAB-cycle",
+          "godot_implemented": false,
+          "drivable_keyboard_now": false
+        },
+        {
+          "label": "GAME 3 / Outer Regions (COMP_GAME3)",
+          "kind": "button",
+          "input": "keyboard_or_mouse",
+          "action": "F_SELECT -> cur_game=2 or WIN_Order if locked; kb only via TAB-cycle",
+          "godot_implemented": false,
+          "drivable_keyboard_now": false
+        },
+        {
+          "label": "SECRET enable (COMP_SECRET)",
+          "kind": "button",
+          "input": "mouse_click",
+          "action": "Hidden Easter-egg gadget; mouse-only, unlocks B1/B2/B3",
+          "godot_implemented": false,
+          "drivable_keyboard_now": false
+        },
+        {
+          "label": "Secret light 1 (COMP_B1)",
+          "kind": "toggle",
+          "input": "mouse_click",
+          "action": "Mouse-only toggle secret1 (only if secret enabled)",
+          "godot_implemented": false,
+          "drivable_keyboard_now": false
+        },
+        {
+          "label": "Secret light 2 (COMP_B2)",
+          "kind": "toggle",
+          "input": "mouse_click",
+          "action": "Mouse-only toggle secret2",
+          "godot_implemented": false,
+          "drivable_keyboard_now": false
+        },
+        {
+          "label": "Secret light 3 (COMP_B3)",
+          "kind": "toggle",
+          "input": "mouse_click",
+          "action": "Mouse-only toggle secret3",
+          "godot_implemented": false,
+          "drivable_keyboard_now": false
+        },
+        {
+          "label": "Close gadget (COMP_CLOSE)",
+          "kind": "button",
+          "input": "keyboard_or_mouse",
+          "action": "FLD_CLOSE mouse click; SC_ESC keyboard equivalent",
+          "godot_implemented": true,
+          "drivable_keyboard_now": true
+        },
+        {
+          "label": "ESC (abort to hangar)",
+          "kind": "button",
+          "input": "keyboard",
+          "action": "SC_ESC -> rval=FALSE abort_shipcomp / back to hangar",
+          "godot_implemented": true,
+          "drivable_keyboard_now": true
+        },
+        {
+          "label": "F1 (context help)",
+          "kind": "button",
+          "input": "keyboard",
+          "action": "SC_F1 -> HELP_Win(COMPHLP1_TXT)",
+          "godot_implemented": true,
+          "drivable_keyboard_now": true
+        },
+        {
+          "label": "Alt+X (exit to DOS chord)",
+          "kind": "button",
+          "input": "keyboard",
+          "action": "SC_X+SC_ALT -> WIN_AskExit",
+          "godot_implemented": false,
+          "drivable_keyboard_now": false
+        },
+        {
+          "label": "Confirm sector -> game enter (Return in sector-select)",
+          "kind": "button",
+          "input": "keyboard_or_mouse",
+          "action": "Godot: Return/click enters MISSION_1 at GameNum=0",
+          "godot_implemented": true,
+          "drivable_keyboard_now": true
+        },
+        {
+          "label": "Per-sector node selection (which sector)",
+          "kind": "list_nav",
+          "input": "unknown",
+          "action": "C: navigate sector nodes; Godot collapses to fixed GameNum=0",
+          "godot_implemented": false,
+          "drivable_keyboard_now": false
+        },
+        {
+          "label": "Sector cheat Z/X/C (godmode/demo)",
+          "kind": "button",
+          "input": "keyboard",
+          "action": "SC_Z/X/C set cur_game 0/1/2 (gated by godmode/demo)",
+          "godot_implemented": false,
+          "drivable_keyboard_now": false
+        },
+        {
+          "label": "Wave cheat Q/W/E/R/T/Y/U/I/O (godmode/demo)",
+          "kind": "button",
+          "input": "keyboard",
+          "action": "SC_Q..O set game_wave (gated) but always goto exit_shipcomp TRUE",
+          "godot_implemented": false,
+          "drivable_keyboard_now": false
+        }
+      ]
+    },
+    {
+      "menu": "DIALOGS: WIN_AskBool / WIN_AskExit YES-NO confirm",
+      "elements": [
+        {
+          "label": "YES (ASK_YES, default active)",
+          "kind": "button",
+          "input": "keyboard_or_mouse",
+          "action": "SC_ENTER on default-active -> rval=TRUE; mouse click",
+          "godot_implemented": true,
+          "drivable_keyboard_now": true
+        },
+        {
+          "label": "NO (ASK_NO)",
+          "kind": "button",
+          "input": "keyboard_or_mouse",
+          "action": "SC_ESC forces NO -> rval=FALSE; TAB+Enter; mouse click",
+          "godot_implemented": true,
+          "drivable_keyboard_now": true
+        },
+        {
+          "label": "YES/NO toggle nav",
+          "kind": "list_nav",
+          "input": "keyboard",
+          "action": "C: SC_TAB to NO; Godot: Left/Right/Tab/Up/Down flip _askBoolYes",
+          "godot_implemented": true,
+          "drivable_keyboard_now": true
+        },
+        {
+          "label": "Confirm (Return/Space)",
+          "kind": "button",
+          "input": "keyboard",
+          "action": "Godot: Return/Space closes; fires callback if YES",
+          "godot_implemented": true,
+          "drivable_keyboard_now": true
+        },
+        {
+          "label": "Question banner / dragbar (ASK_DRAGBAR)",
+          "kind": "info",
+          "input": "mouse_drag",
+          "action": "FLD_DRAGBAR window-move handle; mouse-only, not decision-relevant",
+          "godot_implemented": false,
+          "drivable_keyboard_now": false
+        }
+      ]
+    },
+    {
+      "menu": "DIALOGS: transient popups (WIN_Msg / WIN_Pause / WIN_Order / WIN_Credits)",
+      "elements": [
+        {
+          "label": "WIN_Msg dismiss (any key)",
+          "kind": "dialog",
+          "input": "keyboard_or_mouse",
+          "action": "IMS_WaitTimed(10) early-dismiss on any key/click; Godot any key",
+          "godot_implemented": true,
+          "drivable_keyboard_now": true
+        },
+        {
+          "label": "WIN_Pause GAME PAUSED dismiss (any key)",
+          "kind": "dialog",
+          "input": "keyboard_or_mouse",
+          "action": "Spin until any key/mouse ack; SC_P opens it in-game",
+          "godot_implemented": false,
+          "drivable_keyboard_now": false
+        },
+        {
+          "label": "WIN_Order info screen dismiss (any key)",
+          "kind": "info",
+          "input": "keyboard_or_mouse",
+          "action": "win-state ORDER(4) IMS_WaitTimed(15), any key dismisses",
+          "godot_implemented": false,
+          "drivable_keyboard_now": false
+        },
+        {
+          "label": "WIN_Credits roll dismiss (any key)",
+          "kind": "info",
+          "input": "keyboard_or_mouse",
+          "action": "win-state CREDITS(2) IMS_WaitTimed(25), any key/Return/Escape dismisses",
+          "godot_implemented": true,
+          "drivable_keyboard_now": true
+        }
+      ]
+    }
+  ],
+  "proposed_scenarios": [
+    {
+      "name": "menu_nav_all_buttons",
+      "menu": "MAIN_MENU",
+      "covers": [
+        "NEW (New Pilot / Register)",
+        "LOAD (Load Pilot)",
+        "OPTIONS",
+        "ORDER (Ordering Info)",
+        "CREDITS",
+        "QUIT",
+        "Menu cursor up/down nav",
+        "Escape (in-game close / menu reset)"
+      ],
+      "input_kinds_needed": [
+        "keyboard"
+      ],
+      "drivable_now": true,
+      "blocked_by": []
+    },
+    {
+      "name": "menu_help_f1",
+      "menu": "MAIN_MENU",
+      "covers": [
+        "Help (F1)"
+      ],
+      "input_kinds_needed": [
+        "keyboard"
+      ],
+      "drivable_now": true,
+      "blocked_by": []
+    },
+    {
+      "name": "menu_demo_hotkey",
+      "menu": "MAIN_MENU",
+      "covers": [
+        "Start Demo (D hotkey)",
+        "Idle demo timeout (attract mode)",
+        "DEMO idle-prompt text (MAIN_DEMO)",
+        "RAPTOR logo / icon (MAIN_0000)"
+      ],
+      "input_kinds_needed": [
+        "keyboard"
+      ],
+      "drivable_now": false,
+      "blocked_by": [
+        "godot_demo_attract_mode"
+      ]
+    },
+    {
+      "name": "menu_return_ingame",
+      "menu": "MAIN_MENU",
+      "covers": [
+        "RETURN (Return to Game, in-game only)"
+      ],
+      "input_kinds_needed": [
+        "keyboard"
+      ],
+      "drivable_now": false,
+      "blocked_by": [
+        "godot_main_return_impl",
+        "ingame_pause_entry"
+      ]
+    },
+    {
+      "name": "menu_altx_quit",
+      "menu": "MAIN_MENU",
+      "covers": [
+        "Alt+X exit (chord)"
+      ],
+      "input_kinds_needed": [
+        "keyboard",
+        "key_chord"
+      ],
+      "drivable_now": false,
+      "blocked_by": [
+        "key_chord",
+        "godot_altx_impl"
+      ]
+    },
+    {
+      "name": "menu_options_volume_detail_exit",
+      "menu": "OPTIONS",
+      "covers": [
+        "Row navigation (cursor up)",
+        "Row navigation (cursor down)",
+        "Music Volume slider (OPTS_VMUSIC)",
+        "Sound FX Volume slider (OPTS_VFX)",
+        "Detail toggle (LOW/HIGH)",
+        "EXIT button (OPTS_EXIT/OPTS_OK)"
+      ],
+      "input_kinds_needed": [
+        "keyboard"
+      ],
+      "drivable_now": true,
+      "blocked_by": []
+    },
+    {
+      "name": "menu_options_slider_arbitrary_value",
+      "menu": "OPTIONS",
+      "covers": [
+        "Music Volume slider (OPTS_VMUSIC)",
+        "Sound FX Volume slider (OPTS_VFX)"
+      ],
+      "input_kinds_needed": [
+        "mouse_click",
+        "slider_drag"
+      ],
+      "drivable_now": false,
+      "blocked_by": [
+        "mouse_click",
+        "slider_drag"
+      ]
+    },
+    {
+      "name": "menu_options_pointer_icons",
+      "menu": "OPTIONS",
+      "covers": [
+        "Selection pointer row 1 (OPTS_PIC1)",
+        "Selection pointer row 2 (OPTS_PIC2)",
+        "Selection pointer row 3 (OPTS_PIC3)"
+      ],
+      "input_kinds_needed": [
+        "keyboard"
+      ],
+      "drivable_now": false,
+      "blocked_by": [
+        "godot_options_pointer_icons"
+      ]
+    },
+    {
+      "name": "register_create_pilot",
+      "menu": "REGISTER",
+      "covers": [
+        "Pilot NAME (REG_NAME)",
+        "CALLSIGN (REG_CALLSIGN)",
+        "Abort/Cancel registration (ESC)"
+      ],
+      "input_kinds_needed": [
+        "text_entry",
+        "keyboard"
+      ],
+      "drivable_now": false,
+      "blocked_by": [
+        "text_entry"
+      ]
+    },
+    {
+      "name": "register_help_f1",
+      "menu": "REGISTER",
+      "covers": [
+        "Help (F1)"
+      ],
+      "input_kinds_needed": [
+        "keyboard"
+      ],
+      "drivable_now": true,
+      "blocked_by": []
+    },
+    {
+      "name": "register_idpic_cycle",
+      "menu": "REGISTER",
+      "covers": [
+        "ID Picture cycle via keyboard (REG_IDPIC, SC_ALT/SC_CTRL)"
+      ],
+      "input_kinds_needed": [
+        "keyboard"
+      ],
+      "drivable_now": false,
+      "blocked_by": [
+        "godot_idpic_cycle"
+      ]
+    },
+    {
+      "name": "register_idpic_viewarea_mouse",
+      "menu": "REGISTER",
+      "covers": [
+        "ID Picture cycle via mouse (REG_VIEWID)",
+        "REGISTER/Accept view area (REG_VIEWEXIT)",
+        "Registration info/help view area (REG_VIEWREG)",
+        "Registration help text display (REG_TEXT)"
+      ],
+      "input_kinds_needed": [
+        "mouse_click"
+      ],
+      "drivable_now": false,
+      "blocked_by": [
+        "mouse_click",
+        "godot_register_viewareas"
+      ]
+    },
+    {
+      "name": "register_altx_quit",
+      "menu": "REGISTER",
+      "covers": [
+        "Quit game (Alt+X chord)"
+      ],
+      "input_kinds_needed": [
+        "keyboard",
+        "key_chord"
+      ],
+      "drivable_now": false,
+      "blocked_by": [
+        "key_chord",
+        "godot_altx_impl"
+      ]
+    },
+    {
+      "name": "askdiff_select_each_difficulty",
+      "menu": "ASKDIFF",
+      "covers": [
+        "TRAINING (OKREG_TRAIN, DIFF_0)",
+        "ROOKIE (OKREG_EASY, DIFF_1)",
+        "VETERAN (OKREG_MED, DIFF_2, default focus)",
+        "ELITE (OKREG_HARD, DIFF_3)",
+        "Difficulty field nav"
+      ],
+      "input_kinds_needed": [
+        "keyboard"
+      ],
+      "drivable_now": true,
+      "blocked_by": []
+    },
+    {
+      "name": "askdiff_abort",
+      "menu": "ASKDIFF",
+      "covers": [
+        "ABORT (OKREG_ABORT)",
+        "Abort via ESC"
+      ],
+      "input_kinds_needed": [
+        "keyboard"
+      ],
+      "drivable_now": true,
+      "blocked_by": []
+    },
+    {
+      "name": "hangar_nav_mission_supplies",
+      "menu": "HANGAR",
+      "covers": [
+        "Hangar cursor nav",
+        "Fly Mission (HANG_MISSION)",
+        "Supplies/Store (HANG_SUPPLIES)",
+        "Exit hangar / cancel (ESC)"
+      ],
+      "input_kinds_needed": [
+        "keyboard"
+      ],
+      "drivable_now": true,
+      "blocked_by": []
+    },
+    {
+      "name": "hangar_help_save",
+      "menu": "HANGAR",
+      "covers": [
+        "Help (F1)",
+        "Save Pilot (F2 / S)"
+      ],
+      "input_kinds_needed": [
+        "keyboard"
+      ],
+      "drivable_now": true,
+      "blocked_by": []
+    },
+    {
+      "name": "hangar_mainmenu_qsave_doors",
+      "menu": "HANGAR",
+      "covers": [
+        "Main Menu (HANG_MAIN_MENU)",
+        "Quick Save Pilot (HANG_QSAVE)"
+      ],
+      "input_kinds_needed": [
+        "keyboard"
+      ],
+      "drivable_now": false,
+      "blocked_by": [
+        "godot_hangar_mainmenu_impl",
+        "godot_hangar_qsave_impl"
+      ]
+    },
+    {
+      "name": "hangar_altx_quit",
+      "menu": "HANGAR",
+      "covers": [
+        "Quit to DOS (Alt+X chord)"
+      ],
+      "input_kinds_needed": [
+        "keyboard",
+        "key_chord"
+      ],
+      "drivable_now": false,
+      "blocked_by": [
+        "key_chord",
+        "godot_altx_impl"
+      ]
+    },
+    {
+      "name": "store_buy_sell_navigate",
+      "menu": "STORE",
+      "covers": [
+        "Activate BUY mode (STOR_BUY)",
+        "Activate SELL mode (STOR_SELL)",
+        "Next item (STOR_NEXT)",
+        "Previous item (STOR_PREV)",
+        "Buy/Sell an item (STOR_BUYIT)",
+        "EXIT (door / leave store, STOR_VEXIT)",
+        "Item/cost display (STOR_COMP/NUM/COST/TEXTCOST/SCORE/STATS/CALLSIGN/ID)"
+      ],
+      "input_kinds_needed": [
+        "keyboard"
+      ],
+      "drivable_now": true,
+      "blocked_by": []
+    },
+    {
+      "name": "store_help_f1",
+      "menu": "STORE",
+      "covers": [
+        "Help (F1)"
+      ],
+      "input_kinds_needed": [
+        "keyboard"
+      ],
+      "drivable_now": true,
+      "blocked_by": []
+    },
+    {
+      "name": "store_viewarea_hover_hints",
+      "menu": "STORE",
+      "covers": [
+        "Hide/Show main display (STOR_VSCREEN)",
+        "Hover hint text line (STOR_TEXT)"
+      ],
+      "input_kinds_needed": [
+        "mouse_click"
+      ],
+      "drivable_now": false,
+      "blocked_by": [
+        "mouse_click"
+      ]
+    },
+    {
+      "name": "store_altx_quit",
+      "menu": "STORE",
+      "covers": [
+        "Quit game (Alt+X chord)"
+      ],
+      "input_kinds_needed": [
+        "keyboard",
+        "key_chord"
+      ],
+      "drivable_now": false,
+      "blocked_by": [
+        "key_chord",
+        "godot_altx_impl"
+      ]
+    },
+    {
+      "name": "load_navigate_and_load",
+      "menu": "LOAD",
+      "covers": [
+        "Next pilot (LOAD_NEXT)",
+        "Previous pilot (LOAD_PREV)",
+        "Load pilot (LOAD_LOAD, default focus)",
+        "Escape / exit dialog",
+        "ID Picture preview (LOAD_IDPIC)",
+        "Pilot name preview (LOAD_NAME)",
+        "Pilot callsign preview (LOAD_CALL)",
+        "Pilot credits/score preview (LOAD_CREDITS)"
+      ],
+      "input_kinds_needed": [
+        "keyboard"
+      ],
+      "drivable_now": true,
+      "blocked_by": []
+    },
+    {
+      "name": "load_delete_pilot",
+      "menu": "LOAD",
+      "covers": [
+        "Delete pilot (LOAD_DEL)"
+      ],
+      "input_kinds_needed": [
+        "keyboard"
+      ],
+      "drivable_now": false,
+      "blocked_by": [
+        "godot_load_delete_impl"
+      ]
+    },
+    {
+      "name": "load_cancel_field_mouse",
+      "menu": "LOAD",
+      "covers": [
+        "Cancel (LOAD_CANCEL)"
+      ],
+      "input_kinds_needed": [
+        "mouse_click"
+      ],
+      "drivable_now": false,
+      "blocked_by": [
+        "mouse_click",
+        "godot_loadmission_mouse"
+      ]
+    },
+    {
+      "name": "load_altx_quit",
+      "menu": "LOAD",
+      "covers": [
+        "Quit game (Alt+X chord)"
+      ],
+      "input_kinds_needed": [
+        "keyboard",
+        "key_chord"
+      ],
+      "drivable_now": false,
+      "blocked_by": [
+        "key_chord",
+        "godot_altx_impl"
+      ]
+    },
+    {
+      "name": "loadcomp_progress_screen",
+      "menu": "LEVEL-LOAD PROGRESS",
+      "covers": [
+        "Loading progress bar (LCOMP_LEVEL)",
+        "Sector name (LCOMP_SECTOR)",
+        "Wave label (LCOMP_WAVE)",
+        "End-of-load fade"
+      ],
+      "input_kinds_needed": [],
+      "drivable_now": false,
+      "blocked_by": [
+        "godot_loadcomp_progress"
+      ]
+    },
+    {
+      "name": "help_paging_keys",
+      "menu": "HELP",
+      "covers": [
+        "Home (first page)",
+        "Page Down / Next page",
+        "Page Up / Previous page",
+        "End (last page)",
+        "F1 jump-to-page-2",
+        "Escape / Return (exit help)",
+        "HELP_TEXT page-body display",
+        "HELP_HEADER page-counter display"
+      ],
+      "input_kinds_needed": [
+        "keyboard"
+      ],
+      "drivable_now": true,
+      "blocked_by": []
+    },
+    {
+      "name": "help_onscreen_buttons",
+      "menu": "HELP",
+      "covers": [
+        "UP arrow on-screen button (HELP_UP)",
+        "DOWN arrow on-screen button (HELP_DOWN)",
+        "DONE button (HELP_DONE)"
+      ],
+      "input_kinds_needed": [
+        "keyboard",
+        "tab_field_nav"
+      ],
+      "drivable_now": true,
+      "blocked_by": []
+    },
+    {
+      "name": "help_altx_quit",
+      "menu": "HELP",
+      "covers": [
+        "Alt+X (quit-to-DOS chord)"
+      ],
+      "input_kinds_needed": [
+        "keyboard",
+        "key_chord"
+      ],
+      "drivable_now": false,
+      "blocked_by": [
+        "key_chord",
+        "godot_altx_impl"
+      ]
+    },
+    {
+      "name": "shipcomp_auto_confirm_sector",
+      "menu": "SHIPCOMP",
+      "covers": [
+        "AUTO / continue (COMP_AUTO, default focus)",
+        "Confirm sector -> game enter (Return in sector-select)",
+        "F1 (context help)",
+        "ESC (abort to hangar)",
+        "Close gadget (COMP_CLOSE)"
+      ],
+      "input_kinds_needed": [
+        "keyboard"
+      ],
+      "drivable_now": true,
+      "blocked_by": []
+    },
+    {
+      "name": "shipcomp_game_buttons_tab",
+      "menu": "SHIPCOMP",
+      "covers": [
+        "GAME 1 / Bravo Sector (COMP_GAME1)",
+        "GAME 2 / Tango Sector (COMP_GAME2)",
+        "GAME 3 / Outer Regions (COMP_GAME3)",
+        "Per-sector node selection (which sector)"
+      ],
+      "input_kinds_needed": [
+        "keyboard",
+        "tab_field_nav"
+      ],
+      "drivable_now": false,
+      "blocked_by": [
+        "godot_sector_node_select"
+      ]
+    },
+    {
+      "name": "shipcomp_secret_lights",
+      "menu": "SHIPCOMP",
+      "covers": [
+        "SECRET enable (COMP_SECRET)",
+        "Secret light 1 (COMP_B1)",
+        "Secret light 2 (COMP_B2)",
+        "Secret light 3 (COMP_B3)"
+      ],
+      "input_kinds_needed": [
+        "mouse_click"
+      ],
+      "drivable_now": false,
+      "blocked_by": [
+        "mouse_click",
+        "godot_shipcomp_secret"
+      ]
+    },
+    {
+      "name": "shipcomp_altx_quit",
+      "menu": "SHIPCOMP",
+      "covers": [
+        "Alt+X (exit to DOS chord)"
+      ],
+      "input_kinds_needed": [
+        "keyboard",
+        "key_chord"
+      ],
+      "drivable_now": false,
+      "blocked_by": [
+        "key_chord",
+        "godot_altx_impl"
+      ]
+    },
+    {
+      "name": "shipcomp_cheat_keys",
+      "menu": "SHIPCOMP",
+      "covers": [
+        "Sector cheat Z/X/C (godmode/demo)",
+        "Wave cheat Q/W/E/R/T/Y/U/I/O (godmode/demo)"
+      ],
+      "input_kinds_needed": [
+        "keyboard"
+      ],
+      "drivable_now": false,
+      "blocked_by": [
+        "godot_shipcomp_cheats"
+      ]
+    },
+    {
+      "name": "askbool_yes_no_quit_save",
+      "menu": "DIALOGS_ASKBOOL",
+      "covers": [
+        "YES (ASK_YES, default active)",
+        "NO (ASK_NO)",
+        "YES/NO toggle nav",
+        "Confirm (Return/Space)"
+      ],
+      "input_kinds_needed": [
+        "keyboard"
+      ],
+      "drivable_now": true,
+      "blocked_by": []
+    },
+    {
+      "name": "askbool_dragbar_mouse",
+      "menu": "DIALOGS_ASKBOOL",
+      "covers": [
+        "Question banner / dragbar (ASK_DRAGBAR)"
+      ],
+      "input_kinds_needed": [
+        "mouse_drag"
+      ],
+      "drivable_now": false,
+      "blocked_by": [
+        "mouse_click",
+        "slider_drag"
+      ]
+    },
+    {
+      "name": "popup_winmsg_credits_dismiss",
+      "menu": "DIALOGS_POPUPS",
+      "covers": [
+        "WIN_Msg dismiss (any key)",
+        "WIN_Credits roll dismiss (any key)"
+      ],
+      "input_kinds_needed": [
+        "keyboard"
+      ],
+      "drivable_now": true,
+      "blocked_by": []
+    },
+    {
+      "name": "popup_pause_order_dismiss",
+      "menu": "DIALOGS_POPUPS",
+      "covers": [
+        "WIN_Pause GAME PAUSED dismiss (any key)",
+        "WIN_Order info screen dismiss (any key)"
+      ],
+      "input_kinds_needed": [
+        "keyboard"
+      ],
+      "drivable_now": false,
+      "blocked_by": [
+        "godot_pause_impl",
+        "godot_order_screen_impl"
+      ]
+    }
+  ],
+  "coverage_summary": {
+    "total_menus": 12,
+    "total_elements": 120,
+    "keyboard_drivable": 60,
+    "needs_mouse_click": 18,
+    "needs_slider_drag": 2,
+    "needs_text_entry": 2,
+    "godot_missing": 47
+  },
+  "harness_gaps": [
+    "1. key_chord support: hold two scancodes simultaneously (SC_X + SC_ALT) across the 30-frame gap window so KBD_Key held-state polls register the chord. Unlocks every Alt+X quit scenario (menu/register/hangar/store/load/help/shipcomp) on the C side. Highest leverage single addition (7 scenarios touch it), but each also needs Godot to implement Alt+X (currently unimplemented everywhere).",
+    "2. text_entry support: inject per-character g_ascii keydowns (printable 32-126), SC_BACKSPACE, with the same 30-frame pacing, honoring I_TOUPPER. Required only for REG_NAME / REG_CALLSIGN, but those gate the entire pilot-creation -> AskDiff -> Hangar path that already has Godot support; this is the most valuable enabler for end-to-end flows. Godot already implements text entry (letters/digits/Backspace), so this is purely a harness-side script-command gap.",
+    "3. mouse_click support: inject a pointer (x,y in 320x200) + B1 click pulse routed to SWD_CheckMouse / HandlePointerClick. Unlocks LOAD_CANCEL field path, REG view-area commit/idpic, SHIPCOMP GAME1/2/3 + secret gadget + B1-B3 lights, and all view-area hover-hint fields. Note: many of these have no Godot mouse path (HandlePointerClick has no Store/Help/Credits/LoadMission/AskBool branch), so harness mouse alone is insufficient without Godot work.",
+    "4. slider_drag support (builds on mouse_click): drag with a captured per-frame PTR_X to set absolute volume values (non-multiples-of-8 like 53) that the keyboard +/-8 path cannot reach. Needed only for OPTS_VMUSIC/OPTS_VFX arbitrary-value parity and the ASK_DRAGBAR window move. Lowest priority; the 8-step keyboard path already covers all multiple-of-8 volumes.",
+    "5. tab_field_nav (keyboard, may already work): SC_TAB / Caps+TAB to move active_field for FLD_BUTTON windows (HELP_UP/DOWN/DONE, SHIPCOMP GAME buttons) and gate on usekb_flag==TRUE so difficulty/game buttons are keyboard-selectable. Confirm the parity build sets usekb_flag=TRUE (auto input mode) or these buttons silently fall back to mouse-only on the C side.",
+    "6. attract/idle-timer determinism: pin DEMO_DELAY frame counter (and HANG_PIC random(3) flicker, WIN_Msg/Order/Credits IMS_WaitTimed timeouts) so frame-count-driven transitions do not diverge under the 30-frame-gap pacing. Seed/exclude RNG-driven icon state from the menu-event recorder.",
+    "Order: chord (1) and text_entry (2) first - cheap harness-only commands that unlock the most keyboard scenarios and the create-pilot spine. Then mouse_click (3) + its Godot HandlePointerClick branches, then slider_drag (4) on top. tab_field_nav (5) and timer-determinism (6) are verification/config rather than new modalities. Independent of harness: ~47 elements need Godot implementation first (MAIN_RETURN, Alt+X everywhere, OPTS pointer icons, REG idpic, HANG_MAIN_MENU/QSAVE, LOAD_DEL, SHIPCOMP games/secret/cheats/per-sector, WIN_Pause/WIN_Order, LoadComp progress) - these are blocked_by godot_* tags, not by the harness."
+  ]
+}
