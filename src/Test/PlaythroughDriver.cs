@@ -211,9 +211,24 @@ public partial class PlaythroughDriver : Node
         {
             string key = _pendingKey;
             _pendingKey = null;
-            string winBefore = _menu.State.ToParityString();   // pre-transition
+            // Mirror C's hook: it records the key in the loop that PROCESSED it,
+            // reading that screen's highlight. Snapshot screen+highlight before
+            // HandleInput; if the key stayed in the same screen it's a nav (use
+            // the post-nav highlight), otherwise it crossed screens (use the
+            // source screen's highlight, like C's pre-transition value).
+            string winBefore = _menu.State.ToParityString();
+            var screenBefore = _menu.EffectiveScreen();
+            int selBefore = _menu.EffectiveSelectedItem();
             _menu.HandleInput(key, Sim.SimClock.Frame);
-            int sel = _menu.EffectiveSelectedItem();            // post-nav highlight
+            // Help moves its cursor in C's POST-hook keypress switch, so C records
+            // the PRE-move page there; SWD-navigated screens move inside SWD_Dialog
+            // (pre-hook) so C records the POST-move highlight. Use post-nav only
+            // when the key stayed in a non-Help screen; otherwise the source
+            // screen's pre-key highlight (also the right value for cross-screen keys).
+            bool customNav = screenBefore == Sim.MenuStateMachine.Screen.Help;
+            int sel = (_menu.EffectiveScreen() == screenBefore && !customNav)
+                ? _menu.EffectiveSelectedItem()
+                : selBefore;
             _emitter?.EmitMenuEvent(key, winBefore, sel);
         }
         _pt?.Tick(Sim.SimClock.Frame);

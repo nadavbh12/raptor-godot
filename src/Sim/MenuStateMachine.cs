@@ -217,7 +217,9 @@ public sealed class MenuStateMachine
     /// pinned by tests in a later task; this returns each screen's natural index.</summary>
     public int EffectiveSelectedItem()
     {
-        if (_inAskBool)          return _askBoolYes ? 0 : 1;
+        // AskBool is SWD-navigated: C reports active_field-1, and ASK_YES=6 /
+        // ASK_NO=7 (ASK.INC) → 5 / 6.
+        if (_inAskBool)          return _askBoolYes ? 5 : 6;
         if (_options.Active)     return _options.Field;
         if (_loadMission.Active) return _loadMission.SelectedIndex;
         if (_pilotCreate.Active) return _pilotCreate.DifficultyFieldId;
@@ -227,6 +229,30 @@ public sealed class MenuStateMachine
             WinState.Store  => Store?.CurItem ?? 0,
             WinState.Help   => _help.PageIndex,
             _               => CurrentItem,   // Menu / Unknown(sector) / Credits
+        };
+    }
+
+    /// <summary>Which menu "screen" is currently taking input. Distinguishes the
+    /// flag-based sub-dialogs (Options/AskBool/Load/PilotCreate) that all sit on
+    /// WinState.Menu, so the menu-event emitter can tell whether a key stayed in
+    /// one screen (report post-nav highlight) or crossed into another (report the
+    /// source screen's highlight — C records the key in the loop that owned it).</summary>
+    public enum Screen { Main, AskBool, Options, LoadMission, PilotCreate, Hangar, Store, Help, Credits, Sector }
+
+    public Screen EffectiveScreen()
+    {
+        if (_inAskBool)          return Screen.AskBool;
+        if (_options.Active)     return Screen.Options;
+        if (_loadMission.Active) return Screen.LoadMission;
+        if (_pilotCreate.Active) return Screen.PilotCreate;
+        return State switch
+        {
+            WinState.Hangar  => Screen.Hangar,
+            WinState.Store   => Screen.Store,
+            WinState.Help    => Screen.Help,
+            WinState.Credits => Screen.Credits,
+            WinState.Unknown => _inSectorSelect ? Screen.Sector : Screen.Main,
+            _                => Screen.Main,
         };
     }
 
