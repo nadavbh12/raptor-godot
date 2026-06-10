@@ -220,6 +220,7 @@ public sealed class MenuStateMachine
     /// pinned by tests in a later task; this returns each screen's natural index.</summary>
     public int EffectiveSelectedItem()
     {
+        if (_inWinMsg) return 0;              // popup: no cursor (C field=1 → 0)
         // AskBool is SWD-navigated: C reports active_field-1, and ASK_YES=6 /
         // ASK_NO=7 (ASK.INC) → 5 / 6.
         if (_inAskBool)          return _askBoolYes ? 5 : 6;
@@ -228,10 +229,11 @@ public sealed class MenuStateMachine
         if (_pilotCreate.Active) return _pilotCreate.DifficultyFieldId;
         return State switch
         {
-            WinState.Hangar => _hangar.Position,
-            WinState.Store  => Store?.CurItem ?? 0,
-            WinState.Help   => _help.PageIndex,
-            _               => CurrentItem,   // Menu / Unknown(sector) / Credits
+            WinState.Hangar  => _hangar.Position,
+            WinState.Store   => Store?.CurItem ?? 0,
+            WinState.Help    => _help.PageIndex,
+            WinState.Credits => 0,            // popup: no cursor (C field=1 → 0)
+            _                => CurrentItem,  // Menu / Unknown(sector)
         };
     }
 
@@ -240,10 +242,11 @@ public sealed class MenuStateMachine
     /// WinState.Menu, so the menu-event emitter can tell whether a key stayed in
     /// one screen (report post-nav highlight) or crossed into another (report the
     /// source screen's highlight — C records the key in the loop that owned it).</summary>
-    public enum Screen { Main, AskBool, Options, LoadMission, PilotCreate, Hangar, Store, Help, Credits, Sector }
+    public enum Screen { Main, AskBool, Options, LoadMission, PilotCreate, Hangar, Store, Help, Credits, Sector, WinMsg }
 
     public Screen EffectiveScreen()
     {
+        if (_inWinMsg)           return Screen.WinMsg;
         if (_inAskBool)          return Screen.AskBool;
         if (_options.Active)     return Screen.Options;
         if (_loadMission.Active) return Screen.LoadMission;
