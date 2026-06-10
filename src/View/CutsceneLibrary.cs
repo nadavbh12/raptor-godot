@@ -47,12 +47,34 @@ public static class CutsceneLibrary
         return new AgxMovie(frames, CutsceneTimings.ExploFade);
     }
 
+    /// INTRO_Credits publisher logos: APOGEE_PIC then CYGNUS_PIC (full-screen PICs under
+    /// assets/sprites, each held a fixed number of ticks). Drawn like any movie frame.
+    public static AgxMovie Logos(string spritesRoot)
+    {
+        var frames = new List<AgxMovieFrame>
+        {
+            new(Path.Combine(spritesRoot, "0039_APOGEE_PIC.png"), CutsceneTimings.ApogeeHold),
+            new(Path.Combine(spritesRoot, "0040_CYGNUS_PIC.png"), CutsceneTimings.CygnusHold),
+        };
+        return new AgxMovie(frames, 0);
+    }
+
+    /// The full startup attract shown once at launch: INTRO_Credits (logos) then
+    /// INTRO_PlayMain (the five AGX scenes). One movie — every frame is a full-screen image.
+    public static AgxMovie StartupIntro(string agxRoot, string spritesRoot)
+    {
+        var frames = new List<AgxMovieFrame>();
+        frames.AddRange(Logos(spritesRoot).Frames);
+        frames.AddRange(AttractIntro(agxRoot).Frames);
+        return new AgxMovie(frames, CutsceneTimings.ExploFade);
+    }
+
     /// <summary>The movie a cutscene <see cref="WinState"/> renders, or null for non-cutscene states.</summary>
-    public static AgxMovie? ForState(string agxRoot, WinState state) => state switch
+    public static AgxMovie? ForState(string agxRoot, string spritesRoot, WinState state) => state switch
     {
         WinState.Death   => Death(agxRoot),
         WinState.Landing => Landing(agxRoot),
-        WinState.Intro   => AttractIntro(agxRoot),
+        WinState.Intro   => StartupIntro(agxRoot, spritesRoot),
         _                => null,
     };
 

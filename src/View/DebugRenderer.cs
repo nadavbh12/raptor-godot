@@ -48,6 +48,7 @@ public partial class DebugRenderer : Node2D
 
     private readonly Dictionary<string, Texture2D> _spriteCache = new();
     private string? _agxRoot;
+    private string? _spritesRoot;
     private Color[]? _palette;
     private readonly Dictionary<string, BitmapFont> _bitmapFonts = new();
     private readonly Dictionary<string, SwdWindow?> _swdCache = new();
@@ -180,6 +181,7 @@ public partial class DebugRenderer : Node2D
 
         // Score-digit sprite array (RAP.C: numbers[0..10] = N0..N9 + $).
         string spritesRoot = ProjectSettings.GlobalizePath("res://assets/sprites");
+        _spritesRoot = spritesRoot;
         for (int i = 0; i <= 9; i++)
             _digitTex[i] = LoadSpriteFromPath(Path.Combine(spritesRoot, $"{i + 1:D4}_N{i}_PIC.png"));
         _digitTex[10] = LoadSpriteFromPath(Path.Combine(spritesRoot, "0011_N$_PIC.png"));
@@ -1049,6 +1051,7 @@ public partial class DebugRenderer : Node2D
 
         public CanvasItem Canvas => _r;
         public string? AgxRoot => _r._agxRoot;
+        public string? SpritesRoot => _r._spritesRoot;
         public SwdRenderer.IHost SwdRenderHost => _r._swdHost;
         public SwdTextStream.IHost SwdTextHost => _r._swdHost;
         public SwdWindow? LoadSwd(string name) => _r.LoadSwd(name);

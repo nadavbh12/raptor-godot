@@ -36,7 +36,7 @@ public static class CutsceneTimings
     public const int PilotCount = 21; public const int PilotRate = 10;
     public const int Side2Count = 20; public const int Side2Rate = 18;   // SHIPSD1 then SHIPSD2
     public const int ExploCount = 22; public const int ExploRate = 12; public const int ExploFade = 60;
-    public const int IntroTotal =
+    public const int PlayMainTotal =
         CityCount * CityRate
         + Side1Count * Side1Rate * Side1Loops
         + PilotCount * PilotRate
@@ -44,4 +44,12 @@ public static class CutsceneTimings
         + Side2Count * Side2Rate          // SHIPSD2 pass
         + ExploCount * ExploRate
         + ExploFade;                      // 240+720+210+360+360+264+60 = 2214
+
+    // INTRO_Credits publisher logos: APOGEE_PIC held 30×4, then CYGNUS_PIC held 65×3.
+    public const int ApogeeHold = 30 * 4;   // 120
+    public const int CygnusHold = 65 * 3;   // 195
+    public const int LogosTotal = ApogeeHold + CygnusHold;   // 315
+
+    // The full startup attract = INTRO_Credits (logos) then INTRO_PlayMain (RAP.C).
+    public const int IntroTotal = LogosTotal + PlayMainTotal;   // 2529
 }

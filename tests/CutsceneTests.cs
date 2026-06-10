@@ -28,6 +28,18 @@ public class CutsceneTests
         return Path.GetFullPath(Path.Combine("assets", "agx"));
     }
 
+    private static string SpritesRoot()
+    {
+        string dir = AppContext.BaseDirectory;
+        while (dir != Path.GetPathRoot(dir))
+        {
+            string candidate = Path.Combine(dir, "assets", "sprites");
+            if (Directory.Exists(candidate)) return candidate;
+            dir = Directory.GetParent(dir)!.FullName;
+        }
+        return Path.GetFullPath(Path.Combine("assets", "sprites"));
+    }
+
     // ---- CutsceneTimings (Sim-side totals) ----
 
     [Fact]
@@ -133,23 +145,34 @@ public class CutsceneTests
     [Fact]
     public void ForState_maps_cutscene_states_to_movies()
     {
-        string root = AgxRoot();
-        Assert.NotNull(CutsceneLibrary.ForState(root, WinState.Death));
-        Assert.NotNull(CutsceneLibrary.ForState(root, WinState.Landing));
-        Assert.NotNull(CutsceneLibrary.ForState(root, WinState.Intro));
-        Assert.Null(CutsceneLibrary.ForState(root, WinState.Hangar));
-        Assert.Null(CutsceneLibrary.ForState(root, WinState.Menu));
+        string agx = AgxRoot(), spr = SpritesRoot();
+        Assert.NotNull(CutsceneLibrary.ForState(agx, spr, WinState.Death));
+        Assert.NotNull(CutsceneLibrary.ForState(agx, spr, WinState.Landing));
+        Assert.NotNull(CutsceneLibrary.ForState(agx, spr, WinState.Intro));
+        Assert.Null(CutsceneLibrary.ForState(agx, spr, WinState.Hangar));
+        Assert.Null(CutsceneLibrary.ForState(agx, spr, WinState.Menu));
     }
 
     // ---- Attract intro (INTRO_PlayMain = City + Side1×2 + Pilot + Side2 + Explosion) ----
 
     [Fact]
-    public void Intro_total_sums_attract_segments_plus_explosion_fade()
+    public void PlayMain_total_sums_attract_segments_plus_explosion_fade()
     {
         // City 30@8 + Side1 20@18×2 + Pilot 21@10 + Side2(SHIPSD1+SHIPSD2 20@18) + Explo 22@12 + fade 60.
         int expected = 30 * 8 + 20 * 18 * 2 + 21 * 10 + 20 * 18 + 20 * 18 + 22 * 12 + 60;
         Assert.Equal(2214, expected);
-        Assert.Equal(expected, CutsceneTimings.IntroTotal);
+        Assert.Equal(expected, CutsceneTimings.PlayMainTotal);
+    }
+
+    [Fact]
+    public void Logos_and_playmain_compose_the_full_startup_intro_total()
+    {
+        // INTRO_Credits (APOGEE 30×4 + CYGNUS 65×3 = 315) then INTRO_PlayMain (2214).
+        Assert.Equal(30 * 4, CutsceneTimings.ApogeeHold);
+        Assert.Equal(65 * 3, CutsceneTimings.CygnusHold);
+        Assert.Equal(315, CutsceneTimings.LogosTotal);
+        Assert.Equal(CutsceneTimings.LogosTotal + CutsceneTimings.PlayMainTotal, CutsceneTimings.IntroTotal);
+        Assert.Equal(2529, CutsceneTimings.IntroTotal);
     }
 
     [Fact]
@@ -170,6 +193,23 @@ public class CutsceneTests
         Assert.EndsWith("EXPLO_AGX_00.png", m.Frames[131].Path);
         Assert.EndsWith("EXPLO_AGX_21.png", m.Frames[^1].Path);
         Assert.Equal(60, m.FadeOutFrames);
+        Assert.Equal(CutsceneTimings.PlayMainTotal, m.TotalFrames);
+        Assert.All(m.Frames.Select(f => f.Path).Distinct(), p => Assert.True(File.Exists(p), p));
+    }
+
+    [Fact]
+    public void StartupIntro_prepends_publisher_logos_to_the_attract()
+    {
+        var m = CutsceneLibrary.StartupIntro(AgxRoot(), SpritesRoot());
+
+        // 2 logos + 153 attract = 155 frames.
+        Assert.Equal(155, m.Frames.Count);
+        Assert.EndsWith("0039_APOGEE_PIC.png", m.Frames[0].Path);
+        Assert.Equal(CutsceneTimings.ApogeeHold, m.Frames[0].DurationFrames);
+        Assert.EndsWith("0040_CYGNUS_PIC.png", m.Frames[1].Path);
+        Assert.Equal(CutsceneTimings.CygnusHold, m.Frames[1].DurationFrames);
+        Assert.EndsWith("CHASE_AGX_00.png", m.Frames[2].Path);   // attract starts after logos
+        Assert.EndsWith("EXPLO_AGX_21.png", m.Frames[^1].Path);
         Assert.Equal(CutsceneTimings.IntroTotal, m.TotalFrames);
         Assert.All(m.Frames.Select(f => f.Path).Distinct(), p => Assert.True(File.Exists(p), p));
     }

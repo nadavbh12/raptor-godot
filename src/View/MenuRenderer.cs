@@ -30,6 +30,7 @@ internal sealed class MenuRenderer
     {
         CanvasItem Canvas { get; }
         string? AgxRoot { get; }
+        string? SpritesRoot { get; }
         SwdRenderer.IHost SwdRenderHost { get; }
         SwdTextStream.IHost SwdTextHost { get; }
         SwdWindow? LoadSwd(string name);
@@ -137,7 +138,7 @@ internal sealed class MenuRenderer
     {
         if (string.IsNullOrEmpty(_host.AgxRoot)) return;
 
-        var movie = CutsceneLibrary.ForState(_host.AgxRoot, menu.State);
+        var movie = CutsceneLibrary.ForState(_host.AgxRoot, _host.SpritesRoot ?? "", menu.State);
         if (movie == null) return;
 
         int elapsed = SimClock.Frame - menu.StateEnteredFrame;
