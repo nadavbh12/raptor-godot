@@ -86,10 +86,24 @@ public class OptionsPanelTests
     }
 
     [Fact]
+    public void First_arrow_primes_keyboard_mode_without_moving()
+    {
+        // C kbactive: the first SC_DOWN after entering switches mouse->keyboard
+        // mode and leaves cur_field at 0; only the next press moves it.
+        var o = new OptionsPanel();
+        o.Open();
+        o.HandleInput("Down");
+        Assert.Equal(0, o.Field);       // primed, not moved
+        o.HandleInput("Down");
+        Assert.Equal(1, o.Field);       // now moves
+    }
+
+    [Fact]
     public void Down_Up_move_field_within_bounds()
     {
         var o = new OptionsPanel();
         o.Open();
+        o.HandleInput("Down");          // primes (stays 0)
         o.HandleInput("Down");
         Assert.Equal(1, o.Field);
         o.HandleInput("Down");
@@ -105,6 +119,7 @@ public class OptionsPanelTests
     {
         var o = new OptionsPanel();
         o.Open();
+        o.HandleInput("Down");          // primes
         o.HandleInput("Down");          // field 1 = music
         o.HandleInput("Left");
         Assert.Equal(119, o.MusicVolume);
@@ -137,7 +152,8 @@ public class OptionsPanelTests
     {
         var o = new OptionsPanel();
         o.Open();
-        o.HandleInput("Down");
+        o.HandleInput("Down");          // primes
+        o.HandleInput("Down");          // field 1
         o.Close();
         Assert.False(o.Active);
         Assert.Equal(1, o.Field);

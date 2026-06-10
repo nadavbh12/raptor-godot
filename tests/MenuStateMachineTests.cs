@@ -829,17 +829,19 @@ public class MenuStateMachineTests
         m.HandleInput("Return", 11);
         Assert.False(m.OptionDetailHigh);
 
-        m.HandleInput("Down", 12);
+        m.HandleInput("Down", 12);      // C kbactive: first arrow primes (stays 0)
+        Assert.Equal(0, m.OptionsField);
+        m.HandleInput("Down", 13);
         Assert.Equal(1, m.OptionsField);
         int music = m.OptionMusicVolume;
         // Round-trip so the assertion holds regardless of the default (which is
         // the C first-run max of 127, where Right would clamp).
-        m.HandleInput("Left", 13);
+        m.HandleInput("Left", 14);
         Assert.Equal(music - 8, m.OptionMusicVolume);
-        m.HandleInput("Right", 14);
+        m.HandleInput("Right", 15);
         Assert.Equal(music, m.OptionMusicVolume);
 
-        m.HandleInput("Down", 15);
+        m.HandleInput("Down", 16);
         Assert.Equal(2, m.OptionsField);
         int fx = m.OptionFxVolume;
         m.HandleInput("Left", 16);

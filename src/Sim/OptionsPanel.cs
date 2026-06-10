@@ -28,11 +28,16 @@ internal sealed class OptionsPanel
     public int MusicVolume => _optionMusicVolume;
     public int FxVolume => _optionFxVolume;
 
+    // Keyboard-active flag (C's kbactive): false on entry (mouse mode), set by
+    // the first SC_UP/SC_DOWN, which primes rather than moves. See HandleInput.
+    private bool _kbActive = false;
+
     /// <summary>Open the OPTIONS dialog with focus on the detail field.</summary>
     public void Open()
     {
         _inOptions = true;
         _optionsField = 0;
+        _kbActive = false;
     }
 
     /// <summary>Reset the dialog to closed/idle (EnterMenu). Volume + detail persist.</summary>
@@ -40,6 +45,7 @@ internal sealed class OptionsPanel
     {
         _inOptions = false;
         _optionsField = 0;
+        _kbActive = false;
     }
 
     /// <summary>
@@ -59,12 +65,18 @@ internal sealed class OptionsPanel
         }
         if (action == "Down")
         {
-            if (_optionsField < 2) _optionsField++;
+            // C WINDOWS.C WIN_Opts: the first SC_UP/SC_DOWN after entering only
+            // "primes" keyboard mode (switching from mouse) without moving the
+            // cursor; subsequent presses move it. (`if (kbactive) cur_field++;
+            // kbactive = TRUE;`)
+            if (_kbActive) { if (_optionsField < 2) _optionsField++; }
+            _kbActive = true;
             return true;
         }
         if (action == "Up")
         {
-            if (_optionsField > 0) _optionsField--;
+            if (_kbActive) { if (_optionsField > 0) _optionsField--; }
+            _kbActive = true;
             return true;
         }
         if (action == "Left")

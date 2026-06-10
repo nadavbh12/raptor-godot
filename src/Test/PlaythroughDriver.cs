@@ -225,7 +225,8 @@ public partial class PlaythroughDriver : Node
             // (pre-hook) so C records the POST-move highlight. Use post-nav only
             // when the key stayed in a non-Help screen; otherwise the source
             // screen's pre-key highlight (also the right value for cross-screen keys).
-            bool customNav = screenBefore == Sim.MenuStateMachine.Screen.Help;
+            bool customNav = screenBefore == Sim.MenuStateMachine.Screen.Help
+                          || screenBefore == Sim.MenuStateMachine.Screen.Options;
             int sel = (_menu.EffectiveScreen() == screenBefore && !customNav)
                 ? _menu.EffectiveSelectedItem()
                 : selBefore;
