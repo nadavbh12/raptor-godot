@@ -21,7 +21,6 @@ CBIN="${CBIN:-$DOS/build/raptor.app/Contents/MacOS/raptor}"
 OUT="$REPO/tests/parity/c_menu_goldens"
 
 # Explicit list (avoids sweeping in non-menu-event scripts like menu_demo.txt).
-# load_navigate_and_load and popup_winmsg_credits_dismiss are deferred (Phase 1b).
 SCRIPTS="${SCRIPTS:-\
 menu_main_nav \
 menu_nav_all_buttons \
@@ -37,7 +36,9 @@ store_help_f1 \
 help_paging_keys \
 help_onscreen_buttons \
 shipcomp_auto_confirm_sector \
-askbool_yes_no_quit_save}"
+askbool_yes_no_quit_save \
+popup_winmsg_credits_dismiss \
+load_navigate_and_load}"
 
 if [[ ! -x "$CBIN" ]]; then
     echo "[capture] ERROR: C binary not found/executable: $CBIN" >&2
@@ -52,9 +53,13 @@ ok=0; bad=0
 for name in $SCRIPTS; do
     s="$DOS/tests/scripts/$name.txt"
     if [[ ! -f "$s" ]]; then echo "[capture] skip $name (no script)"; continue; fi
+    fix="$REPO/tests/parity/menu_fixtures/$name"
+    sd="$(mktemp -d)"
+    if [[ -d "$fix" ]]; then cp -R "$fix"/. "$sd"/; fi
     a="$(mktemp)"; b="$(mktemp)"
     for f in "$a" "$b"; do
         SDL_AUDIODRIVER=dummy RAPTOR_SKIPINTRO=1 \
+        RAPTOR_SAVE_DIR="$sd" \
         RAPTOR_PLAYTHROUGH="$s" RAPTOR_MENU_OUT="$f" \
             timeout 120 "$CBIN" >/dev/null 2>&1 || true
     done
@@ -67,6 +72,7 @@ for name in $SCRIPTS; do
         echo "[capture] UNSTABLE $name — two runs differ; widen the script's waits"; bad=$((bad+1))
     fi
     rm -f "$a" "$b"
+    rm -rf "$sd"
 done
 echo "[capture] done: $ok ok, $bad needs-attention. Goldens in $OUT"
 echo "[capture] commit with: git add tests/parity/c_menu_goldens/*.menu.ndjson && git commit"
