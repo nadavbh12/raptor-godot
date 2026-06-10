@@ -647,7 +647,8 @@ public sealed class MenuStateMachine
         string name = PilotName;
         string callsign = Callsign;
         int idPic = IdPic;
-        _askBoolOnYes = () => PilotSaveStore.Save(saveDir, name, callsign, idPic: idPic, score: 0);
+        uint score = GetScore?.Invoke() ?? 0;   // live run score (was hardcoded 0)
+        _askBoolOnYes = () => PilotSaveStore.Save(saveDir, name, callsign, idPic: idPic, score: score);
         _inAskBool = true;
     }
 
@@ -719,8 +720,10 @@ public sealed class MenuStateMachine
     private bool HandleHangarInput(string action, int currentFrame)
     {
         if (_inAskBool) return HandleAskBoolInput(action);
-        if (action == "F2" || action == "S")
+        if (action == "F2" || action == "S" || action == "s")
         {
+            // C WINDOWS.C:1166 SC_S/SC_F2 → save. Interactive letter keys arrive
+            // lowercase ("s"), so accept both cases.
             OpenAskBoolSave();
             return true;
         }
@@ -758,7 +761,18 @@ public sealed class MenuStateMachine
                 EnterState(WinState.Store, currentFrame, reAnchor: true);
                 return true;
             }
-            // MAINMENU, QSAVE: stub.
+            if (_hangar.Position == 2)  // MAIN MENU → exit hangar to the menu
+            {
+                // C HANG_MAIN_MENU (WINDOWS.C:1268) → opt=-99 → return to menu.
+                EnterMenu(currentFrame);
+                return true;
+            }
+            if (_hangar.Position == 3)  // QSAVE → save prompt
+            {
+                // C HANG_QSAVE (WINDOWS.C:1285) → WIN_AskBool → RAP_SavePlayer.
+                OpenAskBoolSave();
+                return true;
+            }
             return false;
         }
         return false;

@@ -1086,6 +1086,66 @@ public class MenuStateMachineTests
         }
     }
 
+    // Hangar playtest bugs (2026-06-10): MAINMENU + QSAVE buttons were stubbed
+    // (// MAINMENU, QSAVE: stub. return false;), so the user could not exit or
+    // save via the on-screen buttons; and the save path hardcoded score:0.
+
+    [Fact]
+    public void Return_on_hangar_MAINMENU_button_exits_to_main_menu()
+    {
+        var m = ReachHangar();                 // hangarPos == 1 (SUPPLIES)
+        m.HandleInput("Up", 50);               // SUPPLIES(1) → MAINMENU(2)
+        Assert.Equal(2, m.HangarPosition);
+        bool handled = m.HandleInput("Return", 60);
+        Assert.True(handled);
+        Assert.Equal(WinState.Menu, m.State);  // C HANG_MAIN_MENU → return to menu
+    }
+
+    [Fact]
+    public void Return_on_hangar_QSAVE_button_opens_save_prompt()
+    {
+        var m = HangarReadyMachineWithSaveDir(out var dir);
+        using (dir)
+        {
+            m.HandleInput("Up", 100);          // SUPPLIES(1) → MAINMENU(2)
+            m.HandleInput("Up", 101);          // MAINMENU(2) → QSAVE(3)
+            Assert.Equal(3, m.HangarPosition);
+            bool handled = m.HandleInput("Return", 102);
+            Assert.True(handled);
+            Assert.True(m.InAskBool);
+            Assert.Equal("Save TEST - T1 ?", m.AskBoolQuestion);
+        }
+    }
+
+    [Fact]
+    public void Hangar_save_persists_live_score_not_zero()
+    {
+        var m = HangarReadyMachineWithSaveDir(out var dir);
+        using (dir)
+        {
+            m.GetScore = () => 33333u;
+            m.HandleInput("F2", 100);          // open save prompt
+            Assert.True(m.InAskBool);
+            m.HandleInput("Return", 101);      // confirm YES → write the file
+            var saved = PilotSaveStore.LoadAll(dir.Path);
+            Assert.Single(saved);
+            Assert.Equal("TEST", saved[0].Name);
+            Assert.Equal(33333u, saved[0].Score);   // live score, not hardcoded 0
+        }
+    }
+
+    [Fact]
+    public void Lowercase_s_in_hangar_opens_save_prompt()
+    {
+        var m = HangarReadyMachineWithSaveDir(out var dir);
+        using (dir)
+        {
+            m.HandleInput("s", 100);           // interactive keys arrive lowercase
+            Assert.True(m.InAskBool);
+            Assert.Equal("Save TEST - T1 ?", m.AskBoolQuestion);
+        }
+    }
+
     [Fact]
     public void Return_on_LOAD_dialog_applies_pilot_and_transitions_to_Hangar()
     {
