@@ -41,6 +41,11 @@ public sealed class MenuStateMachine
     public const int NewItemIndex     = 0;
     public const int QuitItemIndex    = 5;
     public const int ReturnItemIndex  = 6;
+    // C LOADSAVE.C LOAD_LOAD = 0x0005; raptor_parity_menu_event emits field-1.
+    // The LOAD window's keyboard cursor stays on LOAD_LOAD the whole time (Down/Up
+    // cycle the shown pilot, they don't move the button cursor), so the menu-event
+    // selected_item is this constant throughout the window — NOT the pilot index.
+    public const int LoadWindowSelectedItem = 4;
 
     /// <summary>
     /// Number of menu items selectable in the current context. C only shows
@@ -225,7 +230,7 @@ public sealed class MenuStateMachine
         // ASK_NO=7 (ASK.INC) → 5 / 6.
         if (_inAskBool)          return _askBoolYes ? 5 : 6;
         if (_options.Active)     return _options.Field;
-        if (_loadMission.Active) return _loadMission.SelectedIndex;
+        if (_loadMission.Active) return LoadWindowSelectedItem;
         if (_pilotCreate.Active) return _pilotCreate.DifficultyFieldId;
         return State switch
         {
@@ -478,9 +483,11 @@ public sealed class MenuStateMachine
     {
         if (_inWinMsg)
         {
-            // C WIN_Msg: any key dismisses.
+            // C WIN_Msg: any key dismisses, and the main-menu SWD cursor
+            // re-initialises to the first field (NEW) on return — match it.
             _inWinMsg = false;
             _winMsgText = "";
+            CurrentItem = NewItemIndex;
             return true;
         }
         if (_inAskBool)
