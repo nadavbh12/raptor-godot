@@ -143,6 +143,9 @@ public sealed class MenuStateMachine
     public int PilotCreateStep => _pilotCreate.Step;
     public string PilotName => _pilotCreate.PilotName;
     public string Callsign => _pilotCreate.Callsign;
+    /// <summary>Portrait variant being chosen on the registration screen
+    /// (0=WMALE, 1=BMALE, 2=WFEMALE, 3=BFEMALE). The renderer draws this.</summary>
+    public int RegisterIdPic => _pilotCreate.CurId;
     /// <summary>Portrait variant (0=WMALE, 1=BMALE, 2=WFEMALE, 3=BFEMALE).</summary>
     public int IdPic { get; private set; } = 0;
     /// <summary>Fires when a saved pilot is loaded via the LOAD dialog. Receives the
@@ -421,6 +424,13 @@ public sealed class MenuStateMachine
                 _pilotCreate.SetStep(2);
                 return true;
             }
+            // C REGISTER_SWD REG_VIEWID (x=1,y=102,lx=87,ly=48): clicking the
+            // portrait cycles the ID picture, same as SC_ALT/SC_CTRL.
+            if (InRect(x, y, 1, 102, 87, 48))
+            {
+                _pilotCreate.CycleId();
+                return true;
+            }
             return false;
         }
 
@@ -492,6 +502,8 @@ public sealed class MenuStateMachine
                     // Difficulty accepted → enter HANGAR (with fade delay).
                     // C: hangto defaults to HANGTOSTORE → pos=1 (SUPPLIES) on first entry.
                     _hangar.Position = 1;  // HANGTOSTORE → pos=1=SUPPLIES
+                    // Persist the portrait chosen in the registration screen.
+                    IdPic = _pilotCreate.CurId;
                     // Notify that a new pilot was created (triggers stat initialization).
                     OnPilotCreated?.Invoke();
                     // Delay anchor by HangarFadeFrames to simulate fade transitions.
@@ -624,7 +636,8 @@ public sealed class MenuStateMachine
         string saveDir = PilotSaveDirectory ?? System.IO.Directory.GetCurrentDirectory();
         string name = PilotName;
         string callsign = Callsign;
-        _askBoolOnYes = () => PilotSaveStore.Save(saveDir, name, callsign, idPic: 0, score: 0);
+        int idPic = IdPic;
+        _askBoolOnYes = () => PilotSaveStore.Save(saveDir, name, callsign, idPic: idPic, score: 0);
         _inAskBool = true;
     }
 

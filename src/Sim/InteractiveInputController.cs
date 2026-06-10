@@ -200,6 +200,8 @@ public partial class InteractiveInputController : Node
             Key.Escape => "Escape",
             Key.F1 => "F1",
             Key.F2 => "F2",
+            Key.Alt => "Alt",       // registration: cycle the ID portrait
+            Key.Ctrl => "Ctrl",
             Key.Space => "Space",
             Key.Home => "Home",
             Key.End => "End",

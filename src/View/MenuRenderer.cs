@@ -305,7 +305,10 @@ internal sealed class MenuRenderer
     private void DrawRegisterOverlay(Font font, MenuStateMachine menu)
     {
         _host.DrawUiSprite(MenuChrome.Register);
-        _host.DrawUiSprite(MenuChrome.RegisterPortrait);
+        // Draw the portrait variant the user is cycling (Alt/Ctrl or clicking the
+        // badge) — C SWD_SetFieldItem(REG_IDPIC, sid_pics[cur_id]).
+        var portraits = MenuChrome.RegisterPortraits;
+        _host.DrawUiSprite(portraits[Math.Clamp(menu.RegisterIdPic, 0, portraits.Count - 1)]);
         DrawRegisterFieldText(ThemeDB.FallbackFont, menu);
         // REG_TEXT runtime content is "   CHANGE ID PICTURE" — see
         // WINDOWS.C regtext[1]; draw from the field's actual x=61.
@@ -389,7 +392,8 @@ internal sealed class MenuRenderer
         //   SWD_SetActiveField(ASKDIFF_SWD, OKREG_MED);
         //   SWD_GetFieldXYL(...); PTR_SetPos(px+lx/2, py+ly/2);
         _host.DrawUiSprite(MenuChrome.Register);
-        _host.DrawUiSprite(MenuChrome.RegisterPortrait);
+        var diffPortraits = MenuChrome.RegisterPortraits;
+        _host.DrawUiSprite(diffPortraits[Math.Clamp(menu.RegisterIdPic, 0, diffPortraits.Count - 1)]);
         // REG_TEXT field is at x=61, lx=181. The runtime sets the text to
         // regtext[1] = "   CHANGE ID PICTURE" (3 leading spaces). Each space
         // advances by width(9) + fontspacing(1) = 10, so 'C' lands at x=91.

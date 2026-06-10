@@ -334,6 +334,36 @@ public class PilotCreationFlowTests
     }
 
     [Fact]
+    public void Alt_Ctrl_cycle_id_portrait_with_wrap()
+    {
+        // C WIN_Register SC_ALT/SC_CTRL: cur_id = (cur_id + 1) % 4.
+        var f = new PilotCreationFlow();
+        f.Begin();
+        Assert.Equal(0, f.CurId);
+        f.HandleInput("Alt");  Assert.Equal(1, f.CurId);
+        f.HandleInput("Ctrl"); Assert.Equal(2, f.CurId);
+        f.HandleInput("Alt");  Assert.Equal(3, f.CurId);
+        f.HandleInput("Alt");  Assert.Equal(0, f.CurId);   // wraps
+        f.Begin();
+        Assert.Equal(0, f.CurId);                          // reset on Begin
+    }
+
+    [Fact]
+    public void Portrait_click_cycles_idpic_and_persists_on_create()
+    {
+        var m = new MenuStateMachine();
+        m.EnterMenu(0);
+        m.HandleInput("Return", 1);                 // NEW -> registration
+        m.HandlePointerClick(40, 120, 2);           // click REG_VIEWID badge -> cycle
+        Assert.Equal(1, m.RegisterIdPic);
+        m.HandleInput("A", 3);                      // name (required to advance)
+        m.HandleInput("Return", 4);                 // -> callsign
+        m.HandleInput("Return", 5);                 // -> difficulty
+        m.HandleInput("Return", 6);                 // accept -> hangar
+        Assert.Equal(1, m.IdPic);                   // chosen portrait persisted
+    }
+
+    [Fact]
     public void Text_routes_through_MenuStateMachine_to_pilot_name()
     {
         // Confirms keystrokes reach the name field via the real menu dispatch

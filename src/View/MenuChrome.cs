@@ -27,6 +27,14 @@ internal static class MenuChrome
     public static readonly MenuSpriteSpec LightOn = new("0074_LIGHTON_PIC.png", 0, 0);
     public static readonly MenuSpriteSpec LightOff = new("0075_LIGHTOFF_PIC.png", 0, 0);
     public static readonly MenuSpriteSpec RegisterPortrait = new("0054_WMALEID_PIC.png", 5, 109);
+    // ID-portrait variants (C sid_pics order): 0=WMALE 1=BMALE 2=WFEMALE 3=BFEMALE.
+    public static readonly IReadOnlyList<MenuSpriteSpec> RegisterPortraits =
+    [
+        new("0054_WMALEID_PIC.png", 5, 109),
+        new("0057_BMALEID_PIC.png", 5, 109),
+        new("0055_WFMALEID_PIC.png", 5, 109),
+        new("0056_BFMALEID_PIC.png", 5, 109),
+    ];
     public static readonly IReadOnlyList<MenuSpriteSpec> DifficultyPortraits =
     [
         new("0022_CDIF1_PIC.png", 0, 0),

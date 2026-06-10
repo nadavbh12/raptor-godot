@@ -52,6 +52,14 @@ internal sealed class PilotCreationFlow
     public string PilotName { get; private set; } = "";
     public string Callsign { get; private set; } = "";
 
+    /// <summary>Portrait variant 0..3 (WMALE/BMALE/WFEMALE/BFEMALE), cycled in the
+    /// registration screen. Mirrors C WIN_Register's cur_id (SC_ALT/SC_CTRL or a
+    /// click on REG_VIEWID): <c>cur_id = (cur_id + 1) % 4</c>.</summary>
+    public int CurId { get; private set; }
+
+    /// <summary>Cycle the portrait variant (pointer click on REG_VIEWID).</summary>
+    public void CycleId() => CurId = (CurId + 1) % 4;
+
     /// <summary>True while the multi-step dialog is active (step > 0).</summary>
     public bool Active => _step > 0;
 
@@ -59,6 +67,7 @@ internal sealed class PilotCreationFlow
     public void Begin()
     {
         _step = 1;
+        CurId = 0;
     }
 
     /// <summary>Reset to idle, clearing step/difficulty/name/callsign (EnterMenu).</summary>
@@ -68,6 +77,7 @@ internal sealed class PilotCreationFlow
         _difficultyFieldId = 3;
         PilotName = "";
         Callsign = "";
+        CurId = 0;
     }
 
     /// <summary>
@@ -102,6 +112,13 @@ internal sealed class PilotCreationFlow
         {
             // C WINDOWS.C:800 — SC_F1 in registration → HELP_Win("NEWPLAY1_TXT").
             return Result.OpenHelp;
+        }
+        if ((action == "Alt" || action == "Ctrl") && (_step == 1 || _step == 2))
+        {
+            // C WINDOWS.C:820 — SC_ALT/SC_CTRL in the registration screen cycle
+            // the ID portrait (cur_id = (cur_id+1) % 4).
+            CycleId();
+            return Result.Handled;
         }
         if (action == "Escape")
         {
