@@ -52,4 +52,14 @@ public static class CutsceneTimings
 
     // The full startup attract = INTRO_Credits (logos) then INTRO_PlayMain (RAP.C).
     public const int IntroTotal = LogosTotal + PlayMainTotal;   // 2529
+
+    // INTRO_EndGame(0) cinematic = INTRO_Game1End (5 frames @4, MOVIE_Play loops=8) then
+    // INTRO_Landing. (INTRO_Base is skipped — !GAME2 in shareware.) The WIN_WinGame text +
+    // WIN_Order screens that follow are menu UI, handled outside the cutscene player.
+    public const int Game1EndCount = 5; public const int Game1EndRate = 4; public const int Game1EndLoops = 8;
+    public const int Game1EndContent = Game1EndCount * Game1EndRate * Game1EndLoops;   // 160
+    public const int VictoryTotal = Game1EndContent + LandingCount * LandingRate + LandingFade;   // 160+330+64 = 554
+
+    // Episode 1 ships MAP1G1..MAP9G1; clearing wave 9 ends the episode (C game_wave==dwrap).
+    public const int Episode1WaveCount = 9;
 }

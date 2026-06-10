@@ -211,11 +211,13 @@ internal class ParityEmitWorker : IDisposable
             // states, but only Death occurs in the death scenarios.)
             if (Menu.State == Sim.WinState.Death) { _deathSeen = true; return; }
 
-            // Landing (post-wave INTRO_Landing) and Intro (startup/attract INTRO_PlayMain,
-            // INTRO_Credits) are AGX movies, not Do_Game ticks — C's parity emitter never
-            // fires during them. Suppress so Godot's inserted cutscene phases add no rows
-            // C lacks (which would shift the index-aligned exact-diff).
-            if (Menu.State == Sim.WinState.Landing || Menu.State == Sim.WinState.Intro) return;
+            // Landing (post-wave INTRO_Landing), Intro (startup/attract INTRO_PlayMain +
+            // INTRO_Credits) and Victory (INTRO_EndGame cinematic) are AGX movies, not
+            // Do_Game ticks — C's parity emitter never fires during them. Suppress so
+            // Godot's inserted cutscene phases add no rows C lacks (which would shift the
+            // index-aligned exact-diff).
+            if (Menu.State is Sim.WinState.Landing or Sim.WinState.Intro or Sim.WinState.Victory)
+                return;
 
             // Death-wave parity runs (QuitAfterDeath): once a death has occurred, stop
             // emitting the frozen post-death MENU tail entirely. Its length depends on

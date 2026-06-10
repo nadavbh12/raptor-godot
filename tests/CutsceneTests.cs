@@ -149,6 +149,7 @@ public class CutsceneTests
         Assert.NotNull(CutsceneLibrary.ForState(agx, spr, WinState.Death));
         Assert.NotNull(CutsceneLibrary.ForState(agx, spr, WinState.Landing));
         Assert.NotNull(CutsceneLibrary.ForState(agx, spr, WinState.Intro));
+        Assert.NotNull(CutsceneLibrary.ForState(agx, spr, WinState.Victory));
         Assert.Null(CutsceneLibrary.ForState(agx, spr, WinState.Hangar));
         Assert.Null(CutsceneLibrary.ForState(agx, spr, WinState.Menu));
     }
@@ -194,6 +195,34 @@ public class CutsceneTests
         Assert.EndsWith("EXPLO_AGX_21.png", m.Frames[^1].Path);
         Assert.Equal(60, m.FadeOutFrames);
         Assert.Equal(CutsceneTimings.PlayMainTotal, m.TotalFrames);
+        Assert.All(m.Frames.Select(f => f.Path).Distinct(), p => Assert.True(File.Exists(p), p));
+    }
+
+    // ---- Episode-1 victory (INTRO_EndGame(0) cinematic = Game1End + Landing) ----
+
+    [Fact]
+    public void Victory_total_is_game1end_content_plus_landing()
+    {
+        // INTRO_Game1End: 5 frames @4, MOVIE_Play loops=8 → 160 content; then INTRO_Landing
+        // (330 content + 64 fade). The Game1End trailing fadeout is folded into the cut.
+        Assert.Equal(5 * 4 * 8, CutsceneTimings.Game1EndContent);
+        Assert.Equal(5 * 4 * 8 + 33 * 10 + 64, CutsceneTimings.VictoryTotal);
+    }
+
+    [Fact]
+    public void Victory_movie_concatenates_game1end_then_landing()
+    {
+        var m = CutsceneLibrary.Victory(AgxRoot());
+
+        // 5 game1end × 8 loops + 33 landing = 73 frames.
+        Assert.Equal(40 + 33, m.Frames.Count);
+        Assert.EndsWith("GAME1END_AGX_00.png", m.Frames[0].Path);
+        Assert.Equal(4, m.Frames[0].DurationFrames);
+        Assert.EndsWith("GAME1END_AGX_00.png", m.Frames[5].Path);   // loop 2 of game1end
+        Assert.EndsWith("LANDING_AGX_00.png", m.Frames[40].Path);   // landing starts after 8 loops
+        Assert.EndsWith("LANDING_AGX_32.png", m.Frames[^1].Path);
+        Assert.Equal(64, m.FadeOutFrames);
+        Assert.Equal(CutsceneTimings.VictoryTotal, m.TotalFrames);
         Assert.All(m.Frames.Select(f => f.Path).Distinct(), p => Assert.True(File.Exists(p), p));
     }
 

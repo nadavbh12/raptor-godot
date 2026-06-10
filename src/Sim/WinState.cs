@@ -22,6 +22,7 @@ public enum WinState
     Death     = 20,
     Landing   = 21,
     Intro     = 22,
+    Victory   = 23,
 }
 
 public static class WinStateExtensions
@@ -41,6 +42,7 @@ public static class WinStateExtensions
         WinState.Death     => "DEATH",
         WinState.Landing   => "LANDING",
         WinState.Intro     => "INTRO",
+        WinState.Victory   => "VICTORY",
         _                  => "UNKNOWN",
     };
 }

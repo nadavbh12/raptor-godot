@@ -267,16 +267,17 @@ public sealed class MenuStateMachine
         };
     }
 
-    public void CompleteMission(int currentFrame)
+    public void CompleteMission(int currentFrame, bool finalWave = false)
     {
         InGame = false;
         _inSectorSelect = false;
         _options.Close();
         _pilotCreate.ResetStep();
-        // C plays INTRO_Landing (ship lands on base) after each cleared wave
-        // (WINDOWS.C:1863) before the next hangar. The hangar entry is deferred to
-        // CompleteCutsceneIfDone once the landing movie finishes.
-        EnterState(WinState.Landing, currentFrame, reAnchor: true);
+        // Clearing the episode's final wave plays INTRO_EndGame's victory cinematic
+        // (Game1End + Landing, WINDOWS.C:1847) → main menu. Any other cleared wave plays
+        // INTRO_Landing (WINDOWS.C:1863) → next hangar. The hangar/menu entry is deferred
+        // to CompleteCutsceneIfDone once the movie finishes.
+        EnterState(finalWave ? WinState.Victory : WinState.Landing, currentFrame, reAnchor: true);
     }
 
     public void PlayerDied(int currentFrame)
@@ -310,6 +311,7 @@ public sealed class MenuStateMachine
             WinState.Death   => CutsceneTimings.DeathTotal,
             WinState.Landing => CutsceneTimings.LandingTotal,
             WinState.Intro   => CutsceneTimings.IntroTotal,
+            WinState.Victory => CutsceneTimings.VictoryTotal,
             _                => -1,
         };
         if (total < 0 || elapsed < total) return false;
@@ -323,7 +325,8 @@ public sealed class MenuStateMachine
     /// </summary>
     public bool SkipCutscene(int currentFrame)
     {
-        if (State is not (WinState.Death or WinState.Landing or WinState.Intro)) return false;
+        if (State is not (WinState.Death or WinState.Landing or WinState.Intro or WinState.Victory))
+            return false;
         EnterCutsceneSuccessor(currentFrame);
         return true;
     }
@@ -336,7 +339,7 @@ public sealed class MenuStateMachine
                 _hangar.Position = 1;
                 EnterState(WinState.Hangar, currentFrame, reAnchor: true);
                 break;
-            default:   // Death, Intro → main menu
+            default:   // Death, Intro, Victory → main menu
                 EnterMenu(currentFrame);
                 break;
         }

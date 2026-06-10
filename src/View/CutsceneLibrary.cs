@@ -69,12 +69,26 @@ public static class CutsceneLibrary
         return new AgxMovie(frames, CutsceneTimings.ExploFade);
     }
 
+    /// INTRO_EndGame(0) cinematic: INTRO_Game1End (GAME1END_AGX 5@4 ×8) then INTRO_Landing.
+    /// (INTRO_Base is skipped — !GAME2 in shareware.)
+    public static AgxMovie Victory(string agxRoot)
+    {
+        var frames = new List<AgxMovieFrame>();
+        Append(frames, agxRoot, "GAME1END_AGX",
+            CutsceneTimings.Game1EndCount, CutsceneTimings.Game1EndRate,
+            loops: CutsceneTimings.Game1EndLoops);
+        Append(frames, agxRoot, "LANDING_AGX",
+            CutsceneTimings.LandingCount, CutsceneTimings.LandingRate, loops: 1);
+        return new AgxMovie(frames, CutsceneTimings.LandingFade);
+    }
+
     /// <summary>The movie a cutscene <see cref="WinState"/> renders, or null for non-cutscene states.</summary>
     public static AgxMovie? ForState(string agxRoot, string spritesRoot, WinState state) => state switch
     {
         WinState.Death   => Death(agxRoot),
         WinState.Landing => Landing(agxRoot),
         WinState.Intro   => StartupIntro(agxRoot, spritesRoot),
+        WinState.Victory => Victory(agxRoot),
         _                => null,
     };
 

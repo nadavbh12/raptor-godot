@@ -1711,9 +1711,19 @@ public partial class WaveController : Node
         if (endWave.MissionComplete)
         {
             _waveActive = false;
-            _menu?.CompleteMission(SimClock.Frame);
+            // Clearing the episode's final wave plays the victory cinematic (INTRO_EndGame)
+            // instead of the normal ship-landing (WINDOWS.C:1847 vs :1863).
+            _menu?.CompleteMission(SimClock.Frame, IsEpisodeFinalWave(_waveNum, _pendingGameNum));
         }
     }
+
+    /// <summary>
+    /// True when <paramref name="waveNum"/> (1-based) is the last wave of the episode.
+    /// Only episode 1 (gameNum 0, MAP1G1..MAP9G1) ships in this build; the registered
+    /// episodes' data (FILE0002+.GLB) is absent, so they are never the final-wave case.
+    /// </summary>
+    public static bool IsEpisodeFinalWave(int waveNum, int gameNum)
+        => gameNum == 0 && waveNum >= CutsceneTimings.Episode1WaveCount;
 
 
     /// <summary>

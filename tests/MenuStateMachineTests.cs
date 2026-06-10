@@ -198,6 +198,33 @@ public class MenuStateMachineTests
     }
 
     [Fact]
+    public void Final_wave_completion_plays_victory_then_returns_to_menu()
+    {
+        var m = new MenuStateMachine();
+        m.EnterMenu(0);
+
+        // Clearing the episode's final wave plays INTRO_EndGame's cinematic (Game1End +
+        // Landing), then returns to the main menu (vs a normal wave → Landing → Hangar).
+        m.CompleteMission(500, finalWave: true);
+        Assert.Equal(WinState.Victory, m.State);
+
+        Assert.False(m.CompleteCutsceneIfDone(500 + CutsceneTimings.VictoryTotal - 1));
+        Assert.Equal(WinState.Victory, m.State);
+
+        Assert.True(m.CompleteCutsceneIfDone(500 + CutsceneTimings.VictoryTotal));
+        Assert.Equal(WinState.Menu, m.State);
+    }
+
+    [Fact]
+    public void Episode1_final_wave_is_the_ninth()
+    {
+        // Episode 1 ships MAP1G1..MAP9G1; victory triggers on the last (C: game_wave==dwrap).
+        Assert.False(WaveController.IsEpisodeFinalWave(1, 0));
+        Assert.False(WaveController.IsEpisodeFinalWave(8, 0));
+        Assert.True(WaveController.IsEpisodeFinalWave(9, 0));
+    }
+
+    [Fact]
     public void Startup_intro_plays_then_returns_to_main_menu()
     {
         var m = new MenuStateMachine();
