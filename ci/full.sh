@@ -61,6 +61,24 @@ for script in death_wave1 death_wave2 death_wave4 death_wave5 \
 done
 
 echo
+echo "==> menu-event parity sweep (headless, committed C goldens)"
+# Keyboard/menu-nav event-stream parity: replays each committed C menu golden
+# (tests/parity/c_menu_goldens) through headless Godot and asserts the
+# per-keypress event stream is byte-identical. This is a hard gate: it is
+# headless (no display needed) and the goldens are committed, so it always runs.
+# It does read the dosraptor menu scripts (tests/scripts/*.txt), already a
+# ci/full requirement above. exit 2 = goldens missing (misconfiguration).
+mev_rc=0
+"$ROOT/tests/run_menu_event_sweep.sh" || mev_rc=$?
+if [[ $mev_rc -eq 2 ]]; then
+    echo "[ci/full] FAIL: menu-event sweep found no committed goldens"
+    exit 1
+elif [[ $mev_rc -ne 0 ]]; then
+    echo "[ci/full] FAIL: menu-event parity sweep (a menu scenario diverged from C)"
+    exit 1
+fi
+
+echo
 echo "==> menu pixel parity (committed goldens, static menus)"
 # The static menu screens are at parity (<1.2% vs C); lock them in unconditionally
 # against committed C goldens (tests/parity/c_menu_goldens) so they can't silently
