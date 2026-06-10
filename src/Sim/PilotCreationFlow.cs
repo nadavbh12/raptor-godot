@@ -134,6 +134,12 @@ internal sealed class PilotCreationFlow
         }
         if (action == "Return")
         {
+            // C WINDOWS.C WIN_Register: ENTER on REG_NAME advances to REG_CALLSIGN
+            // only when the name is non-empty (`if (strlen(tp.name) && keypress ==
+            // SC_ENTER)`), and accept needs a name too. Don't let an empty-name
+            // Return walk the whole flow into the hangar.
+            if (_step == 1 && PilotName.Length == 0)
+                return Result.Handled;   // stay on the name field
             _step++;
             if (_step == 2)
             {

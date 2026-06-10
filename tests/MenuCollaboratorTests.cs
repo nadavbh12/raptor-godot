@@ -320,6 +320,33 @@ public class PilotCreationFlowTests
     }
 
     [Fact]
+    public void Empty_name_Return_stays_on_name_field()
+    {
+        // C WIN_Register requires a non-empty name before ENTER advances/accepts;
+        // a bare Return used to walk the empty pilot all the way into the hangar.
+        var f = new PilotCreationFlow();
+        f.Begin();                                // step 1 = name
+        f.HandleInput("Return");                  // empty name: must not advance
+        Assert.Equal(1, f.Step);
+        f.HandleInput("A"); f.HandleInput("C"); f.HandleInput("E");
+        f.HandleInput("Return");                  // now advances
+        Assert.Equal(2, f.Step);
+    }
+
+    [Fact]
+    public void Text_routes_through_MenuStateMachine_to_pilot_name()
+    {
+        // Confirms keystrokes reach the name field via the real menu dispatch
+        // (HandleMenuInput -> PilotCreationFlow), not just the flow in isolation.
+        var m = new MenuStateMachine();
+        m.EnterMenu(0);
+        m.HandleInput("Return", 1);               // NEW -> pilot create
+        Assert.Equal(1, m.PilotCreateStep);
+        m.HandleInput("R", 2); m.HandleInput("A", 3); m.HandleInput("F", 4);
+        Assert.Equal("RAF", m.PilotName);
+    }
+
+    [Fact]
     public void Text_entry_uppercases_and_caps_at_12_per_step()
     {
         var f = new PilotCreationFlow();
@@ -374,6 +401,7 @@ public class PilotCreationFlowTests
     {
         var f = new PilotCreationFlow();
         f.Begin();
+        f.HandleInput("A");        // C requires a non-empty name to advance
         f.HandleInput("Return");   // step 2
         f.HandleInput("Return");   // step 3 (difficulty)
         f.HandleInput("Down");     // difficulty 3 → 4
@@ -388,6 +416,7 @@ public class PilotCreationFlowTests
     {
         var f = new PilotCreationFlow();
         f.Begin();
+        f.HandleInput("A");        // C requires a non-empty name to advance
         f.HandleInput("Return");   // step 2
         f.HandleInput("Return");   // step 3
         f.HandleInput("Up");       // 3 → 2
@@ -403,6 +432,7 @@ public class PilotCreationFlowTests
     {
         var f = new PilotCreationFlow();
         f.Begin();
+        f.HandleInput("A");        // C requires a non-empty name to advance
         f.HandleInput("Return");   // step 2
         f.HandleInput("Return");   // step 3
         Assert.Equal(PilotCreationFlow.Result.Confirm, f.HandleInput("Return")); // step 4 accept
@@ -415,6 +445,7 @@ public class PilotCreationFlowTests
     {
         var f = new PilotCreationFlow();
         f.Begin();
+        f.HandleInput("A");        // C requires a non-empty name to advance
         f.HandleInput("Return");   // step 2
         f.HandleInput("Return");   // step 3
         f.SetDifficultyField(5);   // ABORT MISSION

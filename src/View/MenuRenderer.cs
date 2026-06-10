@@ -317,14 +317,19 @@ internal sealed class MenuRenderer
 
     private void DrawRegisterFieldText(Font font, MenuStateMachine menu)
     {
+        // Field positions are authoritative in REGISTER_SWD.json: REG_NAME
+        // (x=187, y=132) and REG_CALLSIGN (x=203, y=145). y is the field top;
+        // DrawString anchors on the baseline, so add ~5px for the size-7 font.
+        // (Previously the callsign reused the name's x=188 — should be 203 — and
+        // a too-low y, which dropped it off its line on the clipboard.)
         var ink = Colors.Black;
         if (!string.IsNullOrEmpty(menu.PilotName))
-            _host.DrawMenuText(menu.PilotName, 188, 137, 7, ink);
+            _host.DrawMenuText(menu.PilotName, 187, 137, 7, ink);
         if (!string.IsNullOrEmpty(menu.Callsign))
-            _host.DrawMenuText(menu.Callsign, 188, 153, 7, ink);
+            _host.DrawMenuText(menu.Callsign, 203, 148, 7, ink);
 
-        int caretX = 188;
-        int caretY = menu.PilotCreateStep == 2 ? 144 : 128;
+        int caretX = menu.PilotCreateStep == 2 ? 203 : 187;
+        int caretY = menu.PilotCreateStep == 2 ? 139 : 128;   // text baseline − caret height (9)
         string text = menu.PilotCreateStep == 2 ? menu.Callsign : menu.PilotName;
         if (!string.IsNullOrEmpty(text))
             caretX += MenuTextWidth(text, 7) + 1;
@@ -415,13 +420,15 @@ internal sealed class MenuRenderer
         var swd = _host.LoadSwd("HELP_SWD");
         if (swd == null) return;
 
-        var skip = menu.HelpTextName == "RAP1_TXT"
-            ? new HashSet<int> { 8, 9 }
-            : new HashSet<int> { 8 };
-        SwdRenderer.Draw(_host.SwdRenderHost, swd, skipFieldIndices: skip);
+        // Field 8 = HELP_TEXT (body), field 9 = HELP_HEADER (the "PAGE : NN"
+        // label). C rewrites both every frame, so draw them manually and skip
+        // them in the SWD pass — on every help page, not just the order screen.
+        SwdRenderer.Draw(_host.SwdRenderHost, swd, skipFieldIndices: new HashSet<int> { 8, 9 });
 
-        if (menu.HelpTextName == "RAP1_TXT")
-            _host.DrawDosFont("PAGE : 31", swd.Window.X + 247, swd.Window.Y + 10, "FONT2_FNT", 64);
+        // C HELP.C:82 — sprintf("PAGE : %02u", curpage+1), set on HELP_HEADER for
+        // every page. Was hardcoded "31" and gated to RAP1_TXT, so the number
+        // never moved while paging the order info.
+        _host.DrawDosFont($"PAGE : {menu.HelpPageIndex + 1:D2}", swd.Window.X + 247, swd.Window.Y + 10, "FONT2_FNT", 64);
 
         string? text = SwdTextStream.LoadText(menu.HelpTextName);
         if (string.IsNullOrEmpty(text)) return;

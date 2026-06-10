@@ -152,6 +152,7 @@ public class MenuStateMachineTests
         var m = new MenuStateMachine();
         m.EnterMenu(0);
         m.HandleInput("Return", 10);
+        m.HandleInput("A", 12);        // C requires a non-empty name to advance
         m.HandleInput("Return", 20);
         m.HandleInput("Return", 30);
         m.HandleInput("Return", 40);
@@ -173,6 +174,7 @@ public class MenuStateMachineTests
         var m = new MenuStateMachine();
         m.EnterMenu(0);
         m.HandleInput("Return", 10);
+        m.HandleInput("A", 12);        // C requires a non-empty name to advance
         m.HandleInput("Return", 20);
         m.HandleInput("Return", 30);
         m.HandleInput("Return", 40);
@@ -195,6 +197,7 @@ public class MenuStateMachineTests
         var m = new MenuStateMachine();
         m.EnterMenu(0);
         m.HandleInput("Return", 10);
+        m.HandleInput("A", 12);        // C requires a non-empty name to advance
         m.HandleInput("Return", 20);
         m.HandleInput("Return", 30);
         m.HandleInput("Return", 40);
@@ -293,6 +296,7 @@ public class MenuStateMachineTests
         var m = new MenuStateMachine();
         m.EnterMenu(0);
         m.HandleInput("Return", 10);
+        m.HandleInput("A", 12);        // C requires a non-empty name to advance
         m.HandleInput("Return", 20);
         m.HandleInput("Return", 30);
         Assert.Equal(3, m.DifficultyFieldId);
@@ -310,6 +314,7 @@ public class MenuStateMachineTests
         var m = new MenuStateMachine();
         m.EnterMenu(0);
         m.HandleInput("Return", 10);
+        m.HandleInput("A", 12);        // C requires a non-empty name to advance
         m.HandleInput("Return", 20);
         m.HandleInput("Return", 30);
 
@@ -353,6 +358,7 @@ public class MenuStateMachineTests
         var m = new MenuStateMachine();
         m.EnterMenu(0);
         m.HandleInput("Return", 10);
+        m.HandleInput("A", 12);        // C requires a non-empty name to advance
         m.HandleInput("Return", 20);
         m.HandleInput("Return", 30);
         m.HandleInput("Return", 40);
@@ -374,6 +380,7 @@ public class MenuStateMachineTests
         var m = new MenuStateMachine();
         m.EnterMenu(0);
         m.HandleInput("Return", 10);
+        m.HandleInput("A", 12);        // C requires a non-empty name to advance
         m.HandleInput("Return", 20);
         m.HandleInput("Return", 30);
         m.HandleInput("Return", 40);
@@ -601,6 +608,7 @@ public class MenuStateMachineTests
         var m = new MenuStateMachine();
         m.EnterMenu(0);
         m.HandleInput("Return", 10);   // NEW → step 1
+        m.HandleInput("A", 12);        // type a name (C requires it to advance)
         m.HandleInput("Return", 20);   // confirm name → step 2
         m.HandleInput("Return", 30);   // confirm callsign → step 3
         m.HandleInput("Return", 40);   // accept difficulty → Hangar
