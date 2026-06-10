@@ -32,11 +32,27 @@ public static class CutsceneLibrary
         return new AgxMovie(frames, CutsceneTimings.LandingFade);
     }
 
+    /// INTRO_PlayMain: the startup/attract intro — City, Side1 (×2), Pilot, Side2
+    /// (SHIPSD1 then SHIPSD2), Explosion, with the explosion's trailing fade. All AGX
+    /// frames render identically, so the five sub-scenes concatenate into one movie.
+    public static AgxMovie AttractIntro(string agxRoot)
+    {
+        var frames = new List<AgxMovieFrame>();
+        Append(frames, agxRoot, "CHASE_AGX",   CutsceneTimings.CityCount,  CutsceneTimings.CityRate,  loops: 1);
+        Append(frames, agxRoot, "SHIPSD1_AGX", CutsceneTimings.Side1Count, CutsceneTimings.Side1Rate, loops: CutsceneTimings.Side1Loops);
+        Append(frames, agxRoot, "PILOT_AGX",   CutsceneTimings.PilotCount, CutsceneTimings.PilotRate, loops: 1);
+        Append(frames, agxRoot, "SHIPSD1_AGX", CutsceneTimings.Side2Count, CutsceneTimings.Side2Rate, loops: 1);  // Side2 pass A
+        Append(frames, agxRoot, "SHIPSD2_AGX", CutsceneTimings.Side2Count, CutsceneTimings.Side2Rate, loops: 1);  // Side2 pass B
+        Append(frames, agxRoot, "EXPLO_AGX",   CutsceneTimings.ExploCount, CutsceneTimings.ExploRate, loops: 1);
+        return new AgxMovie(frames, CutsceneTimings.ExploFade);
+    }
+
     /// <summary>The movie a cutscene <see cref="WinState"/> renders, or null for non-cutscene states.</summary>
     public static AgxMovie? ForState(string agxRoot, WinState state) => state switch
     {
         WinState.Death   => Death(agxRoot),
         WinState.Landing => Landing(agxRoot),
+        WinState.Intro   => AttractIntro(agxRoot),
         _                => null,
     };
 

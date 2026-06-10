@@ -82,7 +82,8 @@ internal sealed class MenuRenderer
             return;
         }
 
-        if (menu.State == WinState.Death || menu.State == WinState.Landing)
+        if (menu.State == WinState.Death || menu.State == WinState.Landing
+            || menu.State == WinState.Intro)
         {
             DrawCutsceneOverlay(menu);
             return;

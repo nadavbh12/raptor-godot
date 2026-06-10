@@ -66,10 +66,28 @@ public partial class MenuController : Node
             };
         }
 
-        // Enter MENU state immediately — mirrors raptor_parity_set_win_state(1)
-        // called right after WIN_MainMenu shows its window.
-        Menu.EnterMenu(SimClock.Frame);
+        // Interactive launch shows the startup attract intro (INTRO_Credits +
+        // INTRO_PlayMain, RAP.C); any parity/test run drives a playthrough and must reach
+        // the menu immediately, so it's skipped there (faithful RAPTOR_SKIPINTRO too).
+        // Read RAPTOR_PLAYTHROUGH directly (not PlaythroughDriver.Active) to avoid a
+        // node _Ready ordering race — the driver may not have loaded its script yet.
+        bool playthroughActive = OS.GetEnvironment("RAPTOR_PLAYTHROUGH") != "";
+        bool skipIntroEnv = OS.GetEnvironment("RAPTOR_SKIPINTRO") == "1";
+        if (ShouldPlayStartupIntro(playthroughActive, skipIntroEnv))
+            Menu.StartIntro(SimClock.Frame);
+        else
+            // Enter MENU state immediately — mirrors raptor_parity_set_win_state(1)
+            // called right after WIN_MainMenu shows its window.
+            Menu.EnterMenu(SimClock.Frame);
     }
+
+    /// <summary>
+    /// The startup attract intro plays only on an interactive launch: never when a
+    /// playthrough script is driving the run (parity/tests assume the menu is up at
+    /// frame 0) and never when RAPTOR_SKIPINTRO is set (faithful to C).
+    /// </summary>
+    public static bool ShouldPlayStartupIntro(bool playthroughActive, bool skipIntroEnv)
+        => !playthroughActive && !skipIntroEnv;
 
     // Menu/UI driver: polls SimClock.Frame at render rate to advance finished cutscenes
     // (death → menu, landing → hangar); never reads `delta`, so it's parity-inert.

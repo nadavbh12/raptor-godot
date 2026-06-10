@@ -198,6 +198,44 @@ public class MenuStateMachineTests
     }
 
     [Fact]
+    public void Startup_intro_plays_then_returns_to_main_menu()
+    {
+        var m = new MenuStateMachine();
+        m.StartIntro(0);
+        Assert.Equal(WinState.Intro, m.State);
+
+        Assert.False(m.CompleteCutsceneIfDone(CutsceneTimings.IntroTotal - 1));
+        Assert.Equal(WinState.Intro, m.State);
+
+        Assert.True(m.CompleteCutsceneIfDone(CutsceneTimings.IntroTotal));
+        Assert.Equal(WinState.Menu, m.State);
+    }
+
+    [Fact]
+    public void Skip_cutscene_jumps_intro_straight_to_menu()
+    {
+        var m = new MenuStateMachine();
+        m.StartIntro(0);
+        Assert.True(m.SkipCutscene(5));        // any key during the attract intro
+        Assert.Equal(WinState.Menu, m.State);
+
+        // Outside a cutscene it is a no-op.
+        Assert.False(m.SkipCutscene(10));
+        Assert.Equal(WinState.Menu, m.State);
+    }
+
+    [Fact]
+    public void Startup_intro_plays_only_in_interactive_runs()
+    {
+        // Interactive launch (no playthrough, not skipped) → play the attract intro.
+        Assert.True(MenuController.ShouldPlayStartupIntro(playthroughActive: false, skipIntroEnv: false));
+        // Any parity/test harness drives a playthrough → must go straight to the menu.
+        Assert.False(MenuController.ShouldPlayStartupIntro(playthroughActive: true, skipIntroEnv: false));
+        // Explicit RAPTOR_SKIPINTRO (faithful to C) → skip.
+        Assert.False(MenuController.ShouldPlayStartupIntro(playthroughActive: false, skipIntroEnv: true));
+    }
+
+    [Fact]
     public void Death_movie_completion_returns_to_main_menu()
     {
         var m = new MenuStateMachine();

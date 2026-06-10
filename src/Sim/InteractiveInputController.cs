@@ -47,6 +47,15 @@ public partial class InteractiveInputController : Node
         if (@event is InputEventKey keyEvent)
         {
             if (!keyEvent.Pressed || keyEvent.Echo) return;
+
+            // Any key dismisses the startup attract intro (faithful K_SKIPALL) → main menu.
+            if (_menuController?.Menu.State == WinState.Intro)
+            {
+                _menuController.Menu.SkipCutscene(SimClock.Frame);
+                GetViewport().SetInputAsHandled();
+                return;
+            }
+
             string? action = KeyEventToMenuAction(keyEvent);
             if (action == null) return;
             _menuController?.Menu.HandleInput(action, SimClock.Frame);

@@ -289,26 +289,56 @@ public sealed class MenuStateMachine
     }
 
     /// <summary>
-    /// Advance a finished cutscene to its successor: Death → main menu (INTRO_Death
-    /// returns to WIN_MainMenu), Landing → hangar (the next wave's pre-game hangar).
-    /// Returns true on the frame the transition fires. No-op for non-cutscene states.
+    /// Start the startup/attract intro (INTRO_Credits + INTRO_PlayMain). Mirrors the
+    /// once-at-launch attract in RAP.C; gated to interactive runs by the caller.
+    /// </summary>
+    public void StartIntro(int currentFrame)
+    {
+        EnterState(WinState.Intro, currentFrame, reAnchor: true);
+    }
+
+    /// <summary>
+    /// Advance a finished cutscene to its successor: Death/Intro → main menu, Landing →
+    /// hangar (the next wave's pre-game hangar). Returns true on the frame the transition
+    /// fires. No-op for non-cutscene states.
     /// </summary>
     public bool CompleteCutsceneIfDone(int currentFrame)
     {
         int elapsed = currentFrame - StateEnteredFrame;
+        int total = State switch
+        {
+            WinState.Death   => CutsceneTimings.DeathTotal,
+            WinState.Landing => CutsceneTimings.LandingTotal,
+            WinState.Intro   => CutsceneTimings.IntroTotal,
+            _                => -1,
+        };
+        if (total < 0 || elapsed < total) return false;
+        EnterCutsceneSuccessor(currentFrame);
+        return true;
+    }
+
+    /// <summary>
+    /// Skip the active cutscene to its successor immediately (faithful K_SKIPALL — any
+    /// key dismisses an AGX movie). Returns true if a cutscene was skipped.
+    /// </summary>
+    public bool SkipCutscene(int currentFrame)
+    {
+        if (State is not (WinState.Death or WinState.Landing or WinState.Intro)) return false;
+        EnterCutsceneSuccessor(currentFrame);
+        return true;
+    }
+
+    private void EnterCutsceneSuccessor(int currentFrame)
+    {
         switch (State)
         {
-            case WinState.Death:
-                if (elapsed < CutsceneTimings.DeathTotal) return false;
-                EnterMenu(currentFrame);
-                return true;
             case WinState.Landing:
-                if (elapsed < CutsceneTimings.LandingTotal) return false;
                 _hangar.Position = 1;
                 EnterState(WinState.Hangar, currentFrame, reAnchor: true);
-                return true;
-            default:
-                return false;
+                break;
+            default:   // Death, Intro → main menu
+                EnterMenu(currentFrame);
+                break;
         }
     }
 

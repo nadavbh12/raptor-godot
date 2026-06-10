@@ -136,7 +136,41 @@ public class CutsceneTests
         string root = AgxRoot();
         Assert.NotNull(CutsceneLibrary.ForState(root, WinState.Death));
         Assert.NotNull(CutsceneLibrary.ForState(root, WinState.Landing));
+        Assert.NotNull(CutsceneLibrary.ForState(root, WinState.Intro));
         Assert.Null(CutsceneLibrary.ForState(root, WinState.Hangar));
         Assert.Null(CutsceneLibrary.ForState(root, WinState.Menu));
+    }
+
+    // ---- Attract intro (INTRO_PlayMain = City + Side1×2 + Pilot + Side2 + Explosion) ----
+
+    [Fact]
+    public void Intro_total_sums_attract_segments_plus_explosion_fade()
+    {
+        // City 30@8 + Side1 20@18×2 + Pilot 21@10 + Side2(SHIPSD1+SHIPSD2 20@18) + Explo 22@12 + fade 60.
+        int expected = 30 * 8 + 20 * 18 * 2 + 21 * 10 + 20 * 18 + 20 * 18 + 22 * 12 + 60;
+        Assert.Equal(2214, expected);
+        Assert.Equal(expected, CutsceneTimings.IntroTotal);
+    }
+
+    [Fact]
+    public void AttractIntro_concatenates_city_side1x2_pilot_side2_explosion()
+    {
+        var m = CutsceneLibrary.AttractIntro(AgxRoot());
+
+        // 30 city + 40 side1(×2) + 21 pilot + 20 side2a + 20 side2b + 22 explosion = 153 frames.
+        Assert.Equal(153, m.Frames.Count);
+        Assert.EndsWith("CHASE_AGX_00.png", m.Frames[0].Path);
+        Assert.Equal(8, m.Frames[0].DurationFrames);
+        Assert.EndsWith("SHIPSD1_AGX_00.png", m.Frames[30].Path);   // Side1 loop 1
+        Assert.Equal(18, m.Frames[30].DurationFrames);
+        Assert.EndsWith("SHIPSD1_AGX_00.png", m.Frames[50].Path);   // Side1 loop 2
+        Assert.EndsWith("PILOT_AGX_00.png", m.Frames[70].Path);
+        Assert.EndsWith("SHIPSD1_AGX_00.png", m.Frames[91].Path);   // Side2a
+        Assert.EndsWith("SHIPSD2_AGX_00.png", m.Frames[111].Path);  // Side2b
+        Assert.EndsWith("EXPLO_AGX_00.png", m.Frames[131].Path);
+        Assert.EndsWith("EXPLO_AGX_21.png", m.Frames[^1].Path);
+        Assert.Equal(60, m.FadeOutFrames);
+        Assert.Equal(CutsceneTimings.IntroTotal, m.TotalFrames);
+        Assert.All(m.Frames.Select(f => f.Path).Distinct(), p => Assert.True(File.Exists(p), p));
     }
 }

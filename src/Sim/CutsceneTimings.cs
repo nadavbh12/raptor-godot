@@ -29,4 +29,19 @@ public static class CutsceneTimings
     public const int LandingRate  = 10;
     public const int LandingFade  = 64;
     public const int LandingTotal = LandingCount * LandingRate + LandingFade;   // 394
+
+    // INTRO_PlayMain = City + Side1(×2) + Pilot + Side2(SHIPSD1+SHIPSD2) + Explosion.
+    public const int CityCount  = 30; public const int CityRate  = 8;
+    public const int Side1Count = 20; public const int Side1Rate = 18; public const int Side1Loops = 2;
+    public const int PilotCount = 21; public const int PilotRate = 10;
+    public const int Side2Count = 20; public const int Side2Rate = 18;   // SHIPSD1 then SHIPSD2
+    public const int ExploCount = 22; public const int ExploRate = 12; public const int ExploFade = 60;
+    public const int IntroTotal =
+        CityCount * CityRate
+        + Side1Count * Side1Rate * Side1Loops
+        + PilotCount * PilotRate
+        + Side2Count * Side2Rate          // SHIPSD1 pass
+        + Side2Count * Side2Rate          // SHIPSD2 pass
+        + ExploCount * ExploRate
+        + ExploFade;                      // 240+720+210+360+360+264+60 = 2214
 }
