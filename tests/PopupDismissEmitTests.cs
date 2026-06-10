@@ -26,10 +26,11 @@ public class PopupDismissEmitTests
     {
         var m = new MenuStateMachine();
         m.EnterMenu(0);
-        m.HandleInput("Down", 0); m.HandleInput("Down", 0);
-        m.HandleInput("Down", 0); m.HandleInput("Down", 0);   // highlight CREDITS (item 4)
+        for (int i = 0; i < MenuStateMachine.CreditsItemIndex; i++)
+            m.HandleInput("Down", 0);                          // highlight CREDITS
         m.HandleInput("Return", 0);                            // enter Credits
         Assert.Equal(WinState.Credits, m.State);
+        Assert.Equal(MenuStateMachine.Screen.Credits, m.EffectiveScreen());
         Assert.Equal(0, m.EffectiveSelectedItem());
     }
 }

@@ -232,7 +232,7 @@ public sealed class MenuStateMachine
             WinState.Hangar  => _hangar.Position,
             WinState.Store   => Store?.CurItem ?? 0,
             WinState.Help    => _help.PageIndex,
-            WinState.Credits => 0,            // popup: no cursor (C field=1 → 0)
+            WinState.Credits => 0,            // popup, no cursor (same sentinel as WinMsg)
             _                => CurrentItem,  // Menu / Unknown(sector)
         };
     }
