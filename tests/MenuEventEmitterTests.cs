@@ -20,7 +20,8 @@ public class MenuEventEmitterTests
     {
         var m = new MenuStateMachine();
         m.EnterMenu(0);
-        m.CompleteMission(10);                 // -> Hangar, position 1 (SUPPLIES)
+        m.CompleteMission(10);                 // -> Landing (ship lands) ...
+        m.CompleteCutsceneIfDone(10 + CutsceneTimings.LandingTotal);  // ... -> Hangar, position 1 (SUPPLIES)
         Assert.Equal(WinState.Hangar, m.State);
         Assert.Equal(1, m.EffectiveSelectedItem());
     }

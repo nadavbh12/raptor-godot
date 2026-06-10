@@ -82,9 +82,9 @@ internal sealed class MenuRenderer
             return;
         }
 
-        if (menu.State == WinState.Death)
+        if (menu.State == WinState.Death || menu.State == WinState.Landing)
         {
-            DrawDeathMovieOverlay(menu);
+            DrawCutsceneOverlay(menu);
             return;
         }
 
@@ -132,26 +132,17 @@ internal sealed class MenuRenderer
             DrawWinMsgOverlay(menu);
     }
 
-    private void DrawDeathMovieOverlay(MenuStateMachine menu)
+    private void DrawCutsceneOverlay(MenuStateMachine menu)
     {
         if (string.IsNullOrEmpty(_host.AgxRoot)) return;
 
-        int elapsed = SimClock.Frame - menu.StateEnteredFrame;
-        string? path = null;
-        float alpha = 1f;
-        if (AgxMovieSequence.TrySelectDeathFrame(_host.AgxRoot, elapsed, out var frame))
-        {
-            path = frame.Path;
-        }
-        else if (elapsed < AgxMovieSequence.DeathTotalFrames)
-        {
-            path = Path.Combine(_host.AgxRoot, $"SDEATH_AGX_{AgxMovieSequence.DeathGroundFrames - 1:D2}.png");
-            int fadeElapsed = elapsed - AgxMovieSequence.DeathContentFrames;
-            alpha = 1f - System.Math.Clamp(fadeElapsed / (float)AgxMovieSequence.DeathFadeOutFrames, 0f, 1f);
-        }
+        var movie = CutsceneLibrary.ForState(_host.AgxRoot, menu.State);
+        if (movie == null) return;
 
-        if (path == null) return;
-        var tex = _host.LoadSpriteFromPath(path);
+        int elapsed = SimClock.Frame - menu.StateEnteredFrame;
+        if (!movie.TrySelectFrame(elapsed, out var frame, out var alpha)) return;
+
+        var tex = _host.LoadSpriteFromPath(frame.Path);
         if (tex != null)
             _host.Canvas.DrawTexture(tex, Vector2.Zero, new Color(1f, 1f, 1f, alpha));
     }

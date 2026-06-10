@@ -147,7 +147,7 @@ public class MenuStateMachineTests
     }
 
     [Fact]
-    public void Mission_complete_returns_to_hangar_and_exits_ingame()
+    public void Mission_complete_plays_landing_then_returns_to_hangar()
     {
         var m = new MenuStateMachine();
         m.EnterMenu(0);
@@ -161,9 +161,17 @@ public class MenuStateMachineTests
         m.HandleInput("Return", 220);
         Assert.True(m.InGame);
 
+        // C plays INTRO_Landing (ship lands) after each cleared wave (WINDOWS.C:1863)
+        // before the next hangar. InGame ends immediately; the hangar is deferred until
+        // the landing movie finishes.
         m.CompleteMission(500);
-
         Assert.False(m.InGame);
+        Assert.Equal(WinState.Landing, m.State);
+
+        Assert.False(m.CompleteCutsceneIfDone(500 + CutsceneTimings.LandingTotal - 1));
+        Assert.Equal(WinState.Landing, m.State);
+
+        Assert.True(m.CompleteCutsceneIfDone(500 + CutsceneTimings.LandingTotal));
         Assert.Equal(WinState.Hangar, m.State);
         Assert.Equal(1, m.HangarPosition);
     }
@@ -192,8 +200,6 @@ public class MenuStateMachineTests
     [Fact]
     public void Death_movie_completion_returns_to_main_menu()
     {
-        Assert.Equal(AgxMovieSequence.DeathTotalFrames, MenuStateMachine.DeathMovieFrames);
-
         var m = new MenuStateMachine();
         m.EnterMenu(0);
         m.HandleInput("Return", 10);
@@ -206,12 +212,8 @@ public class MenuStateMachineTests
         m.HandleInput("Return", 220);
         m.PlayerDied(500);
 
-        bool beforeEnd = m.CompleteDeathMovieIfDone(
-            500 + AgxMovieSequence.DeathTotalFrames - 1,
-            MenuStateMachine.DeathMovieFrames);
-        bool atEnd = m.CompleteDeathMovieIfDone(
-            500 + AgxMovieSequence.DeathTotalFrames,
-            MenuStateMachine.DeathMovieFrames);
+        bool beforeEnd = m.CompleteCutsceneIfDone(500 + CutsceneTimings.DeathTotal - 1);
+        bool atEnd = m.CompleteCutsceneIfDone(500 + CutsceneTimings.DeathTotal);
 
         Assert.False(beforeEnd);
         Assert.True(atEnd);

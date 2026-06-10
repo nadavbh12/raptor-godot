@@ -109,10 +109,37 @@ public class ParityEmitterTests
             menu.PlayerDied(SimClock.Frame);
             for (int i = 0; i < 5; i++) { SimClock.Tick(); worker.Tick(); }
             // Death movie completes → back to MENU (the frozen-tail context).
-            menu.CompleteDeathMovieIfDone(SimClock.Frame, 0);
+            menu.CompleteCutsceneIfDone(SimClock.Frame + CutsceneTimings.DeathTotal);
             Assert.Equal(WinState.Menu, menu.State);
 
             // Tick well past several 70-frame emit boundaries: nothing must emit.
+            for (int i = 0; i < 210; i++) { SimClock.Tick(); worker.Tick(); }
+
+            Assert.Equal("", File.ReadAllText(path).Trim());
+        } finally {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void Landing_cutscene_state_is_suppressed_from_parity_stream()
+    {
+        // C emits no parity rows during INTRO_Landing (it's a MOVIE_Play, not a Do_Game
+        // tick), so the post-wave HANGAR rows in the bench goldens follow MISSION_N with
+        // no LANDING block. Godot mirrors this by suppressing WinState.Landing — otherwise
+        // the inserted landing phase would add rows C never has and break the exact-diff.
+        var path = Path.GetTempFileName();
+        try {
+            SimClock.ResetForTest();
+            var menu = new MenuStateMachine();
+            menu.EnterMenu(0);
+            menu.CompleteMission(SimClock.Frame);   // → WinState.Landing
+            Assert.Equal(WinState.Landing, menu.State);
+
+            using var worker = new ParityEmitWorker { Menu = menu };
+            worker.Open(path);
+
+            // Several 70-frame emit boundaries elapse while in Landing: nothing must emit.
             for (int i = 0; i < 210; i++) { SimClock.Tick(); worker.Tick(); }
 
             Assert.Equal("", File.ReadAllText(path).Trim());

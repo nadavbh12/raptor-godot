@@ -31,7 +31,7 @@ namespace Raptor.Sim;
 /// </summary>
 public sealed class MenuStateMachine
 {
-    public const int DeathMovieFrames = 574;
+    // Cutscene movie lengths live in CutsceneTimings (shared with the View frame builder).
     // Normal menu has 7 items (indices 0-6): NEW, LOAD, OPTS, ORDER, CREDITS, QUIT, RETURN.
     public const int ItemCount = 7;
     public const int CreditsItemIndex = 4;
@@ -273,8 +273,10 @@ public sealed class MenuStateMachine
         _inSectorSelect = false;
         _options.Close();
         _pilotCreate.ResetStep();
-        _hangar.Position = 1;
-        EnterState(WinState.Hangar, currentFrame, reAnchor: true);
+        // C plays INTRO_Landing (ship lands on base) after each cleared wave
+        // (WINDOWS.C:1863) before the next hangar. The hangar entry is deferred to
+        // CompleteCutsceneIfDone once the landing movie finishes.
+        EnterState(WinState.Landing, currentFrame, reAnchor: true);
     }
 
     public void PlayerDied(int currentFrame)
@@ -286,12 +288,28 @@ public sealed class MenuStateMachine
         EnterState(WinState.Death, currentFrame, reAnchor: true);
     }
 
-    public bool CompleteDeathMovieIfDone(int currentFrame, int deathMovieFrames)
+    /// <summary>
+    /// Advance a finished cutscene to its successor: Death → main menu (INTRO_Death
+    /// returns to WIN_MainMenu), Landing → hangar (the next wave's pre-game hangar).
+    /// Returns true on the frame the transition fires. No-op for non-cutscene states.
+    /// </summary>
+    public bool CompleteCutsceneIfDone(int currentFrame)
     {
-        if (State != WinState.Death) return false;
-        if (currentFrame - StateEnteredFrame < deathMovieFrames) return false;
-        EnterMenu(currentFrame);
-        return true;
+        int elapsed = currentFrame - StateEnteredFrame;
+        switch (State)
+        {
+            case WinState.Death:
+                if (elapsed < CutsceneTimings.DeathTotal) return false;
+                EnterMenu(currentFrame);
+                return true;
+            case WinState.Landing:
+                if (elapsed < CutsceneTimings.LandingTotal) return false;
+                _hangar.Position = 1;
+                EnterState(WinState.Hangar, currentFrame, reAnchor: true);
+                return true;
+            default:
+                return false;
+        }
     }
 
     /// <summary>

@@ -71,16 +71,16 @@ public partial class MenuController : Node
         Menu.EnterMenu(SimClock.Frame);
     }
 
-    // Menu/UI driver: polls SimClock.Frame at render rate for the death-movie/quit
-    // check; never reads `delta`, so it's parity-inert (not in-wave sim).
+    // Menu/UI driver: polls SimClock.Frame at render rate to advance finished cutscenes
+    // (death → menu, landing → hangar); never reads `delta`, so it's parity-inert.
     public override void _Process(double delta)  // LINT-OK: see above — intentional UI _Process.
     {
-        bool deathMovieJustCompleted =
-            Menu.CompleteDeathMovieIfDone(SimClock.Frame, MenuStateMachine.DeathMovieFrames);
+        bool wasDeath = Menu.State == WinState.Death;
+        bool cutsceneJustCompleted = Menu.CompleteCutsceneIfDone(SimClock.Frame);
 
         // Death-wave parity runs: the scenario is over once the death movie returns to
         // MENU — quit rather than idle through the script's trailing `wait`.
-        if (deathMovieJustCompleted && _quitAfterDeath)
+        if (cutsceneJustCompleted && wasDeath && _quitAfterDeath)
             GetTree().Quit();
     }
 }
