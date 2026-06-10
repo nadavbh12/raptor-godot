@@ -197,6 +197,12 @@ public sealed class MenuStateMachine
     public int StateEnteredFrame { get; private set; } = 0;
 
     /// <summary>
+    /// Frame of the last menu activity (input or menu (re)entry). The idle attract loop
+    /// replays once this has been still for <see cref="CutsceneTimings.IdleAttractDelay"/>.
+    /// </summary>
+    public int LastActivityFrame { get; private set; } = 0;
+
+    /// <summary>
     /// Frame at which raptor_parity_game_enter was called.
     /// Used by ParityEmitter to anchor MISSION_* relative fc.
     /// </summary>
@@ -364,6 +370,7 @@ public sealed class MenuStateMachine
         _inWinMsg = false;
         _winMsgText = "";
         _help.ResetTextName();
+        LastActivityFrame = currentFrame;
         EnterState(WinState.Menu, currentFrame, reAnchor: true);
     }
 
@@ -373,6 +380,7 @@ public sealed class MenuStateMachine
     /// </summary>
     public bool HandleInput(string action, int currentFrame)
     {
+        LastActivityFrame = currentFrame;   // any menu input resets the idle attract timer
         switch (State)
         {
             case WinState.Menu:

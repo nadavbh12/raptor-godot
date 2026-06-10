@@ -62,4 +62,8 @@ public static class CutsceneTimings
 
     // Episode 1 ships MAP1G1..MAP9G1; clearing wave 9 ends the episode (C game_wave==dwrap).
     public const int Episode1WaveCount = 9;
+
+    // Idle time on the main menu before the attract loop replays (C WINDOWS.C:108
+    // DEMO_DELAY = 800*5; d_count increments ~once per 70 Hz frame → ~57 s).
+    public const int IdleAttractDelay = 800 * 5;   // 4000
 }

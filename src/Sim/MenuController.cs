@@ -73,13 +73,17 @@ public partial class MenuController : Node
         // node _Ready ordering race — the driver may not have loaded its script yet.
         bool playthroughActive = OS.GetEnvironment("RAPTOR_PLAYTHROUGH") != "";
         bool skipIntroEnv = OS.GetEnvironment("RAPTOR_SKIPINTRO") == "1";
-        if (ShouldPlayStartupIntro(playthroughActive, skipIntroEnv))
+        _attractEnabled = ShouldPlayStartupIntro(playthroughActive, skipIntroEnv);
+        if (_attractEnabled)
             Menu.StartIntro(SimClock.Frame);
         else
             // Enter MENU state immediately — mirrors raptor_parity_set_win_state(1)
             // called right after WIN_MainMenu shows its window.
             Menu.EnterMenu(SimClock.Frame);
     }
+
+    // Interactive run → the startup + idle attract play; playthrough/parity runs disable both.
+    private bool _attractEnabled;
 
     /// <summary>
     /// The startup attract intro plays only on an interactive launch: never when a
@@ -89,8 +93,16 @@ public partial class MenuController : Node
     public static bool ShouldPlayStartupIntro(bool playthroughActive, bool skipIntroEnv)
         => !playthroughActive && !skipIntroEnv;
 
+    /// <summary>
+    /// The idle attract loop replays the intro once the main menu has been idle for
+    /// <see cref="CutsceneTimings.IdleAttractDelay"/> (C WIN_MainAuto / DEMO_DELAY).
+    /// </summary>
+    public static bool ShouldStartIdleAttract(bool attractEnabled, WinState state, int framesIdle)
+        => attractEnabled && state == WinState.Menu && framesIdle >= CutsceneTimings.IdleAttractDelay;
+
     // Menu/UI driver: polls SimClock.Frame at render rate to advance finished cutscenes
-    // (death → menu, landing → hangar); never reads `delta`, so it's parity-inert.
+    // (death → menu, landing → hangar) and to fire the idle attract loop; never reads
+    // `delta`, so it's parity-inert.
     public override void _Process(double delta)  // LINT-OK: see above — intentional UI _Process.
     {
         bool wasDeath = Menu.State == WinState.Death;
@@ -100,5 +112,9 @@ public partial class MenuController : Node
         // MENU — quit rather than idle through the script's trailing `wait`.
         if (cutsceneJustCompleted && wasDeath && _quitAfterDeath)
             GetTree().Quit();
+
+        // Idle main menu → replay the attract (WIN_MainAuto). Interactive only.
+        if (ShouldStartIdleAttract(_attractEnabled, Menu.State, SimClock.Frame - Menu.LastActivityFrame))
+            Menu.StartIntro(SimClock.Frame);
     }
 }

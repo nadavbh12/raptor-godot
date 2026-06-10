@@ -252,6 +252,31 @@ public class MenuStateMachineTests
     }
 
     [Fact]
+    public void Menu_activity_resets_the_idle_attract_timer()
+    {
+        var m = new MenuStateMachine();
+        m.EnterMenu(0);
+        Assert.Equal(0, m.LastActivityFrame);
+
+        m.HandleInput("Down", 50);
+        Assert.Equal(50, m.LastActivityFrame);
+
+        m.EnterMenu(900);                 // returning to the menu (e.g. after attract) restarts it
+        Assert.Equal(900, m.LastActivityFrame);
+    }
+
+    [Fact]
+    public void Idle_attract_starts_only_when_enabled_idle_and_on_main_menu()
+    {
+        int delay = CutsceneTimings.IdleAttractDelay;
+        Assert.Equal(800 * 5, delay);     // C DEMO_DELAY
+        Assert.True(MenuController.ShouldStartIdleAttract(true, WinState.Menu, delay));
+        Assert.False(MenuController.ShouldStartIdleAttract(true, WinState.Menu, delay - 1));   // not idle long enough
+        Assert.False(MenuController.ShouldStartIdleAttract(false, WinState.Menu, delay));      // disabled (playthrough)
+        Assert.False(MenuController.ShouldStartIdleAttract(true, WinState.Hangar, delay));     // not on the main menu
+    }
+
+    [Fact]
     public void Startup_intro_plays_only_in_interactive_runs()
     {
         // Interactive launch (no playthrough, not skipped) → play the attract intro.
