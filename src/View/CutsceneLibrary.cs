@@ -96,9 +96,11 @@ public static class CutsceneLibrary
         List<AgxMovieFrame> frames, string agxRoot, string family,
         int count, int rate, int loops)
     {
+        // rate is fps; the per-frame hold in 70 Hz SimClock ticks is 70/rate (GFX_WaitUpdate).
+        int hold = CutsceneTimings.Hold(rate);
         for (int loop = 0; loop < loops; loop++)
             for (int i = 0; i < count; i++)
                 frames.Add(new AgxMovieFrame(
-                    Path.Combine(agxRoot, $"{family}_{i:D2}.png"), rate));
+                    Path.Combine(agxRoot, $"{family}_{i:D2}.png"), hold));
     }
 }

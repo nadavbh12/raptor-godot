@@ -42,17 +42,23 @@ public class CutsceneTests
 
     // ---- CutsceneTimings (Sim-side totals) ----
 
+    // Per-frame hold = 70/framerate ticks (GFX_WaitUpdate: count = 70/count at 70 Hz);
+    // framerate is fps, NOT the hold count.
+
     [Fact]
-    public void Death_total_matches_legacy_574()
+    public void Death_total_uses_70_over_framerate_holds()
     {
-        Assert.Equal(574, CutsceneTimings.DeathTotal);
+        // air 30 @ (70/11=6) + ground 6 @ (70/3=23) ×8 loops + 100 fade.
+        Assert.Equal(30 * (70 / 11) + 6 * (70 / 3) * 8 + 100, CutsceneTimings.DeathTotal);
+        Assert.Equal(1384, CutsceneTimings.DeathTotal);
     }
 
     [Fact]
     public void Landing_total_is_content_plus_fade()
     {
-        // 33 LANDING frames held 10 ticks each + 64-step trailing fade (INTRO_Landing).
-        Assert.Equal(33 * 10 + 64, CutsceneTimings.LandingTotal);
+        // 33 LANDING frames held 70/10=7 ticks each + 64 trailing fade (INTRO_Landing @10 fps).
+        Assert.Equal(33 * (70 / 10) + 64, CutsceneTimings.LandingTotal);
+        Assert.Equal(295, CutsceneTimings.LandingTotal);
     }
 
     // ---- AgxMovie totality + total accounting ----
@@ -75,7 +81,7 @@ public class CutsceneTests
         Assert.EndsWith("LANDING_AGX_00.png", f0.Path);
         Assert.Equal(1f, a0);
 
-        Assert.True(m.TrySelectFrame(10, out var f1, out _));     // second frame at rate 10
+        Assert.True(m.TrySelectFrame(70 / 10, out var f1, out _));   // second frame after a 7-tick hold
         Assert.EndsWith("LANDING_AGX_01.png", f1.Path);
 
         // Inside the trailing fade window: last frame, alpha < 1.
@@ -97,7 +103,7 @@ public class CutsceneTests
 
         Assert.Equal(33, m.Frames.Count);
         Assert.EndsWith("LANDING_AGX_00.png", m.Frames[0].Path);
-        Assert.Equal(10, m.Frames[0].DurationFrames);
+        Assert.Equal(70 / 10, m.Frames[0].DurationFrames);   // 7-tick hold @ 10 fps
         Assert.EndsWith("LANDING_AGX_32.png", m.Frames[^1].Path);
         Assert.Equal(64, m.FadeOutFrames);
         Assert.Equal(CutsceneTimings.LandingTotal, m.TotalFrames);
@@ -113,10 +119,10 @@ public class CutsceneTests
 
         Assert.Equal(78, m.Frames.Count);  // 30 air + 6 ground × 8 loops
         Assert.EndsWith("DOWN_AGX_00.png", m.Frames[0].Path);
-        Assert.Equal(11, m.Frames[0].DurationFrames);
+        Assert.Equal(70 / 11, m.Frames[0].DurationFrames);    // 6-tick hold @ 11 fps
         Assert.EndsWith("DOWN_AGX_29.png", m.Frames[29].Path);
         Assert.EndsWith("SDEATH_AGX_00.png", m.Frames[30].Path);
-        Assert.Equal(3, m.Frames[30].DurationFrames);
+        Assert.Equal(70 / 3, m.Frames[30].DurationFrames);    // 23-tick hold @ 3 fps
         Assert.EndsWith("SDEATH_AGX_05.png", m.Frames[^1].Path);
         Assert.Equal(CutsceneTimings.DeathTotal, m.TotalFrames);
         Assert.All(m.Frames.Select(f => f.Path).Distinct(), p => Assert.True(File.Exists(p), p));
@@ -130,9 +136,9 @@ public class CutsceneTests
         var m = CutsceneLibrary.Death(AgxRoot());
 
         Assert.True(m.TrySelectFrame(0, out var first, out _));
-        Assert.True(m.TrySelectFrame(10, out var stillFirst, out _));
-        Assert.True(m.TrySelectFrame(11, out var second, out _));
-        Assert.True(m.TrySelectFrame(330, out var firstGround, out _));
+        Assert.True(m.TrySelectFrame(5, out var stillFirst, out _));         // within the 6-tick hold
+        Assert.True(m.TrySelectFrame(70 / 11, out var second, out _));       // next frame at 6
+        Assert.True(m.TrySelectFrame(30 * (70 / 11), out var firstGround, out _));  // after 30 air frames
 
         Assert.EndsWith("DOWN_AGX_00.png", first.Path);
         Assert.Equal(first.Path, stillFirst.Path);
@@ -159,21 +165,23 @@ public class CutsceneTests
     [Fact]
     public void PlayMain_total_sums_attract_segments_plus_explosion_fade()
     {
-        // City 30@8 + Side1 20@18×2 + Pilot 21@10 + Side2(SHIPSD1+SHIPSD2 20@18) + Explo 22@12 + fade 60.
-        int expected = 30 * 8 + 20 * 18 * 2 + 21 * 10 + 20 * 18 + 20 * 18 + 22 * 12 + 60;
-        Assert.Equal(2214, expected);
+        // Holds = 70/fps: City 30@(70/8) + Side1 20@(70/18)×2 + Pilot 21@(70/10)
+        // + Side2(SHIPSD1+SHIPSD2 20@(70/18)) + Explo 22@(70/12) + 60 fade.
+        int expected = 30 * (70 / 8) + 20 * (70 / 18) * 2 + 21 * (70 / 10)
+                     + 20 * (70 / 18) + 20 * (70 / 18) + 22 * (70 / 12) + 60;
+        Assert.Equal(797, expected);
         Assert.Equal(expected, CutsceneTimings.PlayMainTotal);
     }
 
     [Fact]
     public void Logos_and_playmain_compose_the_full_startup_intro_total()
     {
-        // INTRO_Credits (APOGEE 30×4 + CYGNUS 65×3 = 315) then INTRO_PlayMain (2214).
+        // INTRO_Credits (APOGEE 30×4 + CYGNUS 65×3 = 315, explicit tick loops) then INTRO_PlayMain.
         Assert.Equal(30 * 4, CutsceneTimings.ApogeeHold);
         Assert.Equal(65 * 3, CutsceneTimings.CygnusHold);
         Assert.Equal(315, CutsceneTimings.LogosTotal);
         Assert.Equal(CutsceneTimings.LogosTotal + CutsceneTimings.PlayMainTotal, CutsceneTimings.IntroTotal);
-        Assert.Equal(2529, CutsceneTimings.IntroTotal);
+        Assert.Equal(1112, CutsceneTimings.IntroTotal);
     }
 
     [Fact]
@@ -184,9 +192,9 @@ public class CutsceneTests
         // 30 city + 40 side1(×2) + 21 pilot + 20 side2a + 20 side2b + 22 explosion = 153 frames.
         Assert.Equal(153, m.Frames.Count);
         Assert.EndsWith("CHASE_AGX_00.png", m.Frames[0].Path);
-        Assert.Equal(8, m.Frames[0].DurationFrames);
+        Assert.Equal(70 / 8, m.Frames[0].DurationFrames);            // 8-tick hold @ 8 fps
         Assert.EndsWith("SHIPSD1_AGX_00.png", m.Frames[30].Path);   // Side1 loop 1
-        Assert.Equal(18, m.Frames[30].DurationFrames);
+        Assert.Equal(70 / 18, m.Frames[30].DurationFrames);          // 3-tick hold @ 18 fps
         Assert.EndsWith("SHIPSD1_AGX_00.png", m.Frames[50].Path);   // Side1 loop 2
         Assert.EndsWith("PILOT_AGX_00.png", m.Frames[70].Path);
         Assert.EndsWith("SHIPSD1_AGX_00.png", m.Frames[91].Path);   // Side2a
@@ -203,10 +211,11 @@ public class CutsceneTests
     [Fact]
     public void Victory_total_is_game1end_content_plus_landing()
     {
-        // INTRO_Game1End: 5 frames @4, MOVIE_Play loops=8 → 160 content; then INTRO_Landing
-        // (330 content + 64 fade). The Game1End trailing fadeout is folded into the cut.
-        Assert.Equal(5 * 4 * 8, CutsceneTimings.Game1EndContent);
-        Assert.Equal(5 * 4 * 8 + 33 * 10 + 64, CutsceneTimings.VictoryTotal);
+        // INTRO_Game1End: 5 frames @ (70/4=17), MOVIE_Play loops=8 → 680 content; then
+        // INTRO_Landing (33 @ (70/10=7) = 231 + 64 fade). Game1End fadeout folded into the cut.
+        Assert.Equal(5 * (70 / 4) * 8, CutsceneTimings.Game1EndContent);
+        Assert.Equal(5 * (70 / 4) * 8 + 33 * (70 / 10) + 64, CutsceneTimings.VictoryTotal);
+        Assert.Equal(975, CutsceneTimings.VictoryTotal);
     }
 
     [Fact]
@@ -217,7 +226,7 @@ public class CutsceneTests
         // 5 game1end × 8 loops + 33 landing = 73 frames.
         Assert.Equal(40 + 33, m.Frames.Count);
         Assert.EndsWith("GAME1END_AGX_00.png", m.Frames[0].Path);
-        Assert.Equal(4, m.Frames[0].DurationFrames);
+        Assert.Equal(70 / 4, m.Frames[0].DurationFrames);   // 17-tick hold @ 4 fps
         Assert.EndsWith("GAME1END_AGX_00.png", m.Frames[5].Path);   // loop 2 of game1end
         Assert.EndsWith("LANDING_AGX_00.png", m.Frames[40].Path);   // landing starts after 8 loops
         Assert.EndsWith("LANDING_AGX_32.png", m.Frames[^1].Path);
