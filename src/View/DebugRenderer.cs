@@ -704,6 +704,9 @@ public partial class DebugRenderer : Node2D
         if (missionFadeBlack > 0f)
             DrawRect(new Rect2(0, 0, 320, 200), new Color(0, 0, 0, missionFadeBlack));
 
+        if (_menu?.AbortPromptActive == true)
+            _menuRenderer.DrawAbortPrompt(_menu, _menuHost);
+
         RecordDrawnState();
     }
 

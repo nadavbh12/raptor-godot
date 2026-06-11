@@ -222,6 +222,14 @@ internal sealed class MenuRenderer
         }
     }
 
+    /// <summary>Draw the "Abort Mission ?" prompt over an arbitrary host (the frozen
+    /// in-game playfield). Reuses the menu AskBool overlay.</summary>
+    public void DrawAbortPrompt(MenuStateMachine menu, IHost host)
+    {
+        _host = host;
+        DrawAskBoolOverlay(menu);
+    }
+
     private void DrawAskBoolOverlay(MenuStateMachine menu)
     {
         var swd = _host.LoadSwd("ASK_SWD");
