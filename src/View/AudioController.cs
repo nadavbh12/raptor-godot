@@ -51,6 +51,13 @@ public partial class AudioController : Node
             _menu = menu.Menu;
 
         SoundEmitter.Sink = Play;
+        SoundEmitter.StopAllSink = StopAllSfx;
+    }
+
+    private void StopAllSfx()
+    {
+        foreach (var p in _players)
+            p.Stop();
     }
 
     public override void _Process(double delta)
@@ -64,6 +71,8 @@ public partial class AudioController : Node
         // Don't leave a freed callback installed if the tree tears down.
         if (SoundEmitter.Sink == Play)
             SoundEmitter.Sink = null;
+        if (SoundEmitter.StopAllSink == StopAllSfx)
+            SoundEmitter.StopAllSink = null;
     }
 
     private void Play(SoundEmitter.SoundEvent ev)

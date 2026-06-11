@@ -52,6 +52,7 @@ public partial class InteractiveInputController : Node
             if (_menuController?.Menu.State == WinState.Intro)
             {
                 _menuController.Menu.SkipCutscene(SimClock.Frame);
+                SoundEmitter.StopAll();   // cut the attract SFX so it doesn't bleed into the menu
                 GetViewport().SetInputAsHandled();
                 return;
             }

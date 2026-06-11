@@ -39,4 +39,14 @@ public static class SoundEmitter
 
     /// <summary>Emit a positional sound (explosions, enemy shots).</summary>
     public static void Emit(string label, int x, int y) => Sink?.Invoke(new SoundEvent(label, x, y));
+
+    /// <summary>
+    /// Installed by the View's AudioController to stop all in-flight SFX voices. Used to
+    /// cut a cutscene's lingering sound (the intro's final explosion) when it transitions
+    /// out, so the tail doesn't bleed into the next screen. Null headless / before a View.
+    /// </summary>
+    public static Action? StopAllSink;
+
+    /// <summary>Stop all currently-playing sound effects (no-op headless / before any View).</summary>
+    public static void StopAll() => StopAllSink?.Invoke();
 }

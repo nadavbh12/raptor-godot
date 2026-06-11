@@ -108,6 +108,11 @@ public partial class MenuController : Node
         bool wasDeath = Menu.State == WinState.Death;
         bool cutsceneJustCompleted = Menu.CompleteCutsceneIfDone(SimClock.Frame);
 
+        // Cut any lingering cutscene SFX (e.g. the intro's final explosion) so its tail
+        // doesn't bleed into the menu/hangar the cutscene transitions to.
+        if (cutsceneJustCompleted)
+            SoundEmitter.StopAll();
+
         // Death-wave parity runs: the scenario is over once the death movie returns to
         // MENU — quit rather than idle through the script's trailing `wait`.
         if (cutsceneJustCompleted && wasDeath && _quitAfterDeath)
