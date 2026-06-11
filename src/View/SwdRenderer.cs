@@ -162,21 +162,19 @@ internal sealed class SwdRenderer
 
     private static void DrawButton(IHost host, SwdWindow.Field f, int sx, int sy, bool selected)
     {
-        // Background sprite (STEXTURE_PIC, MENUn_PIC, etc.). picflag values
-        // 0=FILL, 2=PICTURE — the read-path just blits the item; INVISABLE
-        // (4) skips it entirely.
-        // The LOAD-window buttons (DELETE/CANCEL/LOAD) reference an UNNAMED GLB item
-        // (FILE0001.INC has no #define for it), so the extractor left f.ItemName
-        // empty even though they DO have a button face (f.Item != 0). Without a name
-        // they rendered as bare text. Fall back to the shared small button texture
-        // STEXTURE_PIC — the same face ASKDIFF and other SWD buttons use — so they
-        // render as proper beveled buttons. Text-overlay buttons whose face is baked
-        // into the window art (e.g. the hangar's) carry f.Item == 0 and stay text-only.
-        string buttonFace = !string.IsNullOrEmpty(f.ItemName) ? f.ItemName
-            : (f.Item != 0 ? "STEXTURE_PIC" : "");
-        if (f.PicFlag != 4 && !string.IsNullOrEmpty(buttonFace))
+        // Button face. INVISABLE (picflag 4) draws nothing. A named item blits its
+        // sprite (ASKDIFF buttons → STEXTURE_PIC; the LOAD arrows → NEXT/PREV_PIC).
+        // FILL buttons (picflag 0) carry a button-face item that is UNNAMED in the GLB
+        // (FILE0001.INC has no #define), so f.ItemName is empty though f.Item != 0 —
+        // the LOAD-window DELETE/CANCEL/LOAD. There is no palette LUT for the field
+        // colour and STEXTURE_PIC is a dark tile, so render those as a neutral raised
+        // face (solid mid-grey + bevel) instead of bare text. Text-overlay buttons
+        // whose face is baked into the window art (the hangar's) carry f.Item == 0
+        // and draw no face.
+        bool drewFace = false;
+        if (f.PicFlag != 4 && !string.IsNullOrEmpty(f.ItemName))
         {
-            var bg = host.LoadSprite(buttonFace);
+            var bg = host.LoadSprite(f.ItemName);
             if (bg != null)
             {
                 int tw = bg.GetWidth(), th = bg.GetHeight();
@@ -193,15 +191,25 @@ internal sealed class SwdRenderer
                             new Rect2(0, 0, srcW, srcH), mod);
                     }
                 }
-
-                // SWD_ShadeButton(NORMAL) — raised-button bevel. C ranges
-                // shadeline positions match the source exactly so 1-pixel
-                // edges land where they do in the C build.
-                host.DrawCanvasRect(new Rect2(sx + 1, sy,            f.Lx - 1, 1), LineLight);
-                host.DrawCanvasRect(new Rect2(sx + f.Lx - 1, sy + 1, 1, f.Ly - 2), LineLight);
-                host.DrawCanvasRect(new Rect2(sx,     sy + f.Ly - 1, f.Lx,     1), LineDark);
-                host.DrawCanvasRect(new Rect2(sx,     sy,            1, f.Ly - 1), LineDark);
+                drewFace = true;
             }
+        }
+        else if (f.PicFlag != 4 && f.Item != 0)
+        {
+            // Unnamed button face → neutral raised grey, readable under the dark label.
+            var face = selected ? new Color(0.74f, 0.74f, 0.74f) : new Color(0.60f, 0.60f, 0.60f);
+            host.DrawCanvasRect(new Rect2(sx, sy, f.Lx, f.Ly), face);
+            drewFace = true;
+        }
+
+        if (drewFace)
+        {
+            // SWD_ShadeButton(NORMAL) — raised-button bevel. C shadeline positions
+            // match the source so 1-pixel edges land where they do in the C build.
+            host.DrawCanvasRect(new Rect2(sx + 1, sy,            f.Lx - 1, 1), LineLight);
+            host.DrawCanvasRect(new Rect2(sx + f.Lx - 1, sy + 1, 1, f.Ly - 2), LineLight);
+            host.DrawCanvasRect(new Rect2(sx,     sy + f.Ly - 1, f.Lx,     1), LineDark);
+            host.DrawCanvasRect(new Rect2(sx,     sy,            1, f.Ly - 1), LineDark);
         }
 
         // Overlay the button's text label. C centers via SWD_PutField
