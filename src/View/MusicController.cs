@@ -35,6 +35,12 @@ public partial class MusicController : Node
     private string? _current;
     private readonly Dictionary<string, AudioStream?> _cache = new();
 
+    // Music sits this far below digital full at slider max. C plays music at full
+    // (opt_vol=127 → 0 dB), which blasted over the already-trimmed SFX and made the
+    // game very loud overall. Trim it so full-slider music isn't at 0 dBFS; the
+    // options "music volume" slider still scales below this.
+    private const float MusicTrimDb = -10f;
+
     public override void _Ready()
     {
         // Headless = parity/CI/test runs: no music, no AudioServer/filesystem.
@@ -58,7 +64,7 @@ public partial class MusicController : Node
             return;
 
         // Drive the Music bus from the in-game options "music volume" slider.
-        AudioBus.SetVolume("Music", _menu?.OptionMusicVolume ?? 127, 0f);
+        AudioBus.SetVolume("Music", _menu?.OptionMusicVolume ?? 127, MusicTrimDb);
 
         string? want = DesiredTrack();
         if (want == _current)

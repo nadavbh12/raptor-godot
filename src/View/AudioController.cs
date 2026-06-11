@@ -20,8 +20,9 @@ public partial class AudioController : Node
     private const int PoolSize = 16;
     // SFX sit this far below digital full at slider max, so the rapid gun (peaks
     // near 0 dBFS, and stacking on the voice pool) doesn't blast. The options FX
-    // slider scales below this.
-    private const float SfxTrimDb = -12f;
+    // slider scales below this. Lowered from -12 to -15 to bring the overall game
+    // volume down (paired with the new Music trim) — the game was too loud.
+    private const float SfxTrimDb = -15f;
 
     private SfxBank? _bank;
     private AudioStreamPlayer[] _players = Array.Empty<AudioStreamPlayer>();
