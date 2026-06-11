@@ -151,6 +151,11 @@ public sealed class MenuStateMachine
     /// pilot resumes mid-campaign. Null on headless/no-WaveController paths (→ 0).</summary>
     public System.Func<int>? GetCampaignWaveZeroBased { get; set; }
 
+    /// <summary>Live accessor for the player difficulty (DIFF_0..3). MenuController._Ready
+    /// wires it to WaveController.CurPlayerDiff; the save path persists it into
+    /// diff[cur_game]. Null on headless paths (→ legacy: difficulty not written).</summary>
+    public System.Func<int>? GetPlayerDiff { get; set; }
+
     public WinState State { get; private set; } = WinState.Unknown;
 
     /// <summary>
@@ -816,8 +821,10 @@ public sealed class MenuStateMachine
         int idPic = IdPic;
         uint score = GetScore?.Invoke() ?? 0;   // live run score (was hardcoded 0)
         int gameWave = GetCampaignWaveZeroBased?.Invoke() ?? 0;  // persist campaign progress
+        int playerDiff = GetPlayerDiff?.Invoke() ?? -1;          // -1 = not wired → legacy zero diff
+        Inventory inventory = Inventory;                         // persist owned weapons/items + sweapon
         _askBoolOnYes = () => PilotSaveStore.Save(saveDir, name, callsign, idPic: idPic, score: score,
-            curGame: 0, gameWave: gameWave);
+            inventory: inventory, curGame: 0, gameWave: gameWave, playerDiff: playerDiff);
         _inAskBool = true;
     }
 

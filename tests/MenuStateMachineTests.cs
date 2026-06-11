@@ -1336,6 +1336,37 @@ public class MenuStateMachineTests
     }
 
     [Fact]
+    public void Hangar_save_persists_inventory_and_difficulty()
+    {
+        // The menu save path must persist the live inventory + difficulty (C writes
+        // the whole PLAYEROBJ). Previously it saved neither: a loaded pilot lost its
+        // gear and reset to DIFF_0. MenuController wires Inventory + GetPlayerDiff;
+        // emulate that here, then drive the save and assert the round-trip.
+        var m = HangarReadyMachineWithSaveDir(out var dir);
+        using (dir)
+        {
+            m.Inventory.Load(ObjType.ForwardGuns, 1, true);
+            m.Inventory.Load(ObjType.MiniGun,     1, true);
+            m.Inventory.Load(ObjType.MegaBomb,    4, false);
+            m.Inventory.EquippedSpecial = ObjType.MiniGun;
+            m.GetPlayerDiff = () => 3;   // DIFF_3 (elite)
+
+            m.HandleInput("F2", 100);     // open save prompt
+            m.HandleInput("Return", 101); // confirm YES → write the file
+
+            var saved = PilotSaveStore.LoadAll(dir.Path);
+            Assert.Single(saved);
+            Assert.Equal(3, saved[0].Diff[0]);   // difficulty persisted
+
+            var inv = PilotSaveStore.LoadInventory(saved[0].FilePath);
+            Assert.True(inv.IsEquip(ObjType.ForwardGuns));
+            Assert.True(inv.IsEquip(ObjType.MiniGun));
+            Assert.Equal(4, inv.GetAmt(ObjType.MegaBomb));
+            Assert.Equal(ObjType.MiniGun, inv.EquippedSpecial);
+        }
+    }
+
+    [Fact]
     public void Lowercase_s_in_hangar_opens_save_prompt()
     {
         var m = HangarReadyMachineWithSaveDir(out var dir);

@@ -246,6 +246,10 @@ public partial class WaveController : Node
     private int _curDiff = EB_EASY_LEVEL | EB_MED_LEVEL;   // 24
     private int _curPlayerDiff = 2;
 
+    /// <summary>The live player difficulty (DIFF_0..3, = C plr.diff[cur_game]).
+    /// Read by the save path to persist it so a loaded pilot keeps its difficulty.</summary>
+    public int CurPlayerDiff => _curPlayerDiff;
+
     /// <summary>
     /// Enemy-spawn level mask for a player difficulty (DIFF_0..DIFF_3). Mirrors
     /// RAP_SetPlayerDiff (LOADSAVE.C): DIFF_0/1 → EASY tier only, DIFF_2 →

@@ -52,6 +52,8 @@ public partial class MenuController : Node
             Menu.SetScore = wave.SetScore;
             // Save persists the campaign wave; load restores it (see OnPilotLoaded).
             Menu.GetCampaignWaveZeroBased = () => wave.CampaignWaveZeroBased;
+            // Save persists the live difficulty into diff[cur_game]; OnPilotLoaded restores it.
+            Menu.GetPlayerDiff = () => wave.CurPlayerDiff;
 
             Menu.OnPilotLoaded += pilot =>
             {

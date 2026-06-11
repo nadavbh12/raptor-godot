@@ -53,7 +53,7 @@ public static class PilotSaveStore
     /// legacy byte layout (sweapon=0) for existing inventory-less callers.
     /// </summary>
     public static int Save(string directory, string name, string callsign, int idPic, uint score,
-        Inventory? inventory = null, int curGame = 0, int gameWave = 0)
+        Inventory? inventory = null, int curGame = 0, int gameWave = 0, int playerDiff = -1)
     {
         Directory.CreateDirectory(directory);
         int slot = NextAvailableSlot(directory);
@@ -80,6 +80,13 @@ public static class PilotSaveStore
         int g = curGame < 0 ? 0 : (curGame > 2 ? 2 : curGame);
         BitConverter.GetBytes(g).CopyTo(header, 44);
         BitConverter.GetBytes(gameWave).CopyTo(header, 48 + g * 4);
+
+        // Player difficulty (C plr.diff[cur_game], header offset 64 + g*4). Written only
+        // when playerDiff >= 0 (clamped 0..3); the -1 default leaves diff[*] zero-filled
+        // so legacy callers keep the exact prior byte layout. Godot models episode 1
+        // only, so the other diff slots stay zero.
+        if (playerDiff >= 0)
+            BitConverter.GetBytes(playerDiff > 3 ? 3 : playerDiff).CopyTo(header, 64 + g * 4);
 
         // sweapon @ offset 40: only written when an inventory is provided.
         // (int)EquippedSpecial, or -1 (C EMPTY) when no special is equipped.

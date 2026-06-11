@@ -115,6 +115,32 @@ public class PilotSaveStoreTests
     }
 
     [Fact]
+    public void Save_persists_player_difficulty_into_cur_game_slot()
+    {
+        // C RAP_SavePlayer writes the whole PLAYEROBJ → plr.diff[cur_game] persists.
+        // Save must write diff[cur_game] so a loaded pilot keeps its difficulty
+        // (was zero-filled → every loaded pilot defaulted to DIFF_0 / training).
+        using var dir = new TempDir();
+        PilotSaveStore.Save(dir.Path, name: "ELITE", callsign: "EL", idPic: 0, score: 0,
+            curGame: 0, playerDiff: 3);
+
+        var p = PilotSaveStore.LoadAll(dir.Path)[0];
+        Assert.Equal(3, p.Diff[0]);   // DIFF_3 round-trips into diff[cur_game]
+    }
+
+    [Fact]
+    public void Save_without_difficulty_keeps_legacy_zero_diff()
+    {
+        // Default playerDiff (-1, "not set") must leave diff[*] all zero — the exact
+        // legacy byte layout existing callers rely on.
+        using var dir = new TempDir();
+        PilotSaveStore.Save(dir.Path, name: "NODIFF", callsign: "ND", idPic: 0, score: 0);
+
+        var p = PilotSaveStore.LoadAll(dir.Path)[0];
+        Assert.Equal(new[] { 0, 0, 0, 0 }, p.Diff);
+    }
+
+    [Fact]
     public void Save_assigns_next_available_slot()
     {
         using var dir = new TempDir();
