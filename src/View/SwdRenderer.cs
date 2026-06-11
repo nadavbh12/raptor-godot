@@ -165,9 +165,18 @@ internal sealed class SwdRenderer
         // Background sprite (STEXTURE_PIC, MENUn_PIC, etc.). picflag values
         // 0=FILL, 2=PICTURE — the read-path just blits the item; INVISABLE
         // (4) skips it entirely.
-        if (f.PicFlag != 4 && !string.IsNullOrEmpty(f.ItemName))
+        // The LOAD-window buttons (DELETE/CANCEL/LOAD) reference an UNNAMED GLB item
+        // (FILE0001.INC has no #define for it), so the extractor left f.ItemName
+        // empty even though they DO have a button face (f.Item != 0). Without a name
+        // they rendered as bare text. Fall back to the shared small button texture
+        // STEXTURE_PIC — the same face ASKDIFF and other SWD buttons use — so they
+        // render as proper beveled buttons. Text-overlay buttons whose face is baked
+        // into the window art (e.g. the hangar's) carry f.Item == 0 and stay text-only.
+        string buttonFace = !string.IsNullOrEmpty(f.ItemName) ? f.ItemName
+            : (f.Item != 0 ? "STEXTURE_PIC" : "");
+        if (f.PicFlag != 4 && !string.IsNullOrEmpty(buttonFace))
         {
-            var bg = host.LoadSprite(f.ItemName);
+            var bg = host.LoadSprite(buttonFace);
             if (bg != null)
             {
                 int tw = bg.GetWidth(), th = bg.GetHeight();
