@@ -660,11 +660,29 @@ public sealed class MenuStateMachine
                 OpenAskBoolQuit();
                 return true;
             }
-            // RETURN: stub (only reachable when InGame).
+            if (CurrentItem == ReturnItemIndex && CampaignActive)
+            {
+                // C MAIN_RETURN (WINDOWS.C:2178) → menu_exit → WIN_Hangar.
+                // menu_exit sets hangto = HANGTOSTORE → SUPPLIES (pos 1), matching
+                // ApplyLoadedPilot / pilot-create.
+                _hangar.Position = 1;
+                EnterState(WinState.Hangar, currentFrame, reAnchor: true);
+                return true;
+            }
             return false;
         }
         if (action == "Escape")
         {
+            if (CampaignActive)
+            {
+                // C WINDOWS.C:2112: KBD_Key(SC_ESC) && ingameflag → menu_exit → hangar.
+                // menu_exit sets hangto = HANGTOSTORE → SUPPLIES (pos 1), matching
+                // ApplyLoadedPilot / pilot-create.
+                _hangar.Position = 1;
+                EnterState(WinState.Hangar, currentFrame, reAnchor: true);
+                return true;
+            }
+            // No campaign: existing reset-to-clean-menu recovery (commit 3048975).
             _hangar.Position = 2;
             EnterMenu(currentFrame);
             return true;

@@ -1533,4 +1533,53 @@ public class MenuStateMachineTests
             MenuStateMachine.VisibleCount(active)
                 == (active ? MenuStateMachine.ItemCount : MenuStateMachine.ItemCount - 1));
     }
+
+    // -------------------------------------------------------------------------
+    // Task 2: MAIN_RETURN + main-menu Esc resume to Hangar during campaign
+    // (C WINDOWS.C:2112 KBD_Key(SC_ESC)&&ingameflag→menu_exit, :2178 MAIN_RETURN)
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void RETURN_item_resumes_to_Hangar_when_campaign_active()
+    {
+        var m = new MenuStateMachine();
+        m.EnterMenu(0);
+        m.SetCampaignActiveForTest(true);
+        m.CurrentItemForTest = MenuStateMachine.ReturnItemIndex;
+        m.HandleInput("Return", 100);
+        Assert.Equal(WinState.Hangar, m.State);
+    }
+
+    [Fact]
+    public void MainMenu_Escape_resumes_to_Hangar_when_campaign_active()
+    {
+        var m = new MenuStateMachine();
+        m.EnterMenu(0);
+        m.SetCampaignActiveForTest(true);
+        m.HandleInput("Escape", 100);
+        Assert.Equal(WinState.Hangar, m.State);
+    }
+
+    [Fact]
+    public void MainMenu_Escape_resets_to_clean_menu_when_no_campaign()
+    {
+        var m = new MenuStateMachine();
+        m.EnterMenu(0);                       // CampaignActive == false
+        m.HandleInput("Escape", 100);
+        Assert.Equal(WinState.Menu, m.State); // existing recovery behavior preserved
+    }
+
+    [Fact]
+    public void Credits_Escape_during_campaign_is_not_hijacked_to_hangar()
+    {
+        var m = new MenuStateMachine();
+        m.EnterMenu(0);
+        m.SetCampaignActiveForTest(true);
+        m.CurrentItemForTest = MenuStateMachine.CreditsItemIndex;
+        m.HandleInput("Return", 0);           // → Credits
+        Assert.Equal(WinState.Credits, m.State);
+        m.HandleInput("Escape", 0);           // Credits Esc goes to its own branch, not HandleMenuInput
+        Assert.NotEqual(WinState.Hangar, m.State);   // the new CampaignActive Esc must NOT hijack this
+        Assert.Equal(WinState.Unknown, m.State);     // existing Credits-exit destination, unchanged
+    }
 }
