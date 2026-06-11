@@ -239,6 +239,13 @@ public sealed class MenuStateMachine
     /// </summary>
     public event Action<int>? OnGameEnter;   // arg: gameNum (0=Mission1)
 
+    /// <summary>Fired when the player confirms YES on the mid-wave "Abort Mission ?" prompt.
+    /// WaveController subscribes to restore the wave-start score and complete the mission.
+    /// Invocation site added in the abort-prompt UI task (Task 5).</summary>
+#pragma warning disable CS0067  // event declared here; raised by the abort-prompt UI (Task 5)
+    public event System.Action? OnAbortMission;
+#pragma warning restore CS0067
+
     /// <summary>The highlighted index C's active_field-1 reports for the
     /// currently-active menu window. Per-screen so menu-event parity holds
     /// outside the main menu. Exact per-screen alignment to the C goldens is

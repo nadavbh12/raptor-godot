@@ -199,6 +199,10 @@ public partial class WaveController : Node
     public IReadOnlyList<PlayerShooter.MuzzlePos> MuzzlesThisTick => Shooter.Muzzles;
     public  uint           Score { get; private set; } = 0;
 
+    // Score the player brought into the current wave (C start_score, RAP.C:883).
+    // Snapshotted at game-enter; restored on a mid-wave abort.
+    private uint _waveStartScore;
+
     /// <summary>Forcibly set the score (e.g. when loading a saved pilot).
     /// Bypasses the normal incremental score-from-enemy-kills path.</summary>
     public void SetScore(uint score) => Score = score;
@@ -511,8 +515,9 @@ public partial class WaveController : Node
         if (menuController != null)
         {
             _menu = menuController.Menu;
-            _menu.OnPilotCreated += OnPilotCreated;
-            _menu.OnGameEnter    += OnGameEnter;
+            _menu.OnPilotCreated  += OnPilotCreated;
+            _menu.OnGameEnter     += OnGameEnter;
+            _menu.OnAbortMission  += AbortMission;
         }
 
         // Found only when running under a parity playthrough; PhaseInput uses
@@ -573,6 +578,7 @@ public partial class WaveController : Node
 
     private void OnGameEnter(int gameNum)
     {
+        _waveStartScore = Score;
         // Defer the iter-0 body and wave activation by LoadCompFrames.
         // Concrete setup happens in _PhysicsProcess once the deferred frame
         // arrives. See LoadCompFrames docs for the C-side rationale.
@@ -602,6 +608,26 @@ public partial class WaveController : Node
     {
         if (int.TryParse(env, out int w) && w >= 1 && w <= 9) return w;
         return defaultWave;
+    }
+
+    /// <summary>
+    /// The score after a mid-wave abort: the wave-start score, discarding anything
+    /// earned during the wave (C RAP.C:1197 plr.score = start_score). <paramref name="currentScore"/>
+    /// is taken only to make the discard explicit and testable.
+    /// </summary>
+    internal static uint ScoreOnAbort(uint waveStartScore, uint currentScore) => waveStartScore;
+
+    /// <summary>
+    /// Mid-wave abort confirmed (YES on "Abort Mission ?"). Mirrors the normal
+    /// mission-complete path: stop the wave, then complete it as a non-final wave so
+    /// the landing cinematic plays → hangar (same wave replays). Restores the
+    /// wave-start score first (C abort restores start_score).
+    /// </summary>
+    internal void AbortMission()
+    {
+        _waveActive = false;
+        Score = ScoreOnAbort(_waveStartScore, Score);
+        _menu?.CompleteMission(SimClock.Frame, finalWave: false);
     }
 
     /// <summary>

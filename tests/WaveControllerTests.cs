@@ -1,4 +1,7 @@
 using System.Collections.Generic;
+using FsCheck;
+using FsCheck.Fluent;
+using FsCheck.Xunit;
 using Raptor.Sim;
 using Raptor.Sim.Bullet;
 using Raptor.Sim.Enemy;
@@ -488,6 +491,21 @@ public class WaveControllerTests
         foreach (var e in explosions)
             if (e.ExpType == expType) count++;
         return count;
+    }
+
+    [Fact]
+    public void ScoreOnAbort_returns_wave_start_score_discarding_earned()
+    {
+        Assert.Equal(10000u, WaveController.ScoreOnAbort(waveStartScore: 10000u, currentScore: 25000u));
+    }
+
+    [Property]
+    public Property ScoreOnAbort_always_restores_wave_start_score()
+    {
+        // Property "Score restore": after abort, Score == wave-start score, regardless
+        // of whatever was earned during the wave (currentScore). Domain: WaveController abort path.
+        return Prop.ForAll<uint, uint>((waveStart, current) =>
+            WaveController.ScoreOnAbort(waveStart, current) == waveStart);
     }
 
     [Theory]
