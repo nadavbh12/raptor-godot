@@ -53,7 +53,21 @@ public sealed class MenuStateMachine
     /// cold launch and after a clean menu return, navigation wraps over
     /// 6 items (NEW..QUIT) and skips RETURN entirely.
     /// </summary>
-    public int VisibleItemCount => InGame ? ItemCount : ItemCount - 1;
+    public int VisibleItemCount => VisibleCount(CampaignActive);
+
+    /// <summary>
+    /// C <c>ingameflag</c>: a campaign is in progress (pilot created/loaded, not yet
+    /// dead or quit). Broader than <see cref="InGame"/> (= actively ticking a wave).
+    /// Gates MAIN_RETURN visibility. See spec 2026-06-11-mid-wave-abort-and-menu-return.
+    /// </summary>
+    public bool CampaignActive { get; private set; }
+
+    /// <summary>Selectable item count: 7 (incl. RETURN) while a campaign is active, else 6.</summary>
+    internal static int VisibleCount(bool campaignActive) => campaignActive ? ItemCount : ItemCount - 1;
+
+    // Test seams (no production caller).
+    internal void SetCampaignActiveForTest(bool v) => CampaignActive = v;
+    internal int  CurrentItemForTest { set => CurrentItem = value; }
 
     /// <summary>
     /// Simulated animation delay (in frames at 70 Hz) before CREDITS state is anchored.
@@ -289,6 +303,7 @@ public sealed class MenuStateMachine
     public void PlayerDied(int currentFrame)
     {
         InGame = false;
+        CampaignActive = false;   // C: death → ingameflag = FALSE (WINDOWS.C:1786)
         _inSectorSelect = false;
         _options.Close();
         _pilotCreate.ResetStep();
@@ -573,6 +588,7 @@ public sealed class MenuStateMachine
                     _hangar.Position = 1;  // HANGTOSTORE → pos=1=SUPPLIES
                     // Persist the portrait chosen in the registration screen.
                     IdPic = _pilotCreate.CurId;
+                    CampaignActive = true;
                     // Notify that a new pilot was created (triggers stat initialization).
                     OnPilotCreated?.Invoke();
                     // Delay anchor by HangarFadeFrames to simulate fade transitions.
@@ -693,6 +709,7 @@ public sealed class MenuStateMachine
     {
         _pilotCreate.SetIdentity(pilot.Name, pilot.Callsign);
         IdPic = pilot.IdPic;
+        CampaignActive = true;
         OnPilotLoaded?.Invoke(pilot);
         EnterState(WinState.Hangar, currentFrame + HangarFadeFrames, reAnchor: true);
         _hangar.Position = 1;  // HANGTOSTORE → SUPPLIES
@@ -715,7 +732,7 @@ public sealed class MenuStateMachine
     {
         _askBoolQuestion = "EXIT TO DOS";
         _askBoolYes = true;
-        _askBoolOnYes = () => { QuitRequested = true; OnQuit?.Invoke(); };
+        _askBoolOnYes = () => { CampaignActive = false; QuitRequested = true; OnQuit?.Invoke(); };
         _inAskBool = true;
     }
 

@@ -1,3 +1,6 @@
+using FsCheck;
+using FsCheck.Fluent;
+using FsCheck.Xunit;
 using Raptor.Sim;
 using Raptor.View;
 using System;
@@ -1471,5 +1474,63 @@ public class MenuStateMachineTests
         m.OnStateChanged += () => fired++;
         m.HandleInput("F1", 50);
         Assert.Equal(1, fired);
+    }
+
+    // -------------------------------------------------------------------------
+    // Task 1: CampaignActive flag (C ingameflag) gates MAIN_RETURN visibility
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void CampaignActive_is_false_at_cold_launch()
+    {
+        var m = new MenuStateMachine();
+        Assert.False(m.CampaignActive);
+        Assert.Equal(MenuStateMachine.ItemCount - 1, m.VisibleItemCount);
+    }
+
+    [Fact]
+    public void Pilot_create_confirm_sets_CampaignActive_and_shows_RETURN()
+    {
+        var m = new MenuStateMachine();
+        m.EnterMenu(0);
+        // NEW → name → callsign → difficulty → confirm. Name must be non-empty
+        // (gated in 5376b99); difficulty Return confirms.
+        m.HandleInput("Return", 0);          // NEW → registration
+        m.HandleInput("A", 0);               // type a name char
+        m.HandleInput("Return", 0);          // name → callsign
+        m.HandleInput("Return", 0);          // callsign → difficulty
+        m.HandleInput("Return", 0);          // difficulty confirm → Hangar
+        Assert.True(m.CampaignActive);
+        Assert.Equal(MenuStateMachine.ItemCount, m.VisibleItemCount);
+    }
+
+    [Fact]
+    public void PlayerDied_clears_CampaignActive()
+    {
+        var m = new MenuStateMachine();
+        m.EnterMenu(0);
+        m.SetCampaignActiveForTest(true);
+        m.PlayerDied(0);
+        Assert.False(m.CampaignActive);
+    }
+
+    [Fact]
+    public void Quit_clears_CampaignActive()
+    {
+        var m = new MenuStateMachine();
+        m.EnterMenu(0);
+        m.SetCampaignActiveForTest(true);
+        m.CurrentItemForTest = MenuStateMachine.QuitItemIndex;
+        m.HandleInput("Return", 0);          // QUIT → EXIT TO DOS AskBool
+        m.HandleInput("Return", 0);          // YES (default) → OnQuit
+        Assert.False(m.CampaignActive);
+    }
+
+    [Property]
+    public Property VisibleCount_includes_RETURN_iff_campaign_active()
+    {
+        return Prop.ForAll<bool>(active =>
+            MenuStateMachine.VisibleCount(active)
+                == (active ? MenuStateMachine.ItemCount : MenuStateMachine.ItemCount - 1));
     }
 }
