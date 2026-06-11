@@ -205,6 +205,20 @@ public partial class DebugRenderer : Node2D
     private void OnFlameLayerDraw()
     {
         if (_flameLayer == null) return;
+        // The flame layer is part of the in-game playfield render. _flameQuads is
+        // only cleared+repopulated in _Draw's playfield branch, so when _Draw takes a
+        // cutscene/menu/briefing branch (e.g. on death → death movie → main menu) the
+        // quads from the last gameplay frame go stale. _flameLayer.QueueRedraw still
+        // fires every frame (_Process), so without this gate those stale additive-white
+        // flames bleed as vertical white bars over the death cutscene and the menu.
+        if (!ShouldRenderPlayfield(
+                _wave != null,
+                _wave?.InLoadCompBriefing == true,
+                _interactiveUi,
+                _menu?.InGame == true,
+                _wave?.GameplayVisualActive == true))
+            return;
+
         foreach (var (rect, col) in _flameQuads)
             _flameLayer.DrawRect(rect, col);
 
@@ -754,6 +768,26 @@ public partial class DebugRenderer : Node2D
         bool gameplayVisualActive)
     {
         return interactiveUi && !menuInGame && !gameplayVisualActive;
+    }
+
+    /// <summary>
+    /// True when <see cref="_Draw"/> renders the in-game playfield this frame, so the
+    /// additive engine-flame layer should draw. Mirrors _Draw's branch order: a LoadComp
+    /// briefing or a menu/cutscene overlay both pre-empt the playfield, and the playfield
+    /// needs a live wave. When false the flame layer must draw NOTHING — otherwise the
+    /// last gameplay frame's flame quads freeze as white bars over the cutscene/menu.
+    /// </summary>
+    public static bool ShouldRenderPlayfield(
+        bool hasWave,
+        bool inLoadCompBriefing,
+        bool interactiveUi,
+        bool menuInGame,
+        bool gameplayVisualActive)
+    {
+        if (!hasWave) return false;
+        if (inLoadCompBriefing) return false;
+        if (ShouldDrawMenuOverlayForState(interactiveUi, menuInGame, gameplayVisualActive)) return false;
+        return true;
     }
 
     /// <summary>
