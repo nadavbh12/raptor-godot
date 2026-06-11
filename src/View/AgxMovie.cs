@@ -3,8 +3,11 @@ using System.Collections.Generic;
 
 namespace Raptor.View;
 
-/// <summary>One AGX movie frame: the PNG path and how many ticks it holds.</summary>
-public readonly record struct AgxMovieFrame(string Path, int DurationFrames);
+/// <summary>
+/// One AGX movie frame: the PNG path, how many ticks it holds, and an optional
+/// SoundEmitter label fired once when the frame is first shown (INTRO.C per-frame soundfx).
+/// </summary>
+public readonly record struct AgxMovieFrame(string Path, int DurationFrames, string? Sfx = null);
 
 /// <summary>
 /// An AGX cinematic: an ordered list of held frames plus an optional trailing palette
@@ -64,5 +67,22 @@ public sealed class AgxMovie
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// The content-frame index shown at <paramref name="elapsed"/>, or -1 once past the
+    /// content (in the trailing fade or beyond). Used to fire a frame's one-shot sound
+    /// exactly once, when the index advances.
+    /// </summary>
+    public int FrameIndexAt(int elapsed)
+    {
+        if (elapsed < 0) elapsed = 0;
+        int acc = 0;
+        for (int i = 0; i < _frames.Count; i++)
+        {
+            if (elapsed < acc + _frames[i].DurationFrames) return i;
+            acc += _frames[i].DurationFrames;
+        }
+        return -1;
     }
 }

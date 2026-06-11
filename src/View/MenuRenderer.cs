@@ -133,6 +133,11 @@ internal sealed class MenuRenderer
             DrawWinMsgOverlay(menu);
     }
 
+    // Cutscene SFX dedup: the per-frame one-shot fires once, when the frame index
+    // advances. Reset whenever the cutscene state changes.
+    private WinState _sfxState = WinState.Unknown;
+    private int _sfxFrameIndex = -1;
+
     private void DrawCutsceneOverlay(MenuStateMachine menu)
     {
         if (string.IsNullOrEmpty(_host.AgxRoot)) return;
@@ -142,6 +147,16 @@ internal sealed class MenuRenderer
 
         int elapsed = SimClock.Frame - menu.StateEnteredFrame;
         if (!movie.TrySelectFrame(elapsed, out var frame, out var alpha)) return;
+
+        // Fire the frame's one-shot sound effect once, when the index first advances to it
+        // (INTRO.C per-frame soundfx). Headless leaves SoundEmitter.Sink null → no-op.
+        if (menu.State != _sfxState) { _sfxState = menu.State; _sfxFrameIndex = -1; }
+        int idx = movie.FrameIndexAt(elapsed);
+        if (idx >= 0 && idx != _sfxFrameIndex)
+        {
+            _sfxFrameIndex = idx;
+            if (frame.Sfx != null) SoundEmitter.Emit(frame.Sfx);
+        }
 
         var tex = _host.LoadSpriteFromPath(frame.Path);
         if (tex != null)

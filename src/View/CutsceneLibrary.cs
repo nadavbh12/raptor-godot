@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.IO;
 using Raptor.Sim;
@@ -38,12 +39,34 @@ public static class CutsceneLibrary
     public static AgxMovie AttractIntro(string agxRoot)
     {
         var frames = new List<AgxMovieFrame>();
-        Append(frames, agxRoot, "CHASE_AGX",   CutsceneTimings.CityCount,  CutsceneTimings.CityRate,  loops: 1);
-        Append(frames, agxRoot, "SHIPSD1_AGX", CutsceneTimings.Side1Count, CutsceneTimings.Side1Rate, loops: CutsceneTimings.Side1Loops);
-        Append(frames, agxRoot, "PILOT_AGX",   CutsceneTimings.PilotCount, CutsceneTimings.PilotRate, loops: 1);
-        Append(frames, agxRoot, "SHIPSD1_AGX", CutsceneTimings.Side2Count, CutsceneTimings.Side2Rate, loops: 1);  // Side2 pass A
-        Append(frames, agxRoot, "SHIPSD2_AGX", CutsceneTimings.Side2Count, CutsceneTimings.Side2Rate, loops: 1);  // Side2 pass B
-        Append(frames, agxRoot, "EXPLO_AGX",   CutsceneTimings.ExploCount, CutsceneTimings.ExploRate, loops: 1);
+        // INTRO_City: FX_FLYBY at frames 4 and 9.
+        Append(frames, agxRoot, "CHASE_AGX", CutsceneTimings.CityCount, CutsceneTimings.CityRate, loops: 1,
+            sfxFor: i => i is 4 or 9 ? "sound.fx_flyby" : null);
+        // INTRO_Side1: background jet (MOVIE_BPatch FX_JETSND), retriggered each loop.
+        Append(frames, agxRoot, "SHIPSD1_AGX", CutsceneTimings.Side1Count, CutsceneTimings.Side1Rate, loops: CutsceneTimings.Side1Loops,
+            sfxFor: i => i == 0 ? "sound.fx_jetsnd" : null);
+        // INTRO_Pilot: background intro-jet (FX_IJETSND → JETSND_FX).
+        Append(frames, agxRoot, "PILOT_AGX", CutsceneTimings.PilotCount, CutsceneTimings.PilotRate, loops: 1,
+            sfxFor: i => i == 0 ? "sound.fx_jetsnd" : null);
+        // INTRO_Side2 pass A (SHIPSD1): background jet.
+        Append(frames, agxRoot, "SHIPSD1_AGX", CutsceneTimings.Side2Count, CutsceneTimings.Side2Rate, loops: 1,
+            sfxFor: i => i == 0 ? "sound.fx_jetsnd" : null);
+        // INTRO_Side2 pass B (SHIPSD2): FX_INTROGUN on frames > 1 (the strafing run).
+        Append(frames, agxRoot, "SHIPSD2_AGX", CutsceneTimings.Side2Count, CutsceneTimings.Side2Rate, loops: 1,
+            sfxFor: i => i > 1 ? "sound.fx_introgun" : null);
+        // INTRO_Explosion: bg jet (FX_EJETSND), FX_INTROHIT frames 2-9, FX_AIREXPLO frames>=8 odd
+        // (last condition wins, mirroring C), plus the final frame.
+        int exploLast = CutsceneTimings.ExploCount - 1;
+        Append(frames, agxRoot, "EXPLO_AGX", CutsceneTimings.ExploCount, CutsceneTimings.ExploRate, loops: 1,
+            sfxFor: i =>
+            {
+                string? s = null;
+                if (i == 0) s = "sound.fx_jetsnd";
+                if (i >= 2 && i < 10) s = "sound.fx_introhit";
+                if (i >= 8 && (i & 1) == 1) s = "sound3d.fx_airexplo";
+                if (i == exploLast) s = "sound3d.fx_airexplo";
+                return s;
+            });
         return new AgxMovie(frames, CutsceneTimings.ExploFade);
     }
 
@@ -94,13 +117,14 @@ public static class CutsceneLibrary
 
     private static void Append(
         List<AgxMovieFrame> frames, string agxRoot, string family,
-        int count, int rate, int loops)
+        int count, int rate, int loops, Func<int, string?>? sfxFor = null)
     {
         // rate is fps; the per-frame hold in 70 Hz SimClock ticks is 70/rate (GFX_WaitUpdate).
+        // sfxFor maps the within-scene frame index (0..count-1) to a one-shot SoundEmitter label.
         int hold = CutsceneTimings.Hold(rate);
         for (int loop = 0; loop < loops; loop++)
             for (int i = 0; i < count; i++)
                 frames.Add(new AgxMovieFrame(
-                    Path.Combine(agxRoot, $"{family}_{i:D2}.png"), hold));
+                    Path.Combine(agxRoot, $"{family}_{i:D2}.png"), hold, sfxFor?.Invoke(i)));
     }
 }

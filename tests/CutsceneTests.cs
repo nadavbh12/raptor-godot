@@ -146,6 +146,58 @@ public class CutsceneTests
         Assert.EndsWith("SDEATH_AGX_00.png", firstGround.Path);
     }
 
+    // ---- Intro sound-effect schedule (INTRO.C per-frame soundfx) ----
+
+    [Fact]
+    public void Attract_intro_schedules_per_frame_sound_effects()
+    {
+        var m = CutsceneLibrary.AttractIntro(AgxRoot());
+
+        // INTRO_City: FX_FLYBY at frames 4 and 9.
+        Assert.Equal("sound.fx_flyby", m.Frames[4].Sfx);
+        Assert.Equal("sound.fx_flyby", m.Frames[9].Sfx);
+        Assert.Null(m.Frames[0].Sfx);
+        // INTRO_Explosion ends on an air explosion (last frame soundfx = FX_AIREXPLO).
+        Assert.Equal("sound3d.fx_airexplo", m.Frames[^1].Sfx);
+        // Side2's SHIPSD2 pass fires the intro gun (frames within-scene index > 1).
+        Assert.Contains(m.Frames, f => f.Sfx == "sound.fx_introgun");
+    }
+
+    [Fact]
+    public void Attract_intro_emits_sfx_sequence_over_time()
+    {
+        // Mirror the renderer's dedup: step elapsed across the whole movie, fire a frame's
+        // Sfx once when the index first advances to it.
+        var m = CutsceneLibrary.AttractIntro(AgxRoot());
+        var emitted = new System.Collections.Generic.List<string>();
+        int last = -1;
+        for (int e = 0; e < m.ContentFrames; e++)
+        {
+            int idx = m.FrameIndexAt(e);
+            if (idx >= 0 && idx != last)
+            {
+                last = idx;
+                if (m.Frames[idx].Sfx is { } s) emitted.Add(s);
+            }
+        }
+
+        Assert.Equal(2, emitted.FindAll(s => s == "sound.fx_flyby").Count);   // two city flybys
+        Assert.Contains("sound.fx_jetsnd", emitted);                          // jet during side passes
+        Assert.Contains("sound.fx_introgun", emitted);                        // strafing run
+        Assert.Contains("sound3d.fx_airexplo", emitted);                      // explosion
+        Assert.Equal("sound3d.fx_airexplo", emitted[^1]);                     // ends on the explosion
+    }
+
+    [Fact]
+    public void Frame_index_advances_with_elapsed()
+    {
+        var m = CutsceneLibrary.Landing(AgxRoot());
+        Assert.Equal(0, m.FrameIndexAt(0));
+        Assert.Equal(0, m.FrameIndexAt(70 / 10 - 1));   // still within the first hold
+        Assert.Equal(1, m.FrameIndexAt(70 / 10));        // advanced to frame 1
+        Assert.Equal(-1, m.FrameIndexAt(m.ContentFrames));   // past the content (fade/end)
+    }
+
     // ---- ForState routing (what the renderer asks for) ----
 
     [Fact]

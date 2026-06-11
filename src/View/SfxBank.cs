@@ -47,6 +47,10 @@ internal sealed class SfxBank
             ["sound.fx_crash"]         = "CRASH_FX",   // FX_CRASH
             // End-wave fly-off — RAP.C:604 SND_Patch(FX_FLYBY).
             ["sound.fx_flyby"]         = "FLYBY_FX",   // FX_FLYBY
+            // Intro cinematics — INTRO.C soundfx / MOVIE_BPatch (FX.C item mapping).
+            ["sound.fx_jetsnd"]        = "JETSND_FX",  // FX_JETSND / FX_IJETSND / FX_EJETSND → JETSND_FX
+            ["sound.fx_introgun"]      = "GUN_FX",     // FX_INTROGUN → GUN_FX
+            ["sound.fx_introhit"]      = "GUN_FX",     // FX_INTROHIT → GUN_FX
         };
 
     private readonly string _soundsRoot;
