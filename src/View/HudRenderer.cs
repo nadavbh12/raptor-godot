@@ -57,11 +57,16 @@ internal sealed class HudRenderer
 
     private static void DrawShield(CanvasItem canvas, WaveController wave)
     {
-        const int MapRight = 320 - 16;  // SOURCE/MAP.H
-        foreach (var segment in HudShieldBar.Build(MapRight + 4, wave.PlayerLogic.Shield))
+        // C draws TWO bars (RAP.C:549/557): the regular shield on the RIGHT and the
+        // super-shield amount on the LEFT. The port previously drew only the right one.
+        int superShield = wave.Inventory.GetAmt(ObjType.SuperShield);
+        foreach (var (x, level) in HudShieldBar.Bars(wave.PlayerLogic.Shield, superShield))
         {
-            canvas.DrawRect(new Rect2(segment.X, segment.Y, segment.Width, segment.Height),
-                ShieldPaletteColor(segment.PaletteIndex));
+            foreach (var segment in HudShieldBar.Build(x, level))
+            {
+                canvas.DrawRect(new Rect2(segment.X, segment.Y, segment.Width, segment.Height),
+                    ShieldPaletteColor(segment.PaletteIndex));
+            }
         }
     }
 

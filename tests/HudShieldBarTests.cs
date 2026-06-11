@@ -38,4 +38,18 @@ public class HudShieldBarTests
 
         Assert.Equal(expectedFilledRows, segments.Count(s => s.PaletteIndex != 0));
     }
+
+    [Fact]
+    public void Draws_both_c_side_bars_left_super_right_shield()
+    {
+        // C draws TWO bars every frame (RAP.C:549/557): the regular shield on the
+        // RIGHT (MAP_RIGHT+4 = 308) and the super-shield amount on the LEFT
+        // (MAP_LEFT-8 = 8). The port previously drew only the right bar, leaving the
+        // left rail empty (user-reported asymmetry).
+        var bars = HudShieldBar.Bars(shield: 60, superShield: 30).ToArray();
+
+        Assert.Equal(2, bars.Length);
+        Assert.Equal((308, 60), bars[0]);   // RIGHT = regular shield (C RAP.C:557)
+        Assert.Equal((8, 30),  bars[1]);    // LEFT  = super-shield   (C RAP.C:549)
+    }
 }
