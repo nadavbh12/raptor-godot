@@ -355,6 +355,39 @@ public class PilotSaveStoreTests
         Assert.Equal(3, loaded.GetAmt(ObjType.MegaBomb));
     }
 
+    // -----------------------------------------------------------------------
+    // Delete tests
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void Delete_removes_existing_CHAR_file()
+    {
+        using var dir = new TempDir();
+        WriteFakePilot(dir.Path, slot: 0, name: "GHOST", callsign: "GH", idPic: 0, score: 0);
+        string path = Path.Combine(dir.Path, "CHAR0000.FIL");
+        Assert.True(File.Exists(path));
+
+        PilotSaveStore.Delete(path);
+
+        Assert.False(File.Exists(path));
+    }
+
+    [Fact]
+    public void Delete_is_noop_for_missing_path()
+    {
+        using var dir = new TempDir();
+        string path = Path.Combine(dir.Path, "CHAR0099.FIL");
+        // Must not throw when the file does not exist.
+        PilotSaveStore.Delete(path);
+    }
+
+    [Fact]
+    public void Delete_is_noop_for_empty_string()
+    {
+        // Passing an empty/null path must not throw.
+        PilotSaveStore.Delete("");
+    }
+
     internal sealed class TempDir : IDisposable
     {
         public string Path { get; }

@@ -27,6 +27,8 @@ internal sealed class LoadMissionPanel
         Closed,
         /// <summary>Return: load the <see cref="SelectedPilot"/> and transition to Hangar.</summary>
         Confirm,
+        /// <summary>Delete: open the "Delete Pilot X ?" confirm dialog.</summary>
+        Delete,
     }
 
     private bool _active = false;
@@ -79,6 +81,9 @@ internal sealed class LoadMissionPanel
             return Result.Confirm;
         }
 
+        if (action == "Delete")
+            return _pilots.Count == 0 ? Result.Handled : Result.Delete;
+
         if (_pilots.Count == 0)
             return Result.Handled;
 
@@ -95,5 +100,16 @@ internal sealed class LoadMissionPanel
             SelectedIndex = ((SelectedIndex + delta) % n + n) % n;
         }
         return Result.Handled;
+    }
+
+    /// <summary>Remove the selected pilot from the list (after its file is deleted) and
+    /// clamp the cursor. Returns true if the list is now empty.</summary>
+    public bool RemoveSelected()
+    {
+        if (_pilots.Count == 0) return true;
+        _pilots.RemoveAt(SelectedIndex);
+        if (_pilots.Count == 0) { _active = false; SelectedIndex = 0; return true; }
+        if (SelectedIndex >= _pilots.Count) SelectedIndex = _pilots.Count - 1;
+        return false;
     }
 }

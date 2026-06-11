@@ -258,6 +258,7 @@ public partial class InteractiveInputController : Node
             Key.Pageup => "PageUp",
             Key.Pagedown => "PageDown",
             Key.Tab => "Tab",
+            Key.Delete => "Delete",
             _ => KeyToTextAction(keyEvent.Keycode, keyEvent.Unicode),
         };
     }

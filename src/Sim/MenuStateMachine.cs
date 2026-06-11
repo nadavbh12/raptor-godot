@@ -122,6 +122,10 @@ public sealed class MenuStateMachine
     private Action? _askBoolOnYes;
     private bool _inWinMsg = false;
     private string _winMsgText = "";
+    // When true, dismissing a WinMsg returns to the load-mission panel rather
+    // than resetting to the main menu. Set by the delete-pilot confirm flow when
+    // pilots still remain after deletion (C: back to RAP_LoadWin loop).
+    private bool _winMsgReturnsToLoad = false;
     // OPTIONS dialog state + handlers live in OptionsPanel.
     private readonly OptionsPanel _options = new();
     // Help paging state + page-cycle logic live in HelpSystemController.
@@ -405,6 +409,7 @@ public sealed class MenuStateMachine
         _askBoolOnYes = null;
         _inWinMsg = false;
         _winMsgText = "";
+        _winMsgReturnsToLoad = false;
         _help.ResetTextName();
         LastActivityFrame = currentFrame;
         EnterState(WinState.Menu, currentFrame, reAnchor: true);
@@ -583,10 +588,17 @@ public sealed class MenuStateMachine
     {
         if (_inWinMsg)
         {
-            // C WIN_Msg: any key dismisses, and the main-menu SWD cursor
-            // re-initialises to the first field (NEW) on return — match it.
+            // C WIN_Msg: any key dismisses.
             _inWinMsg = false;
             _winMsgText = "";
+            if (_winMsgReturnsToLoad)
+            {
+                // "Pilot Removed !" dismissed with pilots still remaining:
+                // stay in the load-mission panel (_loadMission stays Active).
+                _winMsgReturnsToLoad = false;
+                return true;
+            }
+            // Default: re-initialise the main-menu SWD cursor to the first field (NEW).
             CurrentItem = NewItemIndex;
             return true;
         }
@@ -761,6 +773,26 @@ public sealed class MenuStateMachine
         _hangar.Position = 1;  // HANGTOSTORE → SUPPLIES
     }
 
+    private void OpenAskBoolDeletePilot()
+    {
+        var pilot = _loadMission.SelectedPilot;
+        if (pilot == null) return;
+        _askBoolQuestion = $"Delete Pilot {pilot.Callsign} ?";   // C: "Delete Pilot %s ?"
+        _askBoolYes = true;
+        string filePath = pilot.FilePath;
+        _askBoolOnYes = () =>
+        {
+            PilotSaveStore.Delete(filePath);
+            bool emptied = _loadMission.RemoveSelected();
+            // C WIN_Msg("Pilot Removed !"). Show it, then return to the LOAD panel
+            // (or, if no pilots remain, to the main menu).
+            _winMsgText = "Pilot Removed !";
+            _inWinMsg = true;
+            _winMsgReturnsToLoad = !emptied;
+        };
+        _inAskBool = true;
+    }
+
     private void OpenAskBoolSave()
     {
         _askBoolQuestion = $"Save {PilotName} - {Callsign} ?";
@@ -805,6 +837,10 @@ public sealed class MenuStateMachine
                 var picked = _loadMission.SelectedPilot;
                 if (picked != null)
                     ApplyLoadedPilot(picked, StateEnteredFrame);
+                return true;
+            case LoadMissionPanel.Result.Delete:
+                // C LOADSAVE.C:628-638: SC_DELETE → "Delete Pilot %s ?" → remove().
+                OpenAskBoolDeletePilot();
                 return true;
             default:
                 // Closed (Escape) and Handled (nav / no-op) need no transition.

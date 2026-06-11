@@ -322,6 +322,14 @@ public static class PilotSaveStore
         return inv;
     }
 
+    /// <summary>Delete a pilot's CHAR####.FIL save file (C RAP_LoadWin LOAD_DEL → remove()).
+    /// No-op if the path is empty or the file is already gone.</summary>
+    public static void Delete(string filePath)
+    {
+        if (!string.IsNullOrEmpty(filePath) && File.Exists(filePath))
+            File.Delete(filePath);
+    }
+
     private static string[] CandidateDirectories(string? explicitDirectory)
     {
         if (!string.IsNullOrWhiteSpace(explicitDirectory))

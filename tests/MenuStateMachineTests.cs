@@ -1166,6 +1166,112 @@ public class MenuStateMachineTests
         }
     }
 
+    // -------------------------------------------------------------------------
+    // Delete-pilot flow (LOAD_DEL)
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Delete_in_load_mission_opens_AskBool_with_correct_question()
+    {
+        var m = EnterLoadMissionWithThreePilots(out var dir);
+        using (dir)
+        {
+            // Cursor at ALICE (index 0)
+            m.HandleInput("Delete", 100);
+
+            Assert.True(m.InAskBool);
+            Assert.Equal("Delete Pilot ACE ?", m.AskBoolQuestion);
+            Assert.True(m.AskBoolYesSelected);
+            // Still inside the load-mission screen context.
+            Assert.True(m.InLoadMission);
+        }
+    }
+
+    [Fact]
+    public void Delete_YES_removes_file_shrinks_list_shows_WinMsg()
+    {
+        var m = EnterLoadMissionWithThreePilots(out var dir);
+        using (dir)
+        {
+            string alicePath = m.LoadMissionPilot!.FilePath;
+            Assert.True(System.IO.File.Exists(alicePath));
+
+            m.HandleInput("Delete", 100);
+            Assert.True(m.InAskBool);
+
+            m.HandleInput("Return", 110);  // YES
+
+            Assert.False(m.InAskBool);
+            Assert.False(System.IO.File.Exists(alicePath));  // file gone from disk
+            Assert.Equal(2, m.LoadMissionPilots.Count);       // list shrank by one
+            Assert.True(m.InWinMsg);
+            Assert.Equal("Pilot Removed !", m.WinMsgText);
+        }
+    }
+
+    [Fact]
+    public void Delete_YES_dismiss_WinMsg_stays_in_load_panel_when_pilots_remain()
+    {
+        var m = EnterLoadMissionWithThreePilots(out var dir);
+        using (dir)
+        {
+            m.HandleInput("Delete", 100);
+            m.HandleInput("Return", 110);   // YES → WinMsg
+            Assert.True(m.InWinMsg);
+
+            m.HandleInput("Return", 120);   // dismiss WinMsg
+
+            Assert.False(m.InWinMsg);
+            Assert.True(m.InLoadMission);   // back in load panel (2 pilots left)
+        }
+    }
+
+    [Fact]
+    public void Delete_NO_does_not_remove_file_or_show_WinMsg()
+    {
+        var m = EnterLoadMissionWithThreePilots(out var dir);
+        using (dir)
+        {
+            string alicePath = m.LoadMissionPilot!.FilePath;
+
+            m.HandleInput("Delete", 100);
+            m.HandleInput("Right",  110);   // toggle to NO
+            m.HandleInput("Return", 120);   // NO
+
+            Assert.False(m.InAskBool);
+            Assert.True(System.IO.File.Exists(alicePath));   // file untouched
+            Assert.Equal(3, m.LoadMissionPilots.Count);       // list unchanged
+            Assert.False(m.InWinMsg);
+            Assert.True(m.InLoadMission);                     // still in panel
+        }
+    }
+
+    [Fact]
+    public void Delete_last_pilot_YES_dismiss_closes_load_panel()
+    {
+        // Write a single pilot, open load panel, delete it.
+        using var dir = new PilotSaveStoreTests.TempDir();
+        PilotSaveStoreTests.WriteFakePilot(dir.Path, slot: 0,
+            name: "SOLO", callsign: "SL", idPic: 0, score: 500);
+        var m = new MenuStateMachine { PilotSaveDirectory = dir.Path };
+        m.EnterMenu(0);
+        m.HandleInput("Down", 0);   // select LOAD
+        m.HandleInput("Return", 93); // open load panel
+        Assert.True(m.InLoadMission);
+
+        m.HandleInput("Delete", 100);
+        m.HandleInput("Return", 110);   // YES
+
+        Assert.True(m.InWinMsg);
+        Assert.Equal("Pilot Removed !", m.WinMsgText);
+
+        m.HandleInput("Return", 120);   // dismiss WinMsg
+
+        Assert.False(m.InWinMsg);
+        Assert.False(m.InLoadMission);  // panel closed — no pilots left
+        Assert.Equal(WinState.Menu, m.State);
+    }
+
     [Fact]
     public void F2_in_hangar_opens_AskBool_save_prompt()
     {

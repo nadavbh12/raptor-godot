@@ -295,6 +295,69 @@ public class LoadMissionPanelTests
         Assert.Equal(0, p.SelectedIndex);
         Assert.Null(p.SelectedPilot);
     }
+
+    [Fact]
+    public void HandleInput_Delete_returns_Delete_result_when_pilots_present()
+    {
+        var p = new LoadMissionPanel();
+        p.Open(ThreePilots());
+        Assert.Equal(LoadMissionPanel.Result.Delete, p.HandleInput("Delete"));
+    }
+
+    [Fact]
+    public void HandleInput_Delete_returns_Handled_when_no_pilots()
+    {
+        var p = new LoadMissionPanel();
+        // Open with an empty list is not normal usage, but guard the edge case.
+        // The panel is only opened when pilots > 0; test via Reset state.
+        // Easiest: don't open at all — Active is false, so Delete is Handled.
+        Assert.Equal(LoadMissionPanel.Result.Handled, p.HandleInput("Delete"));
+    }
+
+    [Fact]
+    public void RemoveSelected_drops_pilot_at_cursor_and_clamps()
+    {
+        var p = new LoadMissionPanel();
+        p.Open(ThreePilots());
+        p.HandleInput("Down");  // select BOB (index 1)
+        Assert.Equal("BOB", p.SelectedPilot!.Name);
+
+        bool emptied = p.RemoveSelected();
+
+        Assert.False(emptied);
+        Assert.Equal(2, p.Pilots.Count);
+        Assert.Equal("CAROL", p.SelectedPilot!.Name);  // cursor clamped to 1 (CAROL)
+    }
+
+    [Fact]
+    public void RemoveSelected_at_last_index_clamps_cursor_to_new_last()
+    {
+        var p = new LoadMissionPanel();
+        p.Open(ThreePilots());
+        p.HandleInput("Up");  // index 0 → wraps to 2 (CAROL)
+        Assert.Equal(2, p.SelectedIndex);
+
+        bool emptied = p.RemoveSelected();
+
+        Assert.False(emptied);
+        Assert.Equal(2, p.Pilots.Count);
+        // Was at last slot — cursor clamps to new last (index 1 = BOB).
+        Assert.Equal(1, p.SelectedIndex);
+        Assert.Equal("BOB", p.SelectedPilot!.Name);
+    }
+
+    [Fact]
+    public void RemoveSelected_last_pilot_returns_true_and_deactivates()
+    {
+        var p = new LoadMissionPanel();
+        p.Open(new System.Collections.Generic.List<PilotSaveSummary> { Pilot("SOLO") });
+
+        bool emptied = p.RemoveSelected();
+
+        Assert.True(emptied);
+        Assert.False(p.Active);
+        Assert.Empty(p.Pilots);
+    }
 }
 
 public class PilotCreationFlowTests
