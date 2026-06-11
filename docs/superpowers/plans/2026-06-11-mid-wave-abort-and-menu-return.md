@@ -231,7 +231,9 @@ In `HandleMenuInput`, replace the RETURN stub (`:647-648`):
             if (CurrentItem == ReturnItemIndex && CampaignActive)
             {
                 // C MAIN_RETURN (WINDOWS.C:2178): ingameflag → menu_exit → WIN_Hangar.
-                _hangar.Position = 0;   // resume on the hangar's MISSION slot
+                // menu_exit sets hangto = HANGTOSTORE (WINDOWS.C:2211) → SUPPLIES = pos 1,
+                // matching ApplyLoadedPilot / pilot-create.
+                _hangar.Position = 1;
                 EnterState(WinState.Hangar, currentFrame, reAnchor: true);
                 return true;
             }
@@ -245,7 +247,8 @@ Replace the `Esc` handler (`:650-655`):
             if (CampaignActive)
             {
                 // C WINDOWS.C:2112: KBD_Key(SC_ESC) && ingameflag → menu_exit → hangar.
-                _hangar.Position = 0;
+                // menu_exit sets hangto = HANGTOSTORE (WINDOWS.C:2211) → SUPPLIES = pos 1.
+                _hangar.Position = 1;
                 EnterState(WinState.Hangar, currentFrame, reAnchor: true);
                 return true;
             }
