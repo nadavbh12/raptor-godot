@@ -77,8 +77,13 @@ New flag on `MenuStateMachine`, **separate from `InGame`**:
 
 - Set `true` on pilot create (`PilotCreationFlow` confirm) and pilot load (`ApplyLoadedPilot`).
 - Stays `true` across waves, hangar, store, landing/victory cutscenes, and the main menu.
-- Cleared on: `PlayerDied`, loading a *different* pilot, and quit-to-DOS (`OnQuit`).
+- Cleared on: `PlayerDied` (death) and quit-to-DOS (`OnQuit`).
 - Repoint `VisibleItemCount` (`:56`) and MAIN_RETURN visibility from `InGame` → `CampaignActive`.
+
+  _Note: C's `MAIN_LOAD` toggles `ingameflag=FALSE` at `WINDOWS.C:2153`, but only as a control-flow
+  trick to leave the menu loop and re-enter `WIN_MainLoop`, which immediately re-sets it TRUE for the
+  loaded pilot. The observable end state after any load is campaign-active, so `ApplyLoadedPilot`
+  sets `true` — there is no "load clears it" end state._
 
 Cold-launch default is `false`. The captured menu-event goldens start no campaign, so
 `CampaignActive` is `false` throughout them and `VisibleItemCount` is byte-unchanged → menu-event
@@ -129,8 +134,8 @@ sweep stays 9/9.
   occurs. *Domain:* `WaveController._PhysicsProcess` gate.
 - **RETURN visibility ⟺ CampaignActive**: the main-menu RETURN item is navigable iff a campaign is
   in progress; `VisibleItemCount` wraps over 7 items iff `CampaignActive`, else 6. *Domain:* menu nav.
-- **CampaignActive lifecycle**: `false` at cold launch; `true` after create/load; `false` after death,
-  loading a different pilot, or quit. *Domain:* `MenuStateMachine` campaign flag.
+- **CampaignActive lifecycle**: `false` at cold launch; `true` after create or load; `false` after
+  death or quit. *Domain:* `MenuStateMachine` campaign flag.
 - **Parity-inert**: no parity checkpoint and no menu-event golden changes. Interactive-only (controller
   off under playthrough); harness scripts never press the abort key and start no campaign in the
   captured menu-event goldens. *Domain:* L2a parity + menu-event sweep.
