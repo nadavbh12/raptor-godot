@@ -110,6 +110,13 @@ public partial class WaveController : Node
     private const int DemoLoadCompFrames = 78;
     private int  _waveNum    = 1;
 
+    // Current campaign wave (1-based; mirrors C game_wave[cur_game]+1). Source of
+    // truth for what the NEXT mission-enter loads when RAPTOR_START_WAVE is unset.
+    // Set to 1 on a new pilot, restored from the save on load, advanced when a wave
+    // is cleared (NextCampaignWave). Default 1 == the old OnGameEnter default
+    // (_pendingGameNum+1), so all parity scenarios start on wave 1 exactly as before.
+    private int  _campaignWave = 1;
+
     // When MenuStateMachine.EnterGame fires we defer the iter-0 body and
     // _gameEnterFc anchoring to a future frame to mirror the C LoadComp
     // window above. -1 = no pending; otherwise the frame at which the wave
@@ -559,6 +566,7 @@ public partial class WaveController : Node
     {
         // New pilot starts with 10000 score and 75 shield (from C golden).
         Score = NewPilotScore;
+        _campaignWave = 1;   // fresh campaign → episode 1, wave 1 (C game_wave[cur_game]=0)
         PlayerLogic.Reset();  // Resets position/pic; Shield is now the Energy slot (Task 4.2).
         // Seed inventory to match WINDOWS.C:989-1007:
         //   ForwardGuns + 3×Energy (→75) + GetNext() (→EquippedSpecial=null).
@@ -589,7 +597,10 @@ public partial class WaveController : Node
         // the previous game's frozen state. Activation (iter 0) stays deferred:
         // nothing ticks or draws RNG until ApplyPendingGameEnter, so the gameplay
         // and parity timing are unchanged.
-        _waveNum = ResolveStartWave(OS.GetEnvironment("RAPTOR_START_WAVE"), _pendingGameNum + 1);
+        // Start at the current campaign wave (advanced on each clear, restored on load).
+        // RAPTOR_START_WAVE still overrides for tests/parity. At campaign start
+        // _campaignWave == 1, identical to the previous _pendingGameNum+1 default.
+        _waveNum = ResolveStartWave(OS.GetEnvironment("RAPTOR_START_WAVE"), _campaignWave);
         SeedRngForWave(_waveNum, OS.GetEnvironment("RAPTOR_RNG_SEED_OVERRIDE"));
         LoadWave(_waveNum);
         // RAPTOR_FORCE_DIFF: validation hook to force the player difficulty (0..3)
@@ -609,6 +620,30 @@ public partial class WaveController : Node
         if (int.TryParse(env, out int w) && w >= 1 && w <= 9) return w;
         return defaultWave;
     }
+
+    /// <summary>
+    /// The campaign wave (1-based) after clearing <paramref name="clearedWave"/>: the
+    /// next wave, or back to wave 1 when the episode's final wave was cleared. Mirrors
+    /// C WIN_MainGame (WINDOWS.C): non-final clear does <c>game_wave[cur_game]++</c> (:1861),
+    /// final clear resets <c>game_wave=0</c> (:1852) and wraps cur_game (ep2/3 absent → 0).
+    /// </summary>
+    internal static int NextCampaignWave(int clearedWave, bool finalWave)
+        => finalWave ? 1 : clearedWave + 1;
+
+    /// <summary>
+    /// The 1-based campaign start wave for a loaded pilot's 0-based saved
+    /// <c>game_wave[cur_game]</c> (C RAP_LoadPlayer, LOADSAVE.C:276), clamped to the
+    /// episode-1 range 1..<see cref="CutsceneTimings.Episode1WaveCount"/>.
+    /// </summary>
+    internal static int CampaignWaveFromSaved(int savedGameWaveZeroBased)
+        => Math.Clamp(savedGameWaveZeroBased + 1, 1, CutsceneTimings.Episode1WaveCount);
+
+    /// <summary>Restore campaign progress from a loaded pilot's saved game_wave[cur_game] (0-based).</summary>
+    public void SetCampaignWaveFromSaved(int savedGameWaveZeroBased)
+        => _campaignWave = CampaignWaveFromSaved(savedGameWaveZeroBased);
+
+    /// <summary>The current campaign wave as a 0-based game_wave[cur_game] value, for saving.</summary>
+    public int CampaignWaveZeroBased => _campaignWave - 1;
 
     /// <summary>
     /// The score after a mid-wave abort: the wave-start score, discarding anything
@@ -1744,7 +1779,13 @@ public partial class WaveController : Node
             _waveActive = false;
             // Clearing the episode's final wave plays the victory cinematic (INTRO_EndGame)
             // instead of the normal ship-landing (WINDOWS.C:1847 vs :1863).
-            _menu?.CompleteMission(SimClock.Frame, IsEpisodeFinalWave(_waveNum, _pendingGameNum));
+            bool finalWave = IsEpisodeFinalWave(_waveNum, _pendingGameNum);
+            // Advance the campaign so the next hangar→mission loads the next wave (or
+            // wraps to wave 1 after the final wave). Mirrors WINDOWS.C:1861/1852. A
+            // mid-wave abort takes AbortMission → CompleteMission directly, NOT this
+            // branch, so it never advances — matching C's `if (!abort_flag) game_wave++`.
+            _campaignWave = NextCampaignWave(_waveNum, finalWave);
+            _menu?.CompleteMission(SimClock.Frame, finalWave);
         }
     }
 

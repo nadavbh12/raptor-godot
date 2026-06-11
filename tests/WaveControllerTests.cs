@@ -518,6 +518,32 @@ public class WaveControllerTests
     public void StartWave_resolves_override(string? env, int defaultWave, int expected)
         => Assert.Equal(expected, WaveController.ResolveStartWave(env, defaultWave));
 
+    // ── Campaign progression (advance-on-complete + restore-on-load) ─────────
+    [Theory]
+    [InlineData(1, false, 2)]   // clear wave 1 → next is wave 2 (C game_wave++)
+    [InlineData(8, false, 9)]   // clear wave 8 → wave 9
+    [InlineData(9, true,  1)]   // clear the episode-final wave → wrap to wave 1 (C game_wave=0, cur_game wraps)
+    public void NextCampaignWave_advances_or_wraps(int cleared, bool finalWave, int expected)
+        => Assert.Equal(expected, WaveController.NextCampaignWave(cleared, finalWave));
+
+    [Property]
+    public Property NextCampaignWave_only_increments_when_not_final()
+    {
+        // Property: a non-final clear always advances by exactly one; a final clear
+        // always wraps to 1. Domain: WaveController campaign advance.
+        return Prop.ForAll<int, bool>((cleared, finalWave) =>
+            WaveController.NextCampaignWave(cleared, finalWave) == (finalWave ? 1 : cleared + 1));
+    }
+
+    [Theory]
+    [InlineData(0, 1)]   // fresh save game_wave[0]=0 → start wave 1
+    [InlineData(4, 5)]   // mid-campaign save → resume at wave 5
+    [InlineData(8, 9)]   // final wave saved → resume at wave 9
+    [InlineData(-3, 1)]  // corrupt/underflow → clamp to 1
+    [InlineData(99, 9)]  // overflow → clamp to episode-1 length (9)
+    public void CampaignWaveFromSaved_maps_zero_based_save_to_one_based_clamped(int saved, int expected)
+        => Assert.Equal(expected, WaveController.CampaignWaveFromSaved(saved));
+
     [Fact]
     public void Player_missile_smoke_uses_down_drift_anim_and_tail_offset()
     {

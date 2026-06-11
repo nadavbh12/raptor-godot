@@ -145,6 +145,12 @@ public sealed class MenuStateMachine
     public System.Action<uint>? SetScore { get; set; }
     private uint _fallbackScore = 10000;
 
+    /// <summary>Live accessor for the current campaign wave as a 0-based
+    /// game_wave[cur_game] value. MenuController._Ready wires it to
+    /// WaveController.CampaignWaveZeroBased; the save path persists it so a loaded
+    /// pilot resumes mid-campaign. Null on headless/no-WaveController paths (→ 0).</summary>
+    public System.Func<int>? GetCampaignWaveZeroBased { get; set; }
+
     public WinState State { get; private set; } = WinState.Unknown;
 
     /// <summary>
@@ -809,7 +815,9 @@ public sealed class MenuStateMachine
         string callsign = Callsign;
         int idPic = IdPic;
         uint score = GetScore?.Invoke() ?? 0;   // live run score (was hardcoded 0)
-        _askBoolOnYes = () => PilotSaveStore.Save(saveDir, name, callsign, idPic: idPic, score: score);
+        int gameWave = GetCampaignWaveZeroBased?.Invoke() ?? 0;  // persist campaign progress
+        _askBoolOnYes = () => PilotSaveStore.Save(saveDir, name, callsign, idPic: idPic, score: score,
+            curGame: 0, gameWave: gameWave);
         _inAskBool = true;
     }
 

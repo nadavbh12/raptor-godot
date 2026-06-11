@@ -50,6 +50,8 @@ public partial class MenuController : Node
             // SetScore — no change to any non-store score handling.
             Menu.GetScore = () => wave.Score;
             Menu.SetScore = wave.SetScore;
+            // Save persists the campaign wave; load restores it (see OnPilotLoaded).
+            Menu.GetCampaignWaveZeroBased = () => wave.CampaignWaveZeroBased;
 
             Menu.OnPilotLoaded += pilot =>
             {
@@ -59,6 +61,12 @@ public partial class MenuController : Node
                 int g = pilot.CurGame;
                 if (g < 0) g = 0; else if (g >= pilot.Diff.Length) g = pilot.Diff.Length - 1;
                 wave.SetPlayerDiff(pilot.Diff[g]);
+                // Restore campaign progress so the loaded pilot resumes at the wave it
+                // reached (C RAP_LoadPlayer game_wave[cur_game]). Godot plays episode 1
+                // (cur_game 0); read the matching game_wave slot, guarding bounds.
+                int gw = pilot.CurGame;
+                if (gw < 0 || gw >= pilot.GameWave.Length) gw = 0;
+                wave.SetCampaignWaveFromSaved(pilot.GameWave[gw]);
                 // Load from the exact file the summary was read from (pilot.FilePath),
                 // not a re-derived path — LoadAll's directory resolution (RAPTOR_SAVE_DIR,
                 // sibling probe, etc.) may differ from PilotSaveDirectory.

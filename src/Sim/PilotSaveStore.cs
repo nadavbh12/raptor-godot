@@ -53,7 +53,7 @@ public static class PilotSaveStore
     /// legacy byte layout (sweapon=0) for existing inventory-less callers.
     /// </summary>
     public static int Save(string directory, string name, string callsign, int idPic, uint score,
-        Inventory? inventory = null)
+        Inventory? inventory = null, int curGame = 0, int gameWave = 0)
     {
         Directory.CreateDirectory(directory);
         int slot = NextAvailableSlot(directory);
@@ -72,6 +72,14 @@ public static class PilotSaveStore
         Array.Copy(callBytes, 0, header, 20, Math.Min(callBytes.Length, 11));
         BitConverter.GetBytes(idPic).CopyTo(header, 32);
         BitConverter.GetBytes(score).CopyTo(header, 36);
+
+        // Campaign progress (C RAP_SavePlayer LOADSAVE.C:330-333): cur_game @44 and
+        // game_wave[cur_game] @(48 + cur_game*4). Defaults (0/0) preserve the exact
+        // legacy byte layout (these offsets were previously zero-filled). Godot plays
+        // episode 1 only (cur_game 0), so the other game_wave slots stay zero.
+        int g = curGame < 0 ? 0 : (curGame > 2 ? 2 : curGame);
+        BitConverter.GetBytes(g).CopyTo(header, 44);
+        BitConverter.GetBytes(gameWave).CopyTo(header, 48 + g * 4);
 
         // sweapon @ offset 40: only written when an inventory is provided.
         // (int)EquippedSpecial, or -1 (C EMPTY) when no special is equipped.

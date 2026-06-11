@@ -86,6 +86,35 @@ public class PilotSaveStoreTests
     }
 
     [Fact]
+    public void Save_persists_campaign_progress_readable_by_LoadAll()
+    {
+        // Campaign progression: Save must write cur_game (@44) and game_wave (@48)
+        // so the loaded pilot resumes at the wave it reached (C RAP_SavePlayer
+        // LOADSAVE.C:330-333). Previously these were zero-filled → progress lost.
+        using var dir = new TempDir();
+
+        PilotSaveStore.Save(dir.Path, name: "PROG", callsign: "PG", idPic: 0, score: 0,
+            curGame: 0, gameWave: 4);
+
+        var p = PilotSaveStore.LoadAll(dir.Path)[0];
+        Assert.Equal(0, p.CurGame);
+        Assert.Equal(4, p.GameWave[0]);   // resume at game_wave[0]=4 → wave 5
+    }
+
+    [Fact]
+    public void Save_without_campaign_args_keeps_legacy_zero_layout()
+    {
+        // Default curGame/gameWave (0/0) must preserve the exact legacy byte layout:
+        // cur_game and game_wave[*] all zero. Guards the parity/save round-trip.
+        using var dir = new TempDir();
+        PilotSaveStore.Save(dir.Path, name: "LEGACY", callsign: "LG", idPic: 0, score: 0);
+
+        var p = PilotSaveStore.LoadAll(dir.Path)[0];
+        Assert.Equal(0, p.CurGame);
+        Assert.Equal(new[] { 0, 0, 0 }, p.GameWave);
+    }
+
+    [Fact]
     public void Save_assigns_next_available_slot()
     {
         using var dir = new TempDir();
