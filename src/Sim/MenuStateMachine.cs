@@ -286,14 +286,27 @@ public sealed class MenuStateMachine
         if (_inAskBool)          return _askBoolYes ? 5 : 6;
         if (_options.Active)     return _options.Field;
         if (_loadMission.Active) return LoadWindowSelectedItem;
-        if (_pilotCreate.Active) return _pilotCreate.DifficultyFieldId;
+        // Pilot creation reports C's active_field per sub-step (verified against the
+        // c_menu_goldens): REG_NAME=0 (step 1), REG_CALLSIGN=1 (step 2), and the
+        // AskDiff difficulty buttons = DifficultyFieldId+4 (TRAINING..ABORT → 5..9).
+        if (_pilotCreate.Active)
+            return _pilotCreate.Step switch
+            {
+                1 => 0,
+                2 => 1,
+                _ => _pilotCreate.DifficultyFieldId + 4,
+            };
         return State switch
         {
-            WinState.Hangar  => _hangar.Position,
-            WinState.Store   => Store?.CurItem ?? 0,
+            // Hangar/Store use a CUSTOM cursor, not SWD field nav, so C's active_field
+            // stays at a constant gadget (hangar=2, store=3); the sector/ShipComp screen
+            // reports 10. Matching C means emitting that constant, not the Godot cursor.
+            WinState.Hangar  => 2,
+            WinState.Store   => 3,
             WinState.Help    => _help.PageIndex,
             WinState.Credits => 0,            // popup, no cursor (same sentinel as WinMsg)
-            _                => CurrentItem,  // Menu / Unknown(sector)
+            WinState.Unknown => _inSectorSelect ? 10 : CurrentItem,
+            _                => CurrentItem,  // Menu
         };
     }
 

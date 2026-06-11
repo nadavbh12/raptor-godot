@@ -219,6 +219,7 @@ public partial class PlaythroughDriver : Node
             string winBefore = _menu.State.ToParityString();
             var screenBefore = _menu.EffectiveScreen();
             int selBefore = _menu.EffectiveSelectedItem();
+            int stepBefore = _menu.PilotCreateStep;
             _menu.HandleInput(key, Sim.SimClock.Frame);
             // Help moves its cursor in C's POST-hook keypress switch, so C records
             // the PRE-move page there; SWD-navigated screens move inside SWD_Dialog
@@ -227,7 +228,13 @@ public partial class PlaythroughDriver : Node
             // screen's pre-key highlight (also the right value for cross-screen keys).
             bool customNav = screenBefore == Sim.MenuStateMachine.Screen.Help
                           || screenBefore == Sim.MenuStateMachine.Screen.Options;
-            int sel = (_menu.EffectiveScreen() == screenBefore && !customNav)
+            // A pilot-create sub-step advance (REG_NAME→CALLSIGN→AskDiff via Return)
+            // keeps the same Screen but moves the field; C records the SOURCE field
+            // (the field advance is deferred past its hook), so emit the pre value —
+            // unlike the AskDiff Down/Up nav (same step), which C records post-move.
+            bool pilotStepAdvanced = screenBefore == Sim.MenuStateMachine.Screen.PilotCreate
+                                  && _menu.PilotCreateStep != stepBefore;
+            int sel = (_menu.EffectiveScreen() == screenBefore && !customNav && !pilotStepAdvanced)
                 ? _menu.EffectiveSelectedItem()
                 : selBefore;
             _emitter?.EmitMenuEvent(key, winBefore, sel);
