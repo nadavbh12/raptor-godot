@@ -1582,4 +1582,52 @@ public class MenuStateMachineTests
         Assert.NotEqual(WinState.Hangar, m.State);   // the new CampaignActive Esc must NOT hijack this
         Assert.Equal(WinState.Unknown, m.State);     // existing Credits-exit destination, unchanged
     }
+
+    [Fact]
+    public void OpenAbortPrompt_shows_abort_askbool_and_sets_active()
+    {
+        var m = new MenuStateMachine();
+        m.OpenAbortPrompt();
+        Assert.True(m.InAskBool);
+        Assert.Equal("Abort Mission ?", m.AskBoolQuestion);
+        Assert.True(m.AbortPromptActive);
+    }
+
+    [Fact]
+    public void Abort_prompt_YES_fires_OnAbortMission_and_clears_active()
+    {
+        var m = new MenuStateMachine();
+        bool fired = false;
+        m.OnAbortMission += () => fired = true;
+        m.OpenAbortPrompt();
+        m.HandleInput("Return", 0);           // YES is the default selection
+        Assert.True(fired);
+        Assert.False(m.AbortPromptActive);
+        Assert.False(m.InAskBool);
+    }
+
+    [Fact]
+    public void Abort_prompt_NO_does_not_fire_and_clears_active()
+    {
+        var m = new MenuStateMachine();
+        bool fired = false;
+        m.OnAbortMission += () => fired = true;
+        m.OpenAbortPrompt();
+        m.HandleInput("Left", 0);             // toggle to NO
+        m.HandleInput("Return", 0);
+        Assert.False(fired);
+        Assert.False(m.AbortPromptActive);
+    }
+
+    [Fact]
+    public void Abort_prompt_Escape_dismisses_without_firing()
+    {
+        var m = new MenuStateMachine();
+        bool fired = false;
+        m.OnAbortMission += () => fired = true;
+        m.OpenAbortPrompt();
+        m.HandleInput("Escape", 0);
+        Assert.False(fired);
+        Assert.False(m.AbortPromptActive);
+    }
 }

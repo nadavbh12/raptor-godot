@@ -116,6 +116,7 @@ public sealed class MenuStateMachine
     // OnPilotLoaded / Hangar transition stay in MenuStateMachine.
     private readonly LoadMissionPanel _loadMission = new();
     private bool _inAskBool = false;
+    private bool _abortPrompt = false;
     private string _askBoolQuestion = "";
     private bool _askBoolYes = true;
     private Action? _askBoolOnYes;
@@ -183,6 +184,21 @@ public sealed class MenuStateMachine
     public bool InAskBool => _inAskBool;
     public string AskBoolQuestion => _askBoolQuestion;
     public bool AskBoolYesSelected => _askBoolYes;
+
+    /// <summary>True while the mid-wave "Abort Mission ?" prompt is open. Read by
+    /// WaveController to freeze the wave tick.</summary>
+    public bool AbortPromptActive => _abortPrompt;
+
+    /// <summary>Open the mid-wave abort prompt (reuses the AskBool machinery). YES
+    /// fires <see cref="OnAbortMission"/>; NO/Escape resumes the wave.</summary>
+    public void OpenAbortPrompt()
+    {
+        _askBoolQuestion = "Abort Mission ?";
+        _askBoolYes = true;
+        _abortPrompt = true;
+        _askBoolOnYes = () => OnAbortMission?.Invoke();
+        _inAskBool = true;
+    }
     public bool InWinMsg => _inWinMsg;
     public string WinMsgText => _winMsgText;
     public int OptionsField => _options.Field;
@@ -240,11 +256,8 @@ public sealed class MenuStateMachine
     public event Action<int>? OnGameEnter;   // arg: gameNum (0=Mission1)
 
     /// <summary>Fired when the player confirms YES on the mid-wave "Abort Mission ?" prompt.
-    /// WaveController subscribes to restore the wave-start score and complete the mission.
-    /// Invocation site added in the abort-prompt UI task (Task 5).</summary>
-#pragma warning disable CS0067  // event declared here; raised by the abort-prompt UI (Task 5)
-    public event System.Action? OnAbortMission;
-#pragma warning restore CS0067
+    /// WaveController subscribes to restore the wave-start score and complete the mission.</summary>
+    public event Action? OnAbortMission;
 
     /// <summary>The highlighted index C's active_field-1 reports for the
     /// currently-active menu window. Per-screen so menu-event parity holds
@@ -386,6 +399,7 @@ public sealed class MenuStateMachine
         _options.Reset();
         _loadMission.Reset();
         _inAskBool = false;
+        _abortPrompt = false;
         _askBoolQuestion = "";
         _askBoolYes = true;
         _askBoolOnYes = null;
@@ -710,6 +724,7 @@ public sealed class MenuStateMachine
                 return true;
             case "Escape":
                 _inAskBool = false;
+                _abortPrompt = false;
                 _askBoolOnYes = null;
                 return true;
             case "Return":
@@ -717,6 +732,7 @@ public sealed class MenuStateMachine
                 bool yes = _askBoolYes;
                 var cb = _askBoolOnYes;
                 _inAskBool = false;
+                _abortPrompt = false;
                 _askBoolOnYes = null;
                 if (yes) cb?.Invoke();
                 return true;

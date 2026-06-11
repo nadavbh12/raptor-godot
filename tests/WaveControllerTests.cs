@@ -531,4 +531,21 @@ public class WaveControllerTests
         // the puff lingering long after C has removed it.
         Assert.Equal(5, WaveController.AnimFramesFor(WaveController.SmokeDownExpType));
     }
+
+    [Fact]
+    public void Game_tick_runs_only_when_wave_active_and_not_aborting()
+    {
+        Assert.True(WaveController.ShouldRunGameTick(waveActive: true,  abortPromptActive: false));
+        Assert.False(WaveController.ShouldRunGameTick(waveActive: false, abortPromptActive: false));
+        Assert.False(WaveController.ShouldRunGameTick(waveActive: true,  abortPromptActive: true));
+    }
+
+    [Property]
+    public Property ShouldRunGameTick_halts_while_abort_prompt_active()
+    {
+        // Property "Freeze halts the sim": while the abort prompt is up, the game tick
+        // never runs. Domain: WaveController._PhysicsProcess gate.
+        return Prop.ForAll<bool, bool>((waveActive, aborting) =>
+            WaveController.ShouldRunGameTick(waveActive, aborting) == (waveActive && !aborting));
+    }
 }

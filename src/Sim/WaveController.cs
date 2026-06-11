@@ -617,6 +617,11 @@ public partial class WaveController : Node
     /// </summary>
     internal static uint ScoreOnAbort(uint waveStartScore, uint currentScore) => waveStartScore;
 
+    /// <summary>The game tick runs only when a wave is active and no abort prompt is
+    /// open. Combines the wave-active guard with the mid-wave abort freeze.</summary>
+    internal static bool ShouldRunGameTick(bool waveActive, bool abortPromptActive)
+        => waveActive && !abortPromptActive;
+
     /// <summary>
     /// Mid-wave abort confirmed (YES on "Abort Mission ?"). Mirrors the normal
     /// mission-complete path: stop the wave, then complete it as a non-final wave so
@@ -843,7 +848,7 @@ public partial class WaveController : Node
             _menu?.PlayerDied(SimClock.Frame);
             return;
         }
-        if (!_waveActive) return;
+        if (!ShouldRunGameTick(_waveActive, _menu?.AbortPromptActive == true)) return;
 
         // Iter 0 fires synchronously in OnGameEnter (matches C: ENEMY_Think
         // runs before GFX_FadeIn). After iter 0, hold for FadeInHoldFrames
