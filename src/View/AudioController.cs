@@ -18,11 +18,12 @@ namespace Raptor.View;
 public partial class AudioController : Node
 {
     private const int PoolSize = 16;
-    // SFX sit this far below digital full at slider max, so the rapid gun (peaks
-    // near 0 dBFS, and stacking on the voice pool) doesn't blast. The options FX
-    // slider scales below this. Lowered from -12 to -15 to bring the overall game
-    // volume down (paired with the new Music trim) — the game was too loud.
-    private const float SfxTrimDb = -15f;
+    // SFX sit this far below digital full at slider max. The options FX slider
+    // scales below this. Lowered -12 → -15 → -20 to bring the overall effects
+    // volume down (the game was too loud). Player gunfire is trimmed FURTHER per
+    // sound (SfxBank.TrimDbForLabel) because it stacks on the voice pool and was
+    // disproportionately loud.
+    private const float SfxTrimDb = -20f;
 
     private SfxBank? _bank;
     private AudioStreamPlayer[] _players = Array.Empty<AudioStreamPlayer>();
@@ -85,6 +86,8 @@ public partial class AudioController : Node
         var player = _players[_next];
         _next = (_next + 1) % _players.Length;
         player.Stream = stream;
+        // Per-sound trim on top of the SFX bus — tames stacking player gunfire.
+        player.VolumeDb = SfxBank.TrimDbForLabel(ev.Label);
         player.Play();
     }
 }

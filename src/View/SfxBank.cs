@@ -53,6 +53,21 @@ internal sealed class SfxBank
             ["sound.fx_introhit"]      = "GUN_FX",     // FX_INTROHIT → GUN_FX
         };
 
+    /// <summary>
+    /// Per-label playback trim (dB), applied on top of the SFX bus volume in
+    /// <see cref="AudioController"/>. The player's repeating shot sounds (forward
+    /// gun, missiles) fire many times a second and STACK across the voice pool, so
+    /// they dominate the mix; trim them down so rapid fire doesn't blast. One-off
+    /// effects (explosions, pickups, hits) play at the bus level (0 dB). Pure taste
+    /// tuning — audio is View-only / parity-inert.
+    /// </summary>
+    internal static float TrimDbForLabel(string label) => label switch
+    {
+        "sound.fx_gun"    => -8f,   // forward gun — the constant, stacking offender
+        "sound.fx_missle" => -5f,   // player missiles — frequent but less so
+        _                 => 0f,
+    };
+
     private readonly string _soundsRoot;
     private readonly Dictionary<string, AudioStreamWav?> _cache = new();
 

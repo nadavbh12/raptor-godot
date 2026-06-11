@@ -49,6 +49,21 @@ public class AudioTests
         => Assert.Throws<FormatException>(() => WavData.Parse(new byte[] { 1, 2, 3, 4 }));
 
     [Fact]
+    public void Player_gunfire_is_trimmed_below_one_off_effects()
+    {
+        // Rapid forward-gun fire retriggers many times a second and stacks across
+        // the voice pool, so it dominates the mix. It's trimmed below one-off
+        // effects (explosions/pickups, which play at the bus level = 0 dB).
+        Assert.True(SfxBank.TrimDbForLabel("sound.fx_gun") < 0f);
+        Assert.True(SfxBank.TrimDbForLabel("sound.fx_missle") < 0f);
+        Assert.True(SfxBank.TrimDbForLabel("sound.fx_gun")
+                  < SfxBank.TrimDbForLabel("sound3d.fx_airexplo"));
+        Assert.Equal(0f, SfxBank.TrimDbForLabel("sound3d.fx_airexplo"));  // explosion at bus level
+        Assert.Equal(0f, SfxBank.TrimDbForLabel("sound.fx_bonus"));       // pickup at bus level
+        Assert.Equal(0f, SfxBank.TrimDbForLabel("sound.fx_hit"));         // shield hit (not firing)
+    }
+
+    [Fact]
     public void Every_midi_track_has_a_rendered_ogg()
     {
         string music = Path.Combine(Path.GetDirectoryName(SoundsDir())!, "music");
