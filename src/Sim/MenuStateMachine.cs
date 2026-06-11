@@ -499,6 +499,11 @@ public sealed class MenuStateMachine
                 // WIN_MainMenu's input loop after WIN_Credits/HELP_Win, so
                 // route keys to the main-menu handler here to keep parity
                 // labels intact while restoring live interactivity.
+                // LOAD-BEARING for the mid-wave abort prompt: during a wave,
+                // State also stays UNKNOWN (EnterGame only flips the InGame
+                // flag), so the "Abort Mission ?" AskBool's nav keys reach
+                // HandleAskBoolInput via this fallthrough → HandleMenuInput's
+                // `if (_inAskBool)` check. Do NOT gate this on !InGame.
                 if (!_inSectorSelect && !_pilotCreate.Active)
                     return HandleMenuInput(action, currentFrame);
                 break;
