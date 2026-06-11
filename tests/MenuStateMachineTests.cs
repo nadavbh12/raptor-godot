@@ -1736,4 +1736,138 @@ public class MenuStateMachineTests
         Assert.False(fired);
         Assert.False(m.AbortPromptActive);
     }
+
+    // -------------------------------------------------------------------------
+    // LOAD-window mouse click (LoadMissionFieldAt + HandlePointerClick)
+    // -------------------------------------------------------------------------
+
+    // Pure hit-test: each of the 5 button rects maps to the right action string.
+    [Theory]
+    [InlineData(82,  138, "Delete")]   // LOAD_DEL   center (63+38/2=82, 134+8/2=138)
+    [InlineData(132, 138, "Escape")]   // LOAD_CANCEL center (113+38/2=132)
+    [InlineData(181, 138, "Return")]   // LOAD_LOAD  center (162+38/2=181)
+    [InlineData(216, 138, "Up")]       // LOAD_PREV  center (204+25/2=216)
+    [InlineData(244, 138, "Down")]     // LOAD_NEXT  center (232+25/2=244)
+    public void LoadMissionFieldAt_returns_correct_action_for_center_of_each_button(int x, int y, string expected)
+    {
+        Assert.Equal(expected, MenuStateMachine.LoadMissionFieldAt(x, y));
+    }
+
+    [Fact]
+    public void LoadMissionFieldAt_returns_null_outside_all_buttons()
+    {
+        Assert.Null(MenuStateMachine.LoadMissionFieldAt(10, 10));
+        Assert.Null(MenuStateMachine.LoadMissionFieldAt(0, 134));
+        Assert.Null(MenuStateMachine.LoadMissionFieldAt(300, 138));
+    }
+
+    // End-to-end via HandlePointerClick: open load panel then click each button.
+
+    [Fact]
+    public void PointerClick_LOAD_LOAD_loads_selected_pilot_and_enters_Hangar()
+    {
+        var m = EnterLoadMissionWithThreePilots(out var dir);
+        using (dir)
+        {
+            bool handled = m.HandlePointerClick(181, 138, 100);  // LOAD_LOAD center
+            Assert.True(handled);
+            Assert.False(m.InLoadMission);
+            Assert.Equal(WinState.Hangar, m.State);
+        }
+    }
+
+    [Fact]
+    public void PointerClick_LOAD_CANCEL_closes_panel_and_stays_in_Menu()
+    {
+        var m = EnterLoadMissionWithThreePilots(out var dir);
+        using (dir)
+        {
+            bool handled = m.HandlePointerClick(132, 138, 100);  // LOAD_CANCEL center
+            Assert.True(handled);
+            Assert.False(m.InLoadMission);
+            Assert.Equal(WinState.Menu, m.State);
+        }
+    }
+
+    [Fact]
+    public void PointerClick_LOAD_NEXT_advances_selected_index()
+    {
+        var m = EnterLoadMissionWithThreePilots(out var dir);
+        using (dir)
+        {
+            int before = m.LoadMissionSelectedIndex;
+            m.HandlePointerClick(244, 138, 100);  // LOAD_NEXT center
+            Assert.Equal((before + 1) % m.LoadMissionPilots.Count, m.LoadMissionSelectedIndex);
+        }
+    }
+
+    [Fact]
+    public void PointerClick_LOAD_PREV_decrements_selected_index()
+    {
+        var m = EnterLoadMissionWithThreePilots(out var dir);
+        using (dir)
+        {
+            int before = m.LoadMissionSelectedIndex;
+            m.HandlePointerClick(216, 138, 100);  // LOAD_PREV center
+            int expected = (before - 1 + m.LoadMissionPilots.Count) % m.LoadMissionPilots.Count;
+            Assert.Equal(expected, m.LoadMissionSelectedIndex);
+        }
+    }
+
+    [Fact]
+    public void PointerClick_LOAD_DEL_opens_delete_confirm_AskBool()
+    {
+        var m = EnterLoadMissionWithThreePilots(out var dir);
+        using (dir)
+        {
+            bool handled = m.HandlePointerClick(82, 138, 100);  // LOAD_DEL center
+            Assert.True(handled);
+            Assert.True(m.InAskBool);
+            Assert.StartsWith("Delete Pilot ", m.AskBoolQuestion);
+        }
+    }
+
+    [Fact]
+    public void PointerClick_outside_buttons_while_load_panel_open_returns_false()
+    {
+        var m = EnterLoadMissionWithThreePilots(out var dir);
+        using (dir)
+        {
+            bool handled = m.HandlePointerClick(10, 10, 100);
+            Assert.False(handled);
+            Assert.True(m.InLoadMission);  // panel still open
+        }
+    }
+
+    [Fact]
+    public void PointerClick_on_load_button_rect_is_ignored_when_panel_closed()
+    {
+        // (70,138) is inside the LOAD_DEL rect, but with the load panel closed the
+        // `_loadMission.Active` guard skips the load branch and the main-menu hit-test
+        // finds nothing there (x<90) → no-op. Guards against a future refactor that
+        // drops the guard and lets a stray click trigger a load action.
+        var m = new MenuStateMachine();
+        m.EnterMenu(0);
+        Assert.False(m.InLoadMission);
+        Assert.False(m.HandlePointerClick(70, 138, 0));
+        Assert.False(m.InLoadMission);
+        Assert.Equal(WinState.Menu, m.State);
+    }
+
+    [Fact]
+    public void PointerClick_LOAD_DEL_while_AskBool_open_does_not_re_trigger()
+    {
+        var m = EnterLoadMissionWithThreePilots(out var dir);
+        using (dir)
+        {
+            // Open the delete confirm.
+            m.HandlePointerClick(82, 138, 100);
+            Assert.True(m.InAskBool);
+            string firstQuestion = m.AskBoolQuestion;
+
+            // A second click on DEL while the confirm is open must be ignored.
+            m.HandlePointerClick(82, 138, 101);
+            Assert.Equal(firstQuestion, m.AskBoolQuestion);
+        }
+    }
 }

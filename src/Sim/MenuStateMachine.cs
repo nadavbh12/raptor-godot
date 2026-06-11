@@ -555,6 +555,13 @@ public sealed class MenuStateMachine
             return HandleInput("Return", currentFrame);
         }
 
+        if (_loadMission.Active && !_inAskBool)
+        {
+            string? action = LoadMissionFieldAt(x, y);
+            if (action == null) return false;
+            return HandleInput(action, currentFrame);
+        }
+
         if (State == WinState.Menu)
         {
             if (_options.Active)
@@ -850,6 +857,20 @@ public sealed class MenuStateMachine
 
     private static bool InRect(int x, int y, int rx, int ry, int w, int h)
         => x >= rx && x < rx + w && y >= ry && y < ry + h;
+
+    /// <summary>The LOAD-window button action at (x,y), or null if no button there.
+    /// Rects are LOAD_SWD fields offset by the window origin (58,50): DEL/CANCEL/LOAD
+    /// at y=134 h=8 (w=38), PREV/NEXT at y=134 h=8 (w=25). Maps to the keyboard actions
+    /// LoadMissionPanel/HandleLoadMissionInput already handle.</summary>
+    internal static string? LoadMissionFieldAt(int x, int y)
+    {
+        if (InRect(x, y,  63, 134, 38, 8)) return "Delete";  // LOAD_DEL
+        if (InRect(x, y, 113, 134, 38, 8)) return "Escape";  // LOAD_CANCEL
+        if (InRect(x, y, 162, 134, 38, 8)) return "Return";  // LOAD_LOAD
+        if (InRect(x, y, 204, 134, 25, 8)) return "Up";      // LOAD_PREV (pos--)
+        if (InRect(x, y, 232, 134, 25, 8)) return "Down";    // LOAD_NEXT (pos++)
+        return null;
+    }
 
     private static int MainMenuItemAt(int x, int y)
     {
