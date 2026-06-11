@@ -39,10 +39,50 @@ public partial class InteractiveInputController : Node
         }
     }
 
+    internal enum InGameInputDecision { PassThrough, OpenAbort, RouteToAskBool, Swallow }
+
+    /// <summary>
+    /// Routing for keys while a wave is in progress. Not in game → caller handles
+    /// normally. Abort prompt open → AskBool nav keys route to it, others swallowed.
+    /// No prompt → Esc opens the abort prompt; all other gameplay keys are swallowed
+    /// (gameplay movement/fire is read separately in _PhysicsProcess).
+    /// </summary>
+    internal static InGameInputDecision DecideInGameInput(bool inGame, bool abortPromptActive, string? action)
+    {
+        if (!inGame) return InGameInputDecision.PassThrough;
+        if (abortPromptActive)
+            return action switch
+            {
+                "Left" or "Right" or "Tab" or "Up" or "Down" or "Return" or "Space" or "Escape"
+                    => InGameInputDecision.RouteToAskBool,
+                _ => InGameInputDecision.Swallow,
+            };
+        return action == "Escape" ? InGameInputDecision.OpenAbort : InGameInputDecision.Swallow;
+    }
+
     public override void _UnhandledInput(InputEvent @event)
     {
         if (!Active) return;
-        if (_menuController?.Menu.InGame == true) return;
+
+        var menu = _menuController?.Menu;
+        if (menu?.InGame == true)
+        {
+            if (@event is not InputEventKey igKey || !igKey.Pressed || igKey.Echo) return;
+            string? igAction = KeyEventToMenuAction(igKey);
+            switch (DecideInGameInput(true, menu.AbortPromptActive, igAction))
+            {
+                case InGameInputDecision.OpenAbort:
+                    menu.OpenAbortPrompt();
+                    GetViewport().SetInputAsHandled();
+                    return;
+                case InGameInputDecision.RouteToAskBool:
+                    menu.HandleInput(igAction!, SimClock.Frame);
+                    GetViewport().SetInputAsHandled();
+                    return;
+                default:
+                    return;   // Swallow / (PassThrough not applicable in-game)
+            }
+        }
 
         if (@event is InputEventKey keyEvent)
         {
