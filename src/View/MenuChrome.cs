@@ -61,8 +61,13 @@ internal static class MenuChrome
         131,  // Order Info
         145,  // Credits
         159,  // Quit
-        200,  // Return to Game, hidden when not in game
+        173,  // Return to Game (MAIN_SWD field 7), shown only while a campaign is active
     ];
+
+    /// <summary>RETURN-to-game item (MENU7_PIC). Rendered only while a campaign is in
+    /// progress (C ingameflag, WINDOWS.C:2026). MAIN_SWD field idx 7 = (95, 173),
+    /// directly below QUIT.</summary>
+    public static readonly MenuSpriteSpec ReturnItem = new("0037_MENU7_PIC.png", 95, 173);
 
     public static readonly IReadOnlyList<(string Label, int X, int Y)> HangarTargets =
     [

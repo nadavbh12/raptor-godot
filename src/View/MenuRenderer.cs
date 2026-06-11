@@ -178,6 +178,17 @@ internal sealed class MenuRenderer
                 : Colors.White;
             _host.DrawUiSprite(item, modulate);
         }
+        // RETURN (MENU7_PIC) renders only while a campaign is in progress (C
+        // ingameflag, WINDOWS.C:2026). Without it the item is navigable (CurrentItem
+        // can reach ReturnItemIndex when CampaignActive) but invisible — a hidden
+        // option that jumps to the hangar.
+        if (menu.CampaignActive)
+        {
+            var modulate = menu.CurrentItem == MenuStateMachine.ReturnItemIndex
+                ? new Color(1.30f, 1.60f, 3.30f)
+                : Colors.White;
+            _host.DrawUiSprite(MenuChrome.ReturnItem, modulate);
+        }
     }
 
     private void DrawOptionsOverlay(MenuStateMachine menu)
