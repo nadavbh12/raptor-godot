@@ -927,14 +927,15 @@ public partial class DebugRenderer : Node2D
             DrawTexture(tex, new Vector2(f.X, f.Y));
     }
 
-    /// <summary>Store pilot-portrait sprite for an id_pic. C sid_pics / id_pics order
-    /// (STORE.C:257): 0=WMALE 1=BMALE 2=WFEMALE 3=BFEMALE.</summary>
+    /// <summary>Store pilot-portrait sprite for an id_pic. C STORE.C:257 uses the
+    /// LARGE, axis-aligned `id_pics[]` (WINDOWS.C:62) — NOT the small tilted `sid_pics[]`
+    /// ID badges the registration screen uses. Order: 0=WMALE 1=BMALE 2=WFEMALE 3=BFEMALE.</summary>
     private static string StorePortraitName(int idPic) => idPic switch
     {
-        1 => "BMALEID_PIC",
-        2 => "WFMALEID_PIC",
-        3 => "BFMALEID_PIC",
-        _ => "WMALEID_PIC",
+        1 => "BMALE_PIC",
+        2 => "WFEMALE_PIC",
+        3 => "BFEMALE_PIC",
+        _ => "WMALE_PIC",
     };
 
     private void DrawSwdCenteredText(SwdWindow.Field f, string text, string fontName, int basecolor)
