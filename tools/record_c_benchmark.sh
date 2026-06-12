@@ -9,6 +9,8 @@
 # compresses everything. Outputs in <out_dir>:
 #   demos/wave*.json   per-wave input -> replay in Godot (RAPTOR_DEMO_PATH)
 #   parity.ndjson      per-checkpoint game state (objects/score/shields/bullets)
+#   menu.ndjson        per-menu-event stream (win/selected_item + the input) for
+#                      menu-parity — every menu key you press while recording
 #   video.mkv          every frame, lossless (FFV1) — extract any frame to compare
 #   audio.ogg          the exact game audio
 #
@@ -46,6 +48,7 @@ RAPTOR_AUDIO_PCM="$OUT/audio.pcm" \
 RAPTOR_DUMP_DIR="$OUT/frames" \
 RAPTOR_DUMP_EVERY=1 \
 RAPTOR_PARITY_OUT="$OUT/parity.ndjson" \
+RAPTOR_MENU_OUT="$OUT/menu.ndjson" \
 "$CBIN" || true
 
 # Fail loudly if the capture wrote nothing usable (e.g. disk full, or the binary
