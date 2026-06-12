@@ -64,7 +64,7 @@ public sealed record ShotLib(
             Hits: 4, Speed: 2, MaxSpeed: 12, StartFrame: 1, NumFrames: 3,
             ShootRate: 10, DelayFlag: true, Smoke: false, UsePlot: true,
             MoveFlag: true, FplrX: false, FplrY: false, Meffect: false,
-            Ht: HitType.All, Beam: BeamType.Shoot, Hlx: 4, Hly: 8));
+            Ht: HitType.All, Beam: BeamType.Shoot, Hlx: 4, Hly: 12));  // MISDUM_BLK 8x24
         // S_MINI_GUN — NMSHOT_BLK, 8x8
         t.Add(new ShotLib(ObjType.MiniGun,
             Hits: 1, Speed: 8, MaxSpeed: 10, StartFrame: 1, NumFrames: 4,
@@ -106,13 +106,13 @@ public sealed record ShotLib(
             Hits: 3, Speed: 4, MaxSpeed: 8, StartFrame: 0, NumFrames: 6,
             ShootRate: 2, DelayFlag: false, Smoke: false, UsePlot: false,
             MoveFlag: true, FplrX: false, FplrY: false, Meffect: false,
-            Ht: HitType.Suck, Beam: BeamType.Shoot, Hlx: 4, Hly: 4));
+            Ht: HitType.Suck, Beam: BeamType.Shoot, Hlx: 8, Hly: 8));  // POWDIS_BLK 16x16
         // S_MEGA_BOMB — MEGABM_BLK, 16x16
         t.Add(new ShotLib(ObjType.MegaBomb,
             Hits: 50, Speed: 2, MaxSpeed: 2, StartFrame: 0, NumFrames: 4,
             ShootRate: 60, DelayFlag: false, Smoke: false, UsePlot: true,
             MoveFlag: true, FplrX: false, FplrY: false, Meffect: true,
-            Ht: HitType.All, Beam: BeamType.Shoot, Hlx: 8, Hly: 8));
+            Ht: HitType.All, Beam: BeamType.Shoot, Hlx: 4, Hly: 4));  // MEGABM_BLK 8x8
         // S_PULSE_CANNON — SHOKWV_BLK, 16x16 → hlx = width>>1 = 8 (C SHOTS.C:556).
         // (Was 16: a stale 32-wide assumption that shifted every pulse bullet 8px
         //  left of C, destroying ground tiles early — the wave-5 iter-558 parity bug.)
@@ -120,7 +120,7 @@ public sealed record ShotLib(
             Hits: 5, Speed: 8, MaxSpeed: 8, StartFrame: 0, NumFrames: 2,
             ShootRate: 3, DelayFlag: false, Smoke: false, UsePlot: false,
             MoveFlag: true, FplrX: false, FplrY: false, Meffect: false,
-            Ht: HitType.All, Beam: BeamType.Shoot, Hlx: 8, Hly: 8));
+            Ht: HitType.All, Beam: BeamType.Shoot, Hlx: 8, Hly: 8));  // SHOKWV_BLK 16x16
         // S_FORWARD_LASER — FRNTLAS_BLK, 8x8; beam follows player
         t.Add(new ShotLib(ObjType.ForwardLaser,
             Hits: 10, Speed: 0, MaxSpeed: 0, StartFrame: 0, NumFrames: 4,

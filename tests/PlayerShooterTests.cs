@@ -84,6 +84,23 @@ public class PlayerShooterTests
     }
 
     [Fact]
+    public void ShotLib_bullet_half_dims_match_their_C_sprites()
+    {
+        // C derives hlx/hly = sprite (width>>1, height>>1) from the lumpnum sprite
+        // (SHOTS.C init). Three entries were stale vs the extracted sprites:
+        //   DumbMissile MISDUM_BLK 8x24  -> 4/12 (was 4/8)
+        //   EnergyGrab  POWDIS_BLK 16x16 -> 8/8  (was 4/4)
+        //   MegaBomb    MEGABM_BLK 8x8   -> 4/4  (was 8/8)
+        // A wrong half-dim shifts the bullet's collision box off C's.
+        var dumb = ShotLib.Get(ObjType.DumbMissile);
+        Assert.Equal(4, dumb.Hlx); Assert.Equal(12, dumb.Hly);
+        var grab = ShotLib.Get(ObjType.EnergyGrab);
+        Assert.Equal(8, grab.Hlx); Assert.Equal(8, grab.Hly);
+        var mega = ShotLib.Get(ObjType.MegaBomb);
+        Assert.Equal(4, mega.Hlx); Assert.Equal(4, mega.Hly);
+    }
+
+    [Fact]
     public void ShotLib_PLASMA_GUNS_matches_C()
     {
         // SHOTS.C:167-196: hits=2, speed=4, maxspeed=8, shoot_rate=10, ht=S_AIR.
