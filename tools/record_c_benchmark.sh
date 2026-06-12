@@ -28,13 +28,18 @@ echo " Recording C play -> $OUT"
 echo " Play now. CLOSE THE WINDOW when done. (deterministic RNG is on)"
 echo "================================================================"
 
+# RAPTOR_DUMP_EVERY: dump every Nth frame to the lossless video. Default 1 (every
+# frame). For a long multi-level session set e.g. 5 or 10 to keep the temp BMPs +
+# compression manageable — the parity-critical artifacts (input.rec, parity.ndjson)
+# are unaffected by this. RAPTOR_START_WAVE (1-9) is inherited if you set it, so you
+# can record a specific level directly, e.g.:  RAPTOR_START_WAVE=5 ./tools/record_c_benchmark.sh
 RAPTOR_SKIPINTRO=1 \
 RAPTOR_DETERMINISTIC_RNG=1 \
 RAPTOR_INPUT_LOG="$OUT/input.rec" \
 RAPTOR_LOADOUT_LOG="$OUT/loadout.json" \
 RAPTOR_AUDIO_PCM="$OUT/audio.pcm" \
 RAPTOR_DUMP_DIR="$OUT/frames" \
-RAPTOR_DUMP_EVERY=1 \
+RAPTOR_DUMP_EVERY="${RAPTOR_DUMP_EVERY:-1}" \
 RAPTOR_PARITY_OUT="$OUT/parity.ndjson" \
 "$CBIN" || true
 
