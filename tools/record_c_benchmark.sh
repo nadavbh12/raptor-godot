@@ -22,6 +22,10 @@ OUT="${1:-$GODOT_REPO/benchmarks/bench_$(date +%Y%m%d_%H%M%S)}"
 
 [ -x "$CBIN" ] || { echo "C binary not found/executable: $CBIN" >&2; exit 2; }
 mkdir -p "$OUT/frames"
+# MUST be absolute: the C binary chdir's into its asset dir (sys_main.c
+# locate_assets_and_chdir), so a relative out-dir would make every RAPTOR_*_LOG
+# path resolve against dosraptor/ and silently fail to write.
+OUT="$(cd "$OUT" && pwd)"
 
 echo "================================================================"
 echo " Recording C play -> $OUT"
@@ -43,6 +47,15 @@ RAPTOR_DUMP_DIR="$OUT/frames" \
 RAPTOR_DUMP_EVERY=1 \
 RAPTOR_PARITY_OUT="$OUT/parity.ndjson" \
 "$CBIN" || true
+
+# Fail loudly if the capture wrote nothing usable (e.g. disk full, or the binary
+# exited before a wave). The parity oracle + Godot demos come from these two; a
+# missing/empty either means the recording is unusable — say so now, not later.
+if [ ! -s "$OUT/parity.ndjson" ] || [ ! -s "$OUT/input.rec" ]; then
+    echo "!! RECORDING FAILED: missing/empty $OUT/{parity.ndjson,input.rec}." >&2
+    echo "!! (disk full? closed before entering a wave?) Nothing to diff — re-record." >&2
+    exit 1
+fi
 
 echo "=== compressing (this can take a minute) ==="
 
