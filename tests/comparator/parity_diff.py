@@ -69,6 +69,26 @@ def read_ndjson(path: str) -> list[dict]:
     return out
 
 
+# Frozen-tail trim: a live C recording keeps spinning its game loop after you stop
+# playing / close the window (deterministic RNG runs flat-out with no frame pacing),
+# so the parity stream gets a long tail of rows with IDENTICAL game state but a
+# runaway iter counter. Drop that trailing run (keep the first settled row) so an
+# exact diff tests the real play, not the post-play spin. State excludes iter/fc.
+_STATE_FIELDS = ("win", "player_x", "player_y", "score", "shield",
+                 "enemies", "pbullets", "ebullets", "obj_hash")
+
+
+def drop_frozen_tail(rows: list[dict]) -> list[dict]:
+    if not rows:
+        return rows
+    def state(r):
+        return tuple(r.get(f) for f in _STATE_FIELDS)
+    last = len(rows) - 1
+    while last > 0 and state(rows[last]) == state(rows[last - 1]):
+        last -= 1
+    return rows[: last + 1]
+
+
 # Exact mode: every required field must match bit-for-bit (zero tolerance),
 # including obj_hash. Only fc stays advisory (C/Godot reach the same iter at
 # different framecounts). This is the gate for true exact-parity replay.
@@ -148,10 +168,17 @@ def main():
     p.add_argument("--menu", action="store_true",
                    help="menu-event mode: compare per-event menu rows "
                         "(win/selected_item/event_index/kind exact); PASS requires 100%%.")
+    p.add_argument("--drop-frozen-tail", action="store_true",
+                   help="trim trailing rows with identical game state (a live "
+                        "recording's post-play loop-spin) from both inputs before "
+                        "diffing. Use for exact diffs of live C recordings.")
     args = p.parse_args()
 
     c = read_ndjson(args.c_golden)
     g = read_ndjson(args.godot_out)
+    if args.drop_frozen_tail:
+        c = drop_frozen_tail(c)
+        g = drop_frozen_tail(g)
     if args.menu:
         n_total, n_passed, diags = compare(c, g, MENU_TOLERANCES, MENU_ADVISORY,
                                            label_field="event_index")
