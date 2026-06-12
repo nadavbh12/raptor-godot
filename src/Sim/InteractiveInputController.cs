@@ -265,13 +265,20 @@ public partial class InteractiveInputController : Node
 
     internal static Vector2I ToGameViewport(Vector2 pos, Vector2 viewportSize)
     {
-        if (pos.X >= 0 && pos.X <= 320 && pos.Y >= 0 && pos.Y <= 200)
+        const float gw = 320f, gh = 200f;
+        if (viewportSize.X <= 0 || viewportSize.Y <= 0)
             return new Vector2I(Mathf.FloorToInt(pos.X), Mathf.FloorToInt(pos.Y));
 
-        float sx = viewportSize.X > 0 ? 320f / viewportSize.X : 1f;
-        float sy = viewportSize.Y > 0 ? 200f / viewportSize.Y : 1f;
-        int x = Mathf.Clamp(Mathf.FloorToInt(pos.X * sx), 0, 319);
-        int y = Mathf.Clamp(Mathf.FloorToInt(pos.Y * sy), 0, 199);
+        // The window keeps the 320:200 aspect (project stretch/aspect = "keep"), so
+        // it's a SINGLE uniform scale (min of the two) with centered letterbox/
+        // pillarbox margins. Subtract the margin, then divide by that scale. The old
+        // code used independent X/Y scales and no margin, which mismaps every click
+        // whenever the window aspect != 320:200 (e.g. a 16:9 window → side bars).
+        float scale = Mathf.Min(viewportSize.X / gw, viewportSize.Y / gh);
+        float offX = (viewportSize.X - gw * scale) * 0.5f;
+        float offY = (viewportSize.Y - gh * scale) * 0.5f;
+        int x = Mathf.Clamp(Mathf.FloorToInt((pos.X - offX) / scale), 0, 319);
+        int y = Mathf.Clamp(Mathf.FloorToInt((pos.Y - offY) / scale), 0, 199);
         return new Vector2I(x, y);
     }
 

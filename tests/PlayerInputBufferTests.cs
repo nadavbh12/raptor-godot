@@ -76,19 +76,24 @@ public class InputStateTests
     }
 
     [Fact]
-    public void Interactive_mouse_mapping_keeps_already_scaled_game_coordinates()
+    public void Interactive_mouse_mapping_scales_window_pixel_coordinates()
     {
-        var p = InteractiveInputController.ToGameViewport(new Godot.Vector2(190, 149), new Godot.Vector2(1280, 800));
+        // 1280x800 matches the 320:200 aspect → uniform 4x, no bars: window/4 = game.
+        var p = InteractiveInputController.ToGameViewport(new Godot.Vector2(760, 596), new Godot.Vector2(1280, 800));
 
         Assert.Equal(new Godot.Vector2I(190, 149), p);
     }
 
     [Fact]
-    public void Interactive_mouse_mapping_scales_window_pixel_coordinates()
+    public void Interactive_mouse_mapping_accounts_for_letterbox_at_non_game_aspect()
     {
-        var p = InteractiveInputController.ToGameViewport(new Godot.Vector2(760, 596), new Godot.Vector2(1280, 800));
-
-        Assert.Equal(new Godot.Vector2I(190, 149), p);
+        // A 1280x720 (16:9) window pillarboxes the 1.6 game: uniform scale 3.6, 64px
+        // side bars. The game's top-left (window 64,0) → (0,0); its center → (160,100).
+        // The old independent-scale math (no bar offset) mismapped these → clicks missed.
+        Assert.Equal(new Godot.Vector2I(0, 0),
+            InteractiveInputController.ToGameViewport(new Godot.Vector2(64, 0), new Godot.Vector2(1280, 720)));
+        Assert.Equal(new Godot.Vector2I(160, 100),
+            InteractiveInputController.ToGameViewport(new Godot.Vector2(640, 360), new Godot.Vector2(1280, 720)));
     }
 
     [Fact]
