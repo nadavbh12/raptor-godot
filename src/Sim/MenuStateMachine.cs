@@ -183,6 +183,12 @@ public sealed class MenuStateMachine
     public int RegisterIdPic => _pilotCreate.CurId;
     /// <summary>Portrait variant (0=WMALE, 1=BMALE, 2=WFEMALE, 3=BFEMALE).</summary>
     public int IdPic { get; private set; } = 0;
+
+    /// <summary>The CHAR####.FIL slot of the active pilot — C's <c>filepos</c>. Set to
+    /// the loaded slot on load, allocated on a new pilot's first save, and reused on
+    /// every later save so saving OVERWRITES the pilot's file instead of duplicating it.
+    /// -1 = no slot yet (brand-new pilot, never saved).</summary>
+    public int CurrentPilotSlot { get; private set; } = -1;
     /// <summary>Fires when a saved pilot is loaded via the LOAD dialog. Receives the
     /// full summary so subscribers (e.g. WaveController) can apply Score, CurGame,
     /// diff, etc. to active game state.</summary>
@@ -657,6 +663,7 @@ public sealed class MenuStateMachine
                     _hangar.Position = 1;  // HANGTOSTORE → pos=1=SUPPLIES
                     // Persist the portrait chosen in the registration screen.
                     IdPic = _pilotCreate.CurId;
+                    CurrentPilotSlot = -1;   // new pilot owns no slot until its first save
                     CampaignActive = true;
                     // Notify that a new pilot was created (triggers stat initialization).
                     OnPilotCreated?.Invoke();
@@ -798,6 +805,7 @@ public sealed class MenuStateMachine
     {
         _pilotCreate.SetIdentity(pilot.Name, pilot.Callsign);
         IdPic = pilot.IdPic;
+        CurrentPilotSlot = pilot.Slot;   // C: filepos = loaded slot → save overwrites it
         CampaignActive = true;
         OnPilotLoaded?.Invoke(pilot);
         EnterState(WinState.Hangar, currentFrame + HangarFadeFrames, reAnchor: true);
@@ -836,8 +844,13 @@ public sealed class MenuStateMachine
         int gameWave = GetCampaignWaveZeroBased?.Invoke() ?? 0;  // persist campaign progress
         int playerDiff = GetPlayerDiff?.Invoke() ?? -1;          // -1 = not wired → legacy zero diff
         Inventory inventory = Inventory;                         // persist owned weapons/items + sweapon
-        _askBoolOnYes = () => PilotSaveStore.Save(saveDir, name, callsign, idPic: idPic, score: score,
-            inventory: inventory, curGame: 0, gameWave: gameWave, playerDiff: playerDiff);
+        // Overwrite the active pilot's slot (C filepos). A new pilot has slot -1 →
+        // Save allocates the first free slot, which we remember so later saves
+        // overwrite it instead of piling up copies.
+        _askBoolOnYes = () => CurrentPilotSlot = PilotSaveStore.Save(
+            saveDir, name, callsign, idPic: idPic, score: score,
+            inventory: inventory, curGame: 0, gameWave: gameWave, playerDiff: playerDiff,
+            slot: CurrentPilotSlot);
         _inAskBool = true;
     }
 

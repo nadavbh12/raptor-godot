@@ -53,10 +53,14 @@ public static class PilotSaveStore
     /// legacy byte layout (sweapon=0) for existing inventory-less callers.
     /// </summary>
     public static int Save(string directory, string name, string callsign, int idPic, uint score,
-        Inventory? inventory = null, int curGame = 0, int gameWave = 0, int playerDiff = -1)
+        Inventory? inventory = null, int curGame = 0, int gameWave = 0, int playerDiff = -1, int slot = -1)
     {
         Directory.CreateDirectory(directory);
-        int slot = NextAvailableSlot(directory);
+        // slot >= 0: overwrite the current pilot's file in place (C RAP_SavePlayer
+        // writes to `filepos`, the active pilot's slot). slot < 0: a brand-new pilot
+        // gets the first free slot (C RAP_FFSaveFile). Without this the menu re-saved
+        // to a fresh slot every time, piling up duplicate copies.
+        if (slot < 0) slot = NextAvailableSlot(directory);
         string path = Path.Combine(directory, $"CHAR{slot:D4}.FIL");
 
         // Collect slots before building the header so we know the count.

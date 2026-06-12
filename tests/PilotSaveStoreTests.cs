@@ -141,6 +141,33 @@ public class PilotSaveStoreTests
     }
 
     [Fact]
+    public void Save_to_an_explicit_slot_overwrites_in_place_no_copy()
+    {
+        // C RAP_SavePlayer writes to `filepos` (the current pilot's slot) — saving the
+        // same pilot overwrites its file, it does NOT create a new copy each time.
+        using var dir = new TempDir();
+        int s1 = PilotSaveStore.Save(dir.Path, name: "ACE", callsign: "A1", idPic: 0, score: 100);
+        Assert.Equal(0, s1);
+
+        int s2 = PilotSaveStore.Save(dir.Path, name: "ACE", callsign: "A1", idPic: 0, score: 999, slot: 0);
+        Assert.Equal(0, s2);
+
+        var pilots = PilotSaveStore.LoadAll(dir.Path);
+        Assert.Single(pilots);                 // ONE file, not two
+        Assert.Equal(999u, pilots[0].Score);   // overwritten in place
+    }
+
+    [Fact]
+    public void Save_without_slot_still_allocates_next_free_slot()
+    {
+        // A brand-new pilot (slot = -1, the default) gets the first free slot,
+        // mirroring C RAP_FFSaveFile.
+        using var dir = new TempDir();
+        Assert.Equal(0, PilotSaveStore.Save(dir.Path, "A", "AA", 0, 0));
+        Assert.Equal(1, PilotSaveStore.Save(dir.Path, "B", "BB", 0, 0));
+    }
+
+    [Fact]
     public void Save_assigns_next_available_slot()
     {
         using var dir = new TempDir();

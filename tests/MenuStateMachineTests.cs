@@ -1367,6 +1367,48 @@ public class MenuStateMachineTests
     }
 
     [Fact]
+    public void Saving_a_loaded_pilot_overwrites_its_slot_not_a_copy()
+    {
+        // User-reported: saving created more copies instead of overwriting. C writes
+        // to filepos (the loaded slot), so saving a loaded pilot must overwrite its
+        // file, leaving the slot count unchanged.
+        using var dir = new PilotSaveStoreTests.TempDir();
+        PilotSaveStoreTests.WriteFakePilot(dir.Path, slot: 0, name: "VET", callsign: "V1", idPic: 0, score: 5000);
+        var m = new MenuStateMachine { PilotSaveDirectory = dir.Path };
+        m.EnterMenu(0);
+        var pilot = PilotSaveStore.LoadAll(dir.Path)[0];
+        m.ApplyLoadedPilot(pilot, 10);
+        Assert.Equal(0, m.CurrentPilotSlot);   // tracks the loaded slot (C filepos)
+
+        m.GetScore = () => 7777u;
+        m.HandleInput("F2", 100);              // open save prompt
+        m.HandleInput("Return", 101);          // confirm YES → write
+
+        var pilots = PilotSaveStore.LoadAll(dir.Path);
+        Assert.Single(pilots);                 // STILL one file — overwrote slot 0
+        Assert.Equal(7777u, pilots[0].Score);  // updated in place
+    }
+
+    [Fact]
+    public void Saving_a_new_pilot_twice_overwrites_not_duplicates()
+    {
+        var m = HangarReadyMachineWithSaveDir(out var dir);   // creates pilot TEST → hangar
+        using (dir)
+        {
+            m.GetScore = () => 100u;
+            m.HandleInput("F2", 100);
+            m.HandleInput("Return", 101);       // first save → allocates a slot
+            int slot1 = m.CurrentPilotSlot;
+            Assert.True(slot1 >= 0);
+
+            m.HandleInput("F2", 102);
+            m.HandleInput("Return", 103);       // second save → same slot, overwrite
+            Assert.Equal(slot1, m.CurrentPilotSlot);
+            Assert.Single(PilotSaveStore.LoadAll(dir.Path));   // ONE file, not two
+        }
+    }
+
+    [Fact]
     public void Lowercase_s_in_hangar_opens_save_prompt()
     {
         var m = HangarReadyMachineWithSaveDir(out var dir);
