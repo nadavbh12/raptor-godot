@@ -53,6 +53,37 @@ public class PlayerShooterTests
     }
 
     [Fact]
+    public void ShotLib_PULSE_CANNON_hlx_matches_16x16_SHOKWV_sprite()
+    {
+        // SHOKWV_BLK is 16x16 (assets/bullets/SHOKWV_BLK_00.png), so C's
+        // slib->hlx = width >> 1 = 8 (SHOTS.C:532-564 init). A stale 32x16
+        // assumption (hlx=16) shifts every pulse bullet 8px left of C.
+        var lib = ShotLib.Get(ObjType.PulseCannon);
+        Assert.Equal(8, lib.Hlx);
+        Assert.Equal(8, lib.Hly);
+    }
+
+    [Fact]
+    public void PulseCannon_bullet_collision_x_sits_at_player_cx_minus_8_like_C()
+    {
+        // C spawns the shockwave at cur->x = player_cx (SHOTS.C:961) and tests
+        // tile/enemy collision with shot->x = move.x - hlx (TILE_IsHit(lib->hits,
+        // shot->x, shot->y), SHOTS.C:1193). With the 16x16 SHOKWV sprite hlx=8,
+        // so the collision X sits at player_cx - 8. Verified against the C binary
+        // replaying bench_20260612_150134: at player_cx 58 the pulse bullet's
+        // shot->x = 50, which clears ground tile 1161 (x 31..47); an hlx=16 shift
+        // put Godot's bullet at x=42 and destroyed that tile ~10 iters early,
+        // the iter-558 wave-5 parity divergence.
+        var ps = new PlayerShooter();
+        var sink = new List<BulletLogic>();
+        const int playerCx = 58;
+        ps.Shoot(ObjType.PulseCannon, playerCx, 100, 3, sink, enemies: null, rng: new Random(1));
+        Assert.Single(sink);
+        sink[0].Tick();   // first SHOTS_Think snapshots display X = move.x - hlx
+        Assert.Equal(playerCx - 8, sink[0].X);
+    }
+
+    [Fact]
     public void ShotLib_PLASMA_GUNS_matches_C()
     {
         // SHOTS.C:167-196: hits=2, speed=4, maxspeed=8, shoot_rate=10, ht=S_AIR.

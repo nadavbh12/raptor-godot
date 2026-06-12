@@ -113,12 +113,14 @@ public sealed record ShotLib(
             ShootRate: 60, DelayFlag: false, Smoke: false, UsePlot: true,
             MoveFlag: true, FplrX: false, FplrY: false, Meffect: true,
             Ht: HitType.All, Beam: BeamType.Shoot, Hlx: 8, Hly: 8));
-        // S_PULSE_CANNON — SHOKWV_BLK, 32x16 (wide pulse)
+        // S_PULSE_CANNON — SHOKWV_BLK, 16x16 → hlx = width>>1 = 8 (C SHOTS.C:556).
+        // (Was 16: a stale 32-wide assumption that shifted every pulse bullet 8px
+        //  left of C, destroying ground tiles early — the wave-5 iter-558 parity bug.)
         t.Add(new ShotLib(ObjType.PulseCannon,
             Hits: 5, Speed: 8, MaxSpeed: 8, StartFrame: 0, NumFrames: 2,
             ShootRate: 3, DelayFlag: false, Smoke: false, UsePlot: false,
             MoveFlag: true, FplrX: false, FplrY: false, Meffect: false,
-            Ht: HitType.All, Beam: BeamType.Shoot, Hlx: 16, Hly: 8));
+            Ht: HitType.All, Beam: BeamType.Shoot, Hlx: 8, Hly: 8));
         // S_FORWARD_LASER — FRNTLAS_BLK, 8x8; beam follows player
         t.Add(new ShotLib(ObjType.ForwardLaser,
             Hits: 10, Speed: 0, MaxSpeed: 0, StartFrame: 0, NumFrames: 4,
