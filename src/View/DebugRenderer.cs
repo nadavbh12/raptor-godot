@@ -842,11 +842,15 @@ public partial class DebugRenderer : Node2D
         // button items + STAT/TEXTCOST/NUM/COST text (STORE.C:200-214). We
         // mirror by skipping all of those + the SWD's STAT/TEXTCOST defaults.
         var overrides = new System.Collections.Generic.HashSet<int>
-            { 1, 4, 5, 6, 7, 9, 10, 11, 12, 13 };
+            { 0, 1, 4, 5, 6, 7, 9, 10, 11, 12, 13 };  // 0 = STOR_ID portrait (drawn per pilot below)
         if (store.ShowingGreeting)
             overrides.UnionWith(new[] { 2, 3 });  // hide PREV / NEXT too
         SwdRenderer.Draw(_swdHost, swd, selectedFieldId: -1,
             skipFieldIndices: overrides);
+
+        // STOR_ID (field 0): the pilot's SELECTED portrait (C STORE.C:257
+        // id_pics[plr.id_pic]). Without this the SWD default (WMALE) always showed.
+        DrawSwdItemSprite(swd.Fields[0], StorePortraitName(store.IdPic));
 
         bool buyMode = store.CurrentMode == StoreLogic.Mode.Buy;
 
@@ -922,6 +926,16 @@ public partial class DebugRenderer : Node2D
         if (tex != null)
             DrawTexture(tex, new Vector2(f.X, f.Y));
     }
+
+    /// <summary>Store pilot-portrait sprite for an id_pic. C sid_pics / id_pics order
+    /// (STORE.C:257): 0=WMALE 1=BMALE 2=WFEMALE 3=BFEMALE.</summary>
+    private static string StorePortraitName(int idPic) => idPic switch
+    {
+        1 => "BMALEID_PIC",
+        2 => "WFMALEID_PIC",
+        3 => "BFMALEID_PIC",
+        _ => "WMALEID_PIC",
+    };
 
     private void DrawSwdCenteredText(SwdWindow.Field f, string text, string fontName, int basecolor)
     {

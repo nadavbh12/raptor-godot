@@ -1367,6 +1367,23 @@ public class MenuStateMachineTests
     }
 
     [Fact]
+    public void Store_click_hit_test_maps_view_areas_to_actions()
+    {
+        // User-reported: store buttons/mouse did nothing (no click branch). C STORE_SWD
+        // view areas (STOR_V*) dispatch to the same actions the keyboard does.
+        Assert.Equal("Escape", MenuStateMachine.StoreFieldAt(10, 100, buyMode: true));   // VEXIT
+        Assert.Equal("Left",   MenuStateMachine.StoreFieldAt(250, 164, buyMode: true));  // VPREV
+        Assert.Equal("Right",  MenuStateMachine.StoreFieldAt(280, 164, buyMode: true));  // VNEXT
+        Assert.Equal("Return", MenuStateMachine.StoreFieldAt(200, 165, buyMode: true));  // VACCEPT (buy/sell)
+        // Mode buttons: toggle only when not already in that mode.
+        Assert.Equal("Space",  MenuStateMachine.StoreFieldAt(145, 164, buyMode: true));  // VSELL (buy→sell)
+        Assert.Null(           MenuStateMachine.StoreFieldAt(145, 164, buyMode: false)); // VSELL (already sell)
+        Assert.Equal("Space",  MenuStateMachine.StoreFieldAt(122, 164, buyMode: false)); // VBUY (sell→buy)
+        Assert.Null(           MenuStateMachine.StoreFieldAt(122, 164, buyMode: true));  // VBUY (already buy)
+        Assert.Null(           MenuStateMachine.StoreFieldAt(0, 0, buyMode: true));       // miss
+    }
+
+    [Fact]
     public void Saving_a_loaded_pilot_overwrites_its_slot_not_a_copy()
     {
         // User-reported: saving created more copies instead of overwriting. C writes

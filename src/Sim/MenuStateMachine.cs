@@ -611,6 +611,13 @@ public sealed class MenuStateMachine
             return HandleInput("Return", currentFrame);
         }
 
+        if (State == WinState.Store && Store != null)
+        {
+            string? action = StoreFieldAt(x, y, Store.CurrentMode == StoreLogic.Mode.Buy);
+            if (action == null) return false;
+            return HandleInput(action, currentFrame);
+        }
+
         if (State == WinState.Unknown && _inSectorSelect)
         {
             return HandleInput("Return", currentFrame);
@@ -913,6 +920,22 @@ public sealed class MenuStateMachine
         return null;
     }
 
+    /// <summary>The keyboard action a click maps to in the store, or null if the
+    /// click hit no button. C STORE_SWD view areas (STOR_V*, STORE.INC) dispatch a
+    /// F_SELECT on the matching button: VNEXT/VPREV → next/prev item, VACCEPT →
+    /// buy/sell, VBUY/VSELL → set buy/sell mode, VEXIT → leave. The mode buttons map
+    /// to the Space toggle and no-op when already in that mode.</summary>
+    internal static string? StoreFieldAt(int x, int y, bool buyMode)
+    {
+        if (InRect(x, y,   2,  40, 77, 160)) return "Escape";  // STOR_VEXIT
+        if (InRect(x, y, 243, 160, 27,  10)) return "Left";    // STOR_VPREV (prev item)
+        if (InRect(x, y, 272, 160, 26,  10)) return "Right";   // STOR_VNEXT (next item)
+        if (InRect(x, y, 175, 154, 50,  26)) return "Return";  // STOR_VACCEPT (buy/sell current)
+        if (InRect(x, y, 116, 160, 18,  10)) return buyMode  ? null : "Space";  // STOR_VBUY → buy
+        if (InRect(x, y, 139, 160, 18,  10)) return !buyMode ? null : "Space";  // STOR_VSELL → sell
+        return null;  // STOR_VSCREEN: hover only, no action
+    }
+
     private static int MainMenuItemAt(int x, int y)
     {
         if (x < 90 || x >= 235) return -1;
@@ -977,7 +1000,8 @@ public sealed class MenuStateMachine
                 Store = new StoreLogic(
                     Inventory,
                     GetScore ?? (() => _fallbackScore),
-                    SetScore ?? (v => _fallbackScore = v));
+                    SetScore ?? (v => _fallbackScore = v),
+                    callsign: Callsign, idPic: IdPic);   // C STORE_Enter shows plr.callsign + portrait
                 EnterState(WinState.Store, currentFrame, reAnchor: true);
                 return true;
             }

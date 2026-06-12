@@ -22,7 +22,10 @@ internal sealed class StoreLogic
     // Live player score (C's plr.score) — read through the injected accessor so
     // Buy/Sell transact directly against the running game's WaveController.Score.
     public int  Money       => (int)_getScore();
-    public string Callsign  { get; private set; } = "T1";
+    // C STORE.C:261 shows plr.callsign and :257 shows id_pics[plr.id_pic] — the
+    // active pilot's callsign + portrait, passed in at STORE_Enter. (Were hardcoded.)
+    public string Callsign  { get; private set; }
+    public int    IdPic     { get; private set; }
 
     // STORE_Enter calls Harrold(HAR1_TXT) before the main loop. C's
     // IMS_WaitTimed(10) holds the greeting for ~10 timer ticks (DOS 18.2 Hz);
@@ -76,11 +79,14 @@ internal sealed class StoreLogic
     public IReadOnlyList<ObjType> BuyItems  { get; private set; }
     public IReadOnlyList<ObjType> SellItems { get; private set; }
 
-    public StoreLogic(Inventory inventory, System.Func<uint> getScore, System.Action<uint> setScore)
+    public StoreLogic(Inventory inventory, System.Func<uint> getScore, System.Action<uint> setScore,
+        string callsign = "", int idPic = 0)
     {
         _inventory = inventory;
         _getScore  = getScore;
         _setScore  = setScore;
+        Callsign   = callsign;
+        IdPic      = idPic;
         BuyItems  = MakeBuyItems();
         SellItems = MakeSellItems();
     }

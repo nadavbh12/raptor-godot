@@ -19,6 +19,18 @@ public class StoreLogicTests
         return new StoreLogic(inv, () => score[0], v => score[0] = v);
     }
 
+    [Fact]
+    public void Store_carries_the_pilots_callsign_and_portrait()
+    {
+        // STORE_Enter shows plr.callsign + id_pics[plr.id_pic] (STORE.C:257/261).
+        // Previously these were hardcoded ("T1" / portrait 0), so every pilot looked
+        // the same in the supply room.
+        var store = new StoreLogic(new Inventory(), () => 1000u, _ => { },
+            callsign: "MAV", idPic: 2);
+        Assert.Equal("MAV", store.Callsign);
+        Assert.Equal(2, store.IdPic);
+    }
+
     // Helper: build a StoreLogic over a given inventory and navigate the SELL
     // list to the slot for `target`, returning the OwnedCount reported there.
     private static int OwnedCountFor(Inventory inv, ObjType target)
