@@ -103,6 +103,14 @@ public sealed class EnemyLogic
     internal int ShootCount => _shootCount;
     private int _shootAgain;       // mirrors C's sprite->shootagain (inter-burst delay)
 
+    // GANIM_SHOOT animation state (C sprite->anim_on/curframe/frame_rate). A
+    // GANIM_SHOOT enemy plays its shoot animation when the countdown expires and
+    // only enables shoot_on after num_frames advance — delaying the first shot.
+    private const int GanimShoot = 1;   // MAP.H GANIM_SHOOT
+    private bool _shootAnimOn;     // mirrors C's sprite->anim_on (animation running)
+    private int  _shootCurframe;   // mirrors C's sprite->curframe
+    private int  _shootFrameRate;  // mirrors C's sprite->frame_rate (frame timer)
+
     // Home base for flight-path deltas (mirrors C's new->sy = 100 - new->hly).
     private int _sx;  // home X = map-derived spawn X (never changes)
     private int _sy;  // home Y = 100 - HalfH (flight-path origin for REPEAT)
@@ -153,6 +161,12 @@ public sealed class EnemyLogic
         _shootFlag  = meta.ShootStart;
         _shootCount = meta.ShootCnt > 0 ? meta.ShootCnt : 1;
         _shootAgain = -1;  // NORM_SHOOT = -1
+        // C ENEMY_Add: frame_rate = lib->frame_rate; a GANIM_SHOOT sprite spawns
+        // with anim_on = FALSE (curframe 0) and starts the animation only once the
+        // countdown expires (ENEMY.C:489-490, 845-846).
+        _shootFrameRate = meta.FrameRate;
+        _shootAnimOn    = false;
+        _shootCurframe  = 0;
 
         // C ENEMY.C:457-463 — at curplr_diff <= DIFF_1 (training/rookie) a boss is
         // nerfed at spawn: half HP (hits -= hits>>1) and 3/4 of the shoot bursts
@@ -673,12 +687,22 @@ public sealed class EnemyLogic
     {
         if (Meta.NumGuns <= 0 || Meta.ShootFrame <= 0) return null;
 
-        // Countdown / shoot_on update (mirrors C's "num_frames==1" else branch, lines 801-808).
-        // This runs every tick regardless of shoot_on.
+        // Countdown / shoot_on update. This runs every tick regardless of shoot_on.
         if (!_shootOn)
         {
-            if (_shootCountdown < 1)
+            if (Meta.NumFrames > 1 && Meta.AnimType == GanimShoot)
             {
+                // GANIM_SHOOT (ENEMY.C:788-859): the countdown expiry starts the
+                // shoot animation (anim_on) rather than firing; shoot_on flips only
+                // after the animation advances num_frames at the frame_rate cadence,
+                // delaying the first shot by the animation length.
+                TickShootAnimation();
+                if (!_shootOn) return null;
+            }
+            else if (_shootCountdown < 1)
+            {
+                // GANIM_NORM / num_frames==1 (ENEMY.C:847-848, 860-870): fire the
+                // instant the countdown expires.
                 _shootCountdown = -1;
                 _shootOn = true;
             }
@@ -725,5 +749,41 @@ public sealed class EnemyLogic
         if (_shootCount < 1)
             _shootAgain = Meta.ShootFrame;
         return fired;
+    }
+
+    /// <summary>
+    /// Advances a GANIM_SHOOT enemy's shoot animation and flips shoot_on when it
+    /// completes (mirrors ENEMY.C:790-859). The frame timer advances curframe; once
+    /// curframe reaches num_frames the animation ends and the enemy may fire. The
+    /// countdown expiry (re)arms the animation. Only the firing gate is modelled —
+    /// the displayed sprite frame is a View concern.
+    /// </summary>
+    private void TickShootAnimation()
+    {
+        // ENEMY.C:790-813 — advance the frame when the frame_rate timer reaches 0.
+        if (_shootFrameRate < 1)
+        {
+            _shootFrameRate = Meta.FrameRate;
+            if (_shootAnimOn)
+            {
+                _shootCurframe++;
+                if (_shootCurframe >= Meta.NumFrames)
+                {
+                    _shootCurframe -= Meta.Rewind;
+                    _shootAnimOn = false;
+                    _shootOn = true;   // fires after the animation completes
+                }
+            }
+        }
+        else
+        {
+            _shootFrameRate--;
+        }
+
+        // ENEMY.C:838-846 — the countdown expiry starts the shoot animation.
+        if (_shootCountdown < 1)
+            _shootAnimOn = true;
+        else
+            _shootCountdown -= Meta.MoveSpeed > 0 ? Meta.MoveSpeed : 1;
     }
 }

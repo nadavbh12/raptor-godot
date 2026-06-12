@@ -47,6 +47,11 @@ public sealed class SpriteMeta
     [JsonPropertyName("num_frames")] public int    NumFrames   { get; set; } = 1;
     [JsonPropertyName("frame_rate")] public int    FrameRate   { get; set; }
     [JsonPropertyName("rewind")]     public int    Rewind      { get; set; } = 1;
+    // C SOURCE/MAP.H SPRITE.animtype (MAP.H:75 GANIM_NORM=0, GANIM_SHOOT=1,
+    // GANIM_MULTI=2). GANIM_SHOOT enemies play a shoot animation before firing
+    // (ENEMY.C:788-859) — the countdown starts the animation and shoot_on flips
+    // only after num_frames advance, delaying the first shot by the anim length.
+    [JsonPropertyName("animtype")]   public int    AnimType    { get; set; }
     // C SOURCE/MAP.H SPRITE.bonus — OBJ_TYPE value to drop when this enemy is
     // destroyed (-1 = no drop). Consumed by WaveController's death handler.
     [JsonPropertyName("bonus")]      public int    Bonus       { get; set; } = -1;

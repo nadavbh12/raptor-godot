@@ -121,6 +121,40 @@ public class EnemyLogicTests
         Assert.Equal(2, 1 + e.ExtraBulletsThisTick!.Count);
     }
 
+    [Fact]
+    public void GanimShoot_enemy_delays_first_shot_by_the_shoot_animation_like_C()
+    {
+        // ENEMY.C:788-859 — a GANIM_SHOOT enemy (animtype=1) does NOT fire when its
+        // countdown expires; it sets anim_on=TRUE (plays the shoot animation) and
+        // shoot_on flips only after num_frames advance at the frame_rate cadence,
+        // delaying the first shot by the animation length. A GANIM_NORM enemy fires
+        // the instant the countdown expires. Verified against the C binary replaying
+        // bench_20260612_150134: SHIP33G1 (animtype=1, num_frames=4, frame_rate=1)
+        // fires ~8 iters after its countdown; the animtype-less port fired
+        // immediately — the wave-5 ebullets@738 enemy-firing divergence.
+        SpriteMeta Meta(int animType, int numFrames) => new SpriteMeta
+        {
+            Hits = 5, NumFlight = 1, FlightType = 1, FlightX = new[] { 0 }, FlightY = new[] { 0 },
+            AnimType = animType, NumFrames = numFrames, FrameRate = 1, Rewind = 1,
+            NumGuns = 1, ShootFrame = 10, ShootCnt = 1, ShootStart = 0, ShotSpace = 4,
+            Countdown = 0, MoveSpeed = 2, ShootX = new[] { 0 }, ShootY = new[] { 0 }, ShootType = new[] { 4 },
+        };
+        int FirstFireTick(SpriteMeta m)
+        {
+            var e = new EnemyLogic(m, 100, 0);
+            for (int t = 1; t <= 50; t++)
+                if (e.Tick(144, 160) != null) return t;
+            return -1;
+        }
+
+        int norm  = FirstFireTick(Meta(animType: 0, numFrames: 1));   // GANIM_NORM
+        int shoot = FirstFireTick(Meta(animType: 1, numFrames: 4));   // GANIM_SHOOT
+
+        Assert.True(norm >= 1, $"GANIM_NORM should fire (got {norm})");
+        Assert.True(shoot > norm + 3,
+            $"GANIM_SHOOT first shot ({shoot}) must lag GANIM_NORM ({norm}) by the anim length");
+    }
+
     // Drives a single-gun enemy until it fires one bullet of the given
     // ES shoot_type, returning that bullet for inspection.
     private static BulletLogic FireOneBullet(int shootType, int enemyX, int enemyY,
