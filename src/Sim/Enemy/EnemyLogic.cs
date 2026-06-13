@@ -107,9 +107,27 @@ public sealed class EnemyLogic
     // GANIM_SHOOT enemy plays its shoot animation when the countdown expires and
     // only enables shoot_on after num_frames advance — delaying the first shot.
     private const int GanimShoot = 1;   // MAP.H GANIM_SHOOT
+    private const int GanimMulti = 2;   // MAP.H GANIM_MULTI
     private bool _shootAnimOn;     // mirrors C's sprite->anim_on (animation running)
     private int  _shootCurframe;   // mirrors C's sprite->curframe
     private int  _shootFrameRate;  // mirrors C's sprite->frame_rate (frame timer)
+    // C ENEMY.H MULTI enum (sprite->multi): the two-phase warm-up a GANIM_MULTI enemy
+    // walks (MULTI_OFF -> MULTI_START -> MULTI_END) before shoot_on may latch.
+    private const int MultiOff = 0, MultiStart = 1, MultiEnd = 2;
+    private int _multi;            // mirrors C's sprite->multi (GANIM_MULTI phase)
+    private int _animNumFrames;    // mirrors C's sprite->num_frames — MUTATED at runtime
+                                   // (rewind -> curlib->num_frames on the MULTI_START step)
+
+    /// <summary>The sprite frame the View should draw this tick — C's
+    /// sprite->item = curlib->item + curframe (ENEMY.C:791), i.e. curframe at the
+    /// START of this tick. Only meaningful for GANIM_MULTI sprites; 0 otherwise.</summary>
+    public int DisplayFrame => _displayFrame;
+    private int _displayFrame;
+
+    /// <summary>True for GANIM_MULTI sprites, whose displayed frame the View must take
+    /// from <see cref="DisplayFrame"/> (the per-enemy curframe) rather than the
+    /// SimClock-derived cycle used for GANIM_NORM/SHOOT.</summary>
+    public bool UsesMultiAnim => Meta.AnimType == GanimMulti;
 
     // Home base for flight-path deltas (mirrors C's new->sy = 100 - new->hly).
     private int _sx;  // home X = map-derived spawn X (never changes)
@@ -165,8 +183,16 @@ public sealed class EnemyLogic
         // with anim_on = FALSE (curframe 0) and starts the animation only once the
         // countdown expires (ENEMY.C:489-490, 845-846).
         _shootFrameRate = meta.FrameRate;
-        _shootAnimOn    = false;
+        // C ENEMY_Add animtype switch (ENEMY.C:480-498): GANIM_MULTI spawns with
+        // anim_on=TRUE and num_frames=rewind (a short warm-up window that widens to the
+        // full num_frames on the MULTI_START transition); GANIM_SHOOT/NORM spawn with
+        // anim_on=FALSE and the full num_frames.
+        bool isMulti    = meta.AnimType == GanimMulti;
+        _shootAnimOn    = isMulti;
+        _animNumFrames  = isMulti ? meta.Rewind : meta.NumFrames;
+        _multi          = MultiOff;
         _shootCurframe  = 0;
+        _displayFrame   = 0;
 
         // C ENEMY.C:457-463 — at curplr_diff <= DIFF_1 (training/rookie) a boss is
         // nerfed at spawn: half HP (hits -= hits>>1) and 3/4 of the shoot bursts
@@ -687,8 +713,18 @@ public sealed class EnemyLogic
     {
         if (Meta.NumGuns <= 0 || Meta.ShootFrame <= 0) return null;
 
-        // Countdown / shoot_on update. This runs every tick regardless of shoot_on.
-        if (!_shootOn)
+        // GANIM_MULTI (ENEMY.C:494-497, 815-830, 852-855): the frame/anim state machine
+        // runs EVERY tick for life (anim_on stays TRUE), so curframe keeps cycling even
+        // after shoot_on latches — the View animates the boss/cow continuously. Firing is
+        // gated behind a two-pass warm-up, so hold fire until shoot_on flips.
+        if (Meta.NumFrames > 1 && Meta.AnimType == GanimMulti)
+        {
+            TickMultiAnimation();
+            if (!_shootOn) return null;
+        }
+        // Countdown / shoot_on update for GANIM_SHOOT and GANIM_NORM, while not yet
+        // firing (GANIM_MULTI runs its own countdown inside TickMultiAnimation above).
+        else if (!_shootOn)
         {
             if (Meta.NumFrames > 1 && Meta.AnimType == GanimShoot)
             {
@@ -785,5 +821,62 @@ public sealed class EnemyLogic
             _shootAnimOn = true;
         else
             _shootCountdown -= Meta.MoveSpeed > 0 ? Meta.MoveSpeed : 1;
+    }
+
+    /// <summary>
+    /// Advances a GANIM_MULTI enemy's animation + firing state machine one tick
+    /// (mirrors ENEMY.C:791-859 for animtype=2). Unlike GANIM_SHOOT, anim_on stays TRUE
+    /// for life so curframe cycles continuously; the per-enemy num_frames starts at
+    /// rewind and widens to the full count on the MULTI_START transition. Firing is
+    /// delayed two animation passes: the countdown expiry flips MULTI_OFF->MULTI_START,
+    /// the first (rewind-length) wrap does START->END (and widens), and the next (full)
+    /// wrap latches shoot_on. Runs every tick — including after shoot_on — so the View
+    /// keeps animating the trailing [num_frames-rewind .. num_frames-1] sub-cycle.
+    /// </summary>
+    private void TickMultiAnimation()
+    {
+        // ENEMY.C:791 — the frame drawn THIS tick is curframe as it stands now (before
+        // the increment below), exactly as C sets sprite->item at the top of Think.
+        _displayFrame = _shootCurframe;
+
+        // ENEMY.C:793-836 — advance the frame when the frame_rate timer reaches 0.
+        if (_shootFrameRate < 1)
+        {
+            _shootFrameRate = Meta.FrameRate;
+            if (_shootAnimOn)   // GANIM_MULTI: always TRUE
+            {
+                _shootCurframe++;
+                if (_shootCurframe >= _animNumFrames)
+                {
+                    _shootCurframe -= Meta.Rewind;
+                    if (_multi == MultiStart)
+                    {
+                        // ENEMY.C:818-821 — first wrap widens the window to the full
+                        // num_frames and arms the firing pass.
+                        _animNumFrames = Meta.NumFrames;
+                        _multi = MultiEnd;
+                    }
+                    else if (_multi == MultiEnd)
+                    {
+                        _shootOn = true;   // ENEMY.C:823-825 — fire after the full pass
+                    }
+                    // MultiOff: idle warm-up, no transition (ENEMY.C:827)
+                }
+            }
+        }
+        else
+        {
+            _shootFrameRate--;
+        }
+
+        // ENEMY.C:838-859 — the countdown expiry kicks off the warm-up (MULTI_OFF->START).
+        if (_shootCountdown < 1)
+        {
+            if (_multi == MultiOff) _multi = MultiStart;
+        }
+        else
+        {
+            _shootCountdown -= Meta.MoveSpeed > 0 ? Meta.MoveSpeed : 1;
+        }
     }
 }

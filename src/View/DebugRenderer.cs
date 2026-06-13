@@ -571,8 +571,11 @@ public partial class DebugRenderer : Node2D
         {
             if (!e.Alive) continue;
             // Multi-frame sprites (helicopter rotor, etc.) cycle frames per C
-            // ENEMY.C:727 logic — pick the right one for this tick.
-            int frameIdx = EnemyFrameIndex(e.Meta);
+            // ENEMY.C:727 logic — pick the right one for this tick. GANIM_MULTI sprites
+            // (SHIP22 boss, COW) drive a per-enemy curframe state machine the global
+            // SimClock cadence can't reproduce (num_frames mutates mid-life), so take
+            // their frame straight from the sim's DisplayFrame (ENEMY.C:791).
+            int frameIdx = e.UsesMultiAnim ? e.DisplayFrame : EnemyFrameIndex(e.Meta);
             var tex = frameIdx > 0
                 ? LoadSpriteFrame(e.Meta.IName, frameIdx)
                 : LoadSprite(e.Meta.IName);

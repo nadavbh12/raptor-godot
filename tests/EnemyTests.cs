@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using FsCheck;
 using FsCheck.Fluent;
@@ -153,6 +154,83 @@ public class EnemyLogicTests
         Assert.True(norm >= 1, $"GANIM_NORM should fire (got {norm})");
         Assert.True(shoot > norm + 3,
             $"GANIM_SHOOT first shot ({shoot}) must lag GANIM_NORM ({norm}) by the anim length");
+    }
+
+    // SHIP22G1 (wave-9 boss) and COW (wave-8) shape: animtype=2 (GANIM_MULTI),
+    // num_frames=6, rewind=2, frame_rate=1. Single gun + LINEAR one-waypoint flight
+    // (which survives ~50 ticks) so only the animation state machine is exercised.
+    private static SpriteMeta MultiMeta() => new SpriteMeta
+    {
+        Hits = 5, NumFlight = 1, FlightType = 1, FlightX = new[] { 0 }, FlightY = new[] { 0 },
+        AnimType = 2, NumFrames = 6, FrameRate = 1, Rewind = 2,
+        NumGuns = 1, ShootFrame = 10, ShootCnt = 1, ShootStart = 0, ShotSpace = 4,
+        Countdown = 0, MoveSpeed = 2, ShootX = new[] { 0 }, ShootY = new[] { 0 }, ShootType = new[] { 4 },
+    };
+
+    [Fact]
+    public void GanimMulti_delays_first_shot_by_two_animation_passes_like_C()
+    {
+        // ENEMY.C:494-497, 815-830, 852-855 — a GANIM_MULTI enemy (animtype=2) spawns
+        // with anim_on=TRUE and num_frames=rewind. It does NOT fire when its countdown
+        // expires: the countdown only flips multi MULTI_OFF->MULTI_START; the first
+        // (short, length=rewind) animation pass then widens num_frames to the full
+        // count and sets MULTI_END, and only the SECOND (full-length) pass latches
+        // shoot_on. So the first shot lags by TWO animation passes — strictly longer
+        // than the single pass of an otherwise-identical GANIM_SHOOT enemy, and far
+        // longer than GANIM_NORM's instant fire. (The unmodelled port fired the instant
+        // the countdown expired — wrong.)
+        SpriteMeta Meta(int animType) { var m = MultiMeta(); m.AnimType = animType; return m; }
+        int FirstFireTick(SpriteMeta m)
+        {
+            var e = new EnemyLogic(m, 100, 0);
+            for (int t = 1; t <= 60; t++)
+                if (e.Tick(144, 160) != null) return t;
+            return -1;
+        }
+
+        int norm  = FirstFireTick(Meta(0));   // GANIM_NORM  — fires instantly (tick 1)
+        int shoot = FirstFireTick(Meta(1));   // GANIM_SHOOT — one full pass (tick 12)
+        int multi = FirstFireTick(Meta(2));   // GANIM_MULTI — rewind pass + full pass (tick 16)
+
+        Assert.Equal(1, norm);
+        Assert.True(multi > shoot,
+            $"GANIM_MULTI ({multi}) must lag GANIM_SHOOT ({shoot}) — two passes vs one");
+        Assert.Equal(16, multi);   // derived tick-by-tick from ENEMY.C (see comment)
+    }
+
+    [Fact]
+    public void GanimMulti_displayed_frame_follows_curframe_warmup_then_full_cycle_like_C()
+    {
+        // ENEMY.C:791 draws sprite->item = curlib->item + curframe, where curframe is
+        // the value at the START of this tick's ENEMY_Think (before the frame_rate-gated
+        // increment). For num_frames=6, rewind=2, frame_rate=1 curframe advances once
+        // every 2 ticks; it oscillates over the first `rewind` frames (0,1) during the
+        // MULTI_START warm-up pass, then — once num_frames widens to 6 — climbs 0..5
+        // through the MULTI_END full pass. DisplayFrame exposes that per-enemy curframe
+        // so the View animates it faithfully instead of the old SimClock step%num_frames.
+        var e = new EnemyLogic(MultiMeta(), 100, 0);
+        var seen = new List<int>();
+        for (int t = 1; t <= 16; t++) { e.Tick(144, 160); seen.Add(e.DisplayFrame); }
+
+        Assert.Equal(new[] { 0, 0, 1, 1, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5 }, seen);
+    }
+
+    [Fact]
+    public void GanimMulti_keeps_animating_after_it_starts_firing_like_C()
+    {
+        // A GANIM_MULTI enemy's anim_on stays TRUE for life (ENEMY.C:495 sets it; nothing
+        // clears it), so curframe keeps cycling even after shoot_on latches — unlike
+        // GANIM_SHOOT which sets anim_on=FALSE on completion. After the first full pass
+        // wraps (curframe 6 -> 6-rewind = 4) it loops the trailing [4,5] sub-cycle. The
+        // View must keep animating it, not freeze on the firing frame.
+        var e = new EnemyLogic(MultiMeta(), 100, 0);
+        for (int t = 1; t <= 16; t++) e.Tick(144, 160);   // run through first fire
+        Assert.True(e.DisplayFrame >= 4, $"expected settled tail frame, got {e.DisplayFrame}");
+
+        var tail = new HashSet<int>();
+        for (int t = 17; t <= 32; t++) { e.Tick(144, 160); tail.Add(e.DisplayFrame); }
+
+        Assert.Equal(new[] { 4, 5 }, tail.OrderBy(x => x).ToArray());  // still cycling 4,5
     }
 
     // Drives a single-gun enemy until it fires one bullet of the given
