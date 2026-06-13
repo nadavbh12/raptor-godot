@@ -1479,6 +1479,12 @@ public partial class WaveController : Node
 
     private void ApplyBonusEffect(int objType)
     {
+        // C OBJS_Add (OBJECTS.C:788) resets g_oldshield = EMPTY at the START of every
+        // pickup, which suppresses the low-shield OBJS_LoseObj check that frame
+        // (RAP.C:631 `shield < g_oldshield`). Mirror it so a money pickup coinciding
+        // with the shield dropping below SHIELD_LOW does not trigger a spurious
+        // special-weapon Del/cycle (the wave-5 bench iter~4296 weapon-cycle desync).
+        _shieldHud.MarkObjectAdded();
         var r = Bonus.BonusEffectDispatcher.Apply(objType, Shooter, Inventory, PlayerLogic.MaxShield);
         if (r.HealAmount > 0)       PlayerLogic.Heal(r.HealAmount);
         if (r.ScoreAdd > 0)         Score += r.ScoreAdd;

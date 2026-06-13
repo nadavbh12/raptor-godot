@@ -167,6 +167,56 @@ public class WaveControllerTests
     }
 
     [Fact]
+    public void Bonus_pickup_suppresses_low_shield_LoseObj_that_frame()
+    {
+        // Mirror C OBJS_Add (OBJECTS.C:788) resetting g_oldshield = EMPTY: on a frame
+        // the player picks up a bonus, the low-shield OBJS_LoseObj gate
+        // (RAP.C:631 `shield < g_oldshield`) is suppressed. Without this, Godot fires
+        // LoseObj one frame early during heavy end-combat money pickups → an extra
+        // special-weapon cycle (the wave-5 bench iter~4296 desync vs C).
+        var inv = new Inventory();
+        inv.Add(ObjType.DumbMissile);   // first special owned → auto-equipped
+        inv.Add(ObjType.MiniGun);
+        Assert.Equal(ObjType.DumbMissile, inv.EquippedSpecial);
+
+        var player = new PlayerLogic(inv);
+        player.SetShield(3);            // low: <= ShieldLow (10)
+
+        var hud = new ShieldHudController();
+        hud.SyncOldShield(11);          // previous frame shield 11 → this frame dropped to 3
+        hud.MarkObjectAdded();          // a bonus was picked up this frame (OBJS_Add → g_oldshield=EMPTY)
+
+        hud.Tick(player, inv, curPlayerDiff: 3, deathActive: false, endWaveActive: false,
+                 gameLoopIter: 4296, shooterRng: null, objUsed: false);
+
+        // LoseObj suppressed this frame → equipped special unchanged (no extra cycle).
+        Assert.Equal(ObjType.DumbMissile, inv.EquippedSpecial);
+    }
+
+    [Fact]
+    public void Low_shield_drop_without_pickup_fires_LoseObj_and_cycles_special()
+    {
+        // Contrast / characterization: with no pickup that frame, a low-shield drop
+        // fires OBJS_LoseObj which Dels the equipped special and GetNexts
+        // (DumbMissile → MiniGun). Confirms the suppression above is pickup-specific.
+        var inv = new Inventory();
+        inv.Add(ObjType.DumbMissile);
+        inv.Add(ObjType.MiniGun);
+        Assert.Equal(ObjType.DumbMissile, inv.EquippedSpecial);
+
+        var player = new PlayerLogic(inv);
+        player.SetShield(3);
+
+        var hud = new ShieldHudController();
+        hud.SyncOldShield(11);          // dropped 11 → 3, no pickup this frame
+
+        hud.Tick(player, inv, curPlayerDiff: 3, deathActive: false, endWaveActive: false,
+                 gameLoopIter: 4296, shooterRng: null, objUsed: false);
+
+        Assert.Equal(ObjType.MiniGun, inv.EquippedSpecial);   // LoseObj Del'd DumbMissile → GetNext
+    }
+
+    [Fact]
     public void SubEnergy_damage_gate_mirrors_OBJS_SubEnergy_preconditions()
     {
         // OBJECTS.C:1227-1235 OBJS_SubEnergy pre-drain gates (godmode omitted —

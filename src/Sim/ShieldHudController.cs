@@ -21,9 +21,10 @@ internal sealed class ShieldHudController
     // CHARGE_SHIELD = 24*4 = 96. When think_cnt > 96, heal 1 shield (curplr_diff < DIFF_3).
     private const int ChargeShield = 96;
     private const int ShieldLow = 10;
+    private const int Empty = -1;   // mirrors C EMPTY sentinel for g_oldshield
 
     private int _thinkCnt = 0;              // shield-recharge counter; persists across waves
-    private int _oldShieldForLowLoss = -1;
+    private int _oldShieldForLowLoss = Empty;
     private int _paletteStuffCnt = 0;
     private bool _skipInitialPaletteStuff = false;
     private readonly View.HudWarning.State _hudWarningState = new();
@@ -51,6 +52,18 @@ internal sealed class ShieldHudController
 
     /// <summary>Re-baseline the low-loss comparator (demo player setup).</summary>
     public void SyncOldShield(int currentShield) => _oldShieldForLowLoss = currentShield;
+
+    /// <summary>
+    /// Mirrors C OBJS_Add (OBJECTS.C:788) resetting <c>g_oldshield = EMPTY</c> on every
+    /// object pickup. Call when the player picks up a bonus: it makes the low-shield
+    /// OBJS_LoseObj gate (RAP.C:631 <c>shield &lt; g_oldshield</c>) FALSE that frame —
+    /// the existing <c>_oldShieldForLowLoss &gt;= 0</c> guard in <see cref="Tick"/> skips
+    /// LoseObj exactly like C's <c>shield &lt; -1</c>. Prevents a spurious special-weapon
+    /// Del/cycle when a money pickup coincides with the shield dropping below SHIELD_LOW
+    /// (the wave-5 bench iter~4296 weapon-cycle desync). Tick re-baselines to the live
+    /// shield at frame end, so the suppression lasts only the pickup frame, as in C.
+    /// </summary>
+    public void MarkObjectAdded() => _oldShieldForLowLoss = Empty;
 
     /// <summary>
     /// Handles the wave's first HUD pass, which skips RAP_PaletteStuff's RNG draw
