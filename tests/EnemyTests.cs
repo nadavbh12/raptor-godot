@@ -766,4 +766,66 @@ public class EnemyLogicTests
         for (int t = 1; t <= 180; t++)
             Assert.Equal((golden[2 * (t - 1)], golden[2 * (t - 1) + 1]), actual[t]);
     }
+
+    // Same C-flight Bresenham faithfulness, but for the wave-9 boss SHIP22 — the OTHER
+    // F_REPEAT enemy with a zero-length reversal, structurally distinct from SHIP10G1.
+    // With numflight=9, repos=0 and waypoint[0]=(0,0), the BACKWARD->FORWARD turn at
+    // repos re-targets the start anchor: a zero-length leg (delx=dely=0 -> maxloop=1,
+    // addx=1) whose +1-pixel drift the old "clean reversal" special case would skip.
+    // flight_parity_check.py with the SHIP22 constants (SY=88): special-case-present
+    // diverges from C at tick 194; removed -> matches 400 ticks. The 210-tick window
+    // spans that divergence point, so this is a real regression guard (re-adding the
+    // special case turns it RED), not a tautology. Same pre-move one-tick offset as
+    // above: actual[t] == golden[t-1].
+    [Fact]
+    public void F_repeat_flight_matches_c_bresenham_SHIP22_zero_length_reversal()
+    {
+        var meta = new SpriteMeta
+        {
+            Hits       = 100000,
+            MoveSpeed  = 2,
+            NumFlight  = 9,
+            FlightType = 0,        // F_REPEAT (ping-pong)
+            FlightX    = new[] {  0,  48,   0, -48, -2,  16,   0, -16,  -2 },  // SHIP22G1
+            FlightY    = new[] {  0, -48, -64, -48, -2, -48, -56, -48, -16 },
+            Repos      = 0,
+            NumGuns    = 0,
+            // Height defaults to 24 -> HalfY 12 -> flight home _sy = 100 - 12 = 88.
+        };
+        // C (x,y) for ticks 1..210 (post-move), from flight_parity_check.py (SHIP22).
+        int[] golden = {
+            160,3,160,5,160,7,160,9,160,11,160,13,160,15,160,17,160,19,160,21,
+            160,23,160,25,160,27,160,29,160,31,160,33,160,35,160,37,160,39,160,41,
+            160,43,160,45,160,47,160,49,160,51,160,53,160,55,160,57,160,59,160,61,
+            160,63,160,65,160,67,160,69,160,71,160,73,160,75,160,77,160,79,160,81,
+            160,83,160,85,160,87,161,87,163,85,165,83,167,81,169,79,171,77,173,75,
+            175,73,177,71,179,69,181,67,183,65,185,63,187,61,189,59,191,57,193,55,
+            195,53,197,51,199,49,201,47,203,45,205,43,207,41,207,39,205,39,203,38,
+            201,37,199,37,197,36,195,35,193,35,191,34,189,33,187,33,185,32,183,31,
+            181,31,179,30,177,29,175,29,173,28,171,27,169,27,167,26,165,25,163,25,
+            161,24,159,25,157,25,155,26,153,27,151,27,149,28,147,29,145,29,143,30,
+            141,31,139,31,137,32,135,33,133,33,131,34,129,35,127,35,125,36,123,37,
+            121,37,119,38,117,39,115,39,113,40,113,41,115,43,117,45,119,47,121,49,
+            123,51,125,53,127,55,129,57,131,59,133,61,135,63,137,65,139,67,141,69,
+            143,71,145,73,147,75,149,77,151,79,153,81,155,83,157,85,159,85,160,83,
+            161,81,161,79,162,77,163,75,164,73,165,71,165,69,166,67,167,65,168,63,
+            168,61,169,59,170,57,171,55,172,53,172,51,173,49,174,47,175,45,176,43,
+            176,41,175,39,173,38,171,37,169,36,167,35,165,34,163,33,161,32,159,33,
+            157,34,155,35,153,36,151,37,149,38,147,39,145,40,145,41,146,43,147,45,
+            148,47,149,49,150,51,150,53,151,55,152,57,153,59,154,61,155,63,156,65,
+            157,67,157,69,158,71,159,72,157,71,156,69,155,67,154,65,153,63,152,61,
+            152,59,151,57,150,55,149,53,148,51,147,49,146,47,145,45,145,43,144,41,
+        };
+
+        var e = new EnemyLogic(meta, spawnX: 160, mapY: 0);
+        var actual = new (int x, int y)[211];
+        for (int t = 0; t < 211; t++)
+        {
+            e.Tick();
+            actual[t] = (e.X, e.Y);
+        }
+
+        for (int t = 1; t <= 210; t++)
+            Assert.Equal((golden[2 * (t - 1)], golden[2 * (t - 1) + 1]), actual[t]);
+    }
 }
