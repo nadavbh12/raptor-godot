@@ -42,3 +42,14 @@ CHAR[0-9][0-9][0-9][0-9].FIL
 # tests/scripts/holdout/
 # tests/parity/scripts/holdout/
 # tests/parity/seeds/holdout/
+
+# Game data extracted from the original FILE0000.GLB / FILE0001.GLB.
+# NOT redistributable — this repo ships no game content. Regenerate locally
+# with tools/extract_assets.sh against your own copy of Raptor. See README.
+assets/
+
+# Local parity capture artifacts (screen recordings and smoke screenshots
+# produced by parity/visual-diff runs; large and machine-specific).
+*.mp4
+smoke_*.png
+raptor_parity_*.png
