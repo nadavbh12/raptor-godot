@@ -37,8 +37,8 @@ included when `MENU_C_CAPTURE_ROOT=/path/to/reusable/c/captures` is provided.
 
 **This repository contains no game content.** Raptor's art, audio, maps and text
 remain the property of their rights holders and are not redistributed here. The
-`assets/` directory is git-ignored; you generate it locally from your own copy of
-the game.
+`assets/` directory is git-ignored; you generate it from your own copy of the
+game.
 
 You need `FILE0000.GLB` and `FILE0001.GLB` from a legitimate Raptor
 distribution. Either:
@@ -47,25 +47,24 @@ distribution. Either:
 - The GOG/Steam 2010 Edition; the original `.GLB` files are bundled in its
   install directory.
 
-Then, with the [`dosraptor`](https://github.com/nadavbh12/dosraptor) repo checked
-out alongside this one:
+Then:
 
 ```
-tools/extract_assets.sh /path/to/dir/containing/GLBs
+tools/extract_assets.py /path/to/dir/containing/GLBs
 ```
 
-That builds dosraptor's extractor, unpacks both archives into `assets/`, and
-renders `assets/music/*.ogg`. Pass `--skip-music` to skip the (slower) music
-render; set `$DOSRAPTOR` if the repo lives somewhere other than `../dosraptor`.
+That unpacks both archives into `assets/` (~1800 files, a few seconds) and
+renders the music. Extraction is pure Python standard library — no other
+repository, no C toolchain, no third-party packages. The music render is the
+one exception: authentic Apogee OPL2 FM sound comes from libADLMIDI, so that
+step needs `cmake`, a C++ compiler and `ffmpeg`, and builds the synth on first
+run. Pass `--skip-music` to skip it (the game runs, silently).
 
-Requires `cmake`, a C toolchain and `libpng`; music additionally needs `ffmpeg`
-and a C++ toolchain (it builds libADLMIDI for authentic OPL2 FM synthesis).
-
-Two details the script handles that a bare extractor run does not: the extractor
-converts MUS with `mus2mid(rate=140)` — the DMX library default rather than the
-70 Hz Raptor actually uses — so every track would otherwise play at double
-speed; and it writes `FLATSG1_ITM.json` to the output root rather than
-`assets/flats/`. See `tools/render_music.sh` for the music pipeline.
+The extractor is a port of the one in `dosraptor`, and its output is verified
+against it: every image pixel-identical, everything else byte-identical. It
+also fixes a tempo bug in the original — MUS is converted at DMX's default
+rate of 140 rather than the 70 Hz Raptor actually uses
+(`SOURCE/FX.C:1076`), which makes every track play at double speed.
 
 ## Companion repo
 
