@@ -32,4 +32,19 @@
       <HintPath>../.godot/mono/temp/bin/Debug/GodotSharp.dll</HintPath>
     </Reference>
   </ItemGroup>
+  <!--
+    The referenced raptor.dll is NOT rebuilt by `dotnet test`, so edits under
+    src/ stay invisible until raptor.csproj is rebuilt: the run then tests
+    stale game code and reports a pass. Inputs/Outputs make MSBuild skip this
+    target while the assembly is newer than every source file, and run it (so
+    the Error fires) the moment any source is newer or the assembly is absent.
+  -->
+  <ItemGroup>
+    <GameSource Include="../src/**/*.cs" />
+  </ItemGroup>
+  <Target Name="CheckGameAssemblyFreshness" BeforeTargets="CoreCompile"
+          Inputs="@(GameSource)" Outputs="../.godot/mono/temp/bin/Debug/raptor.dll">
+    <Error Text="raptor.dll is missing or older than src/ -- `dotnet test` does not rebuild the game assembly, so this run would test stale code. Run: dotnet build raptor.csproj" />
+  </Target>
+
 </Project>

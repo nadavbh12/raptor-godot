@@ -26,9 +26,14 @@ The game will not run until you have generated `assets/` — see
 ## Test
 
 ```
+dotnet build raptor.csproj         # tests reference the built game assembly
 dotnet test tests/RaptorTests.csproj
 ci/full.sh                         # full local acceptance runner
 ```
+
+`dotnet test` does not rebuild the game assembly, so build it first after
+changing anything under `src/`. The test project refuses to run against a
+stale one rather than reporting a misleading pass.
 
 `ci/full.sh` disables audio for both Godot and the C reference. Menu pixel parity is
 included when `MENU_C_CAPTURE_ROOT=/path/to/reusable/c/captures` is provided.
