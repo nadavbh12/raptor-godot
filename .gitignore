@@ -53,3 +53,9 @@ assets/
 *.mp4
 smoke_*.png
 raptor_parity_*.png
+
+# Local agent/assistant state and generated docs.
+.claude/
+.superpowers/
+AGENTS.md
+docs/codebase-guide.html
