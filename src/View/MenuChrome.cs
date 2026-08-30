@@ -4,7 +4,12 @@ using Raptor.Sim;
 
 namespace Raptor.View;
 
-internal readonly record struct MenuSpriteSpec(string FileName, int X, int Y);
+/// A menu sprite identified by its GLB item name (e.g. "BACKGRND_PIC").
+/// Deliberately NOT the extracted filename: those carry a numeric prefix
+/// giving the item's position in the GLB table, and that position differs
+/// between editions -- the shareware archive has fewer items than the
+/// registered one, so every prefix after the gap shifts. The name is stable.
+internal readonly record struct MenuSpriteSpec(string IName, int X, int Y);
 
 internal static class MenuChrome
 {
@@ -12,45 +17,45 @@ internal static class MenuChrome
     public static readonly Color MenuDark = new(0.02f, 0.02f, 0.02f, 0.86f);
     public static readonly Color MenuMid = new(0.28f, 0.28f, 0.26f, 0.95f);
 
-    public static readonly MenuSpriteSpec Background = new("0030_BACKGRND_PIC.png", 0, 0);
-    public static readonly MenuSpriteSpec RaptorLogo = new("0015_RAPLOG_PIC.png", 21, 1);
-    public static readonly MenuSpriteSpec Copyright = new("0018_COPYRGHT_PIC.png", 118, 196);
-    public static readonly MenuSpriteSpec Hangar = new("0042_HANGER_PIC.png", 0, 0);
+    public static readonly MenuSpriteSpec Background = new("BACKGRND_PIC", 0, 0);
+    public static readonly MenuSpriteSpec RaptorLogo = new("RAPLOG_PIC", 21, 1);
+    public static readonly MenuSpriteSpec Copyright = new("COPYRGHT_PIC", 118, 196);
+    public static readonly MenuSpriteSpec Hangar = new("HANGER_PIC", 0, 0);
     // Position matches HANG_PIC field in HANGAR_SWD (extracted JSON).
-    public static readonly MenuSpriteSpec HangarPilot = new("0043_HANGP_PIC.png", 84, 117);
-    public static readonly MenuSpriteSpec ShipComputer = new("0045_SHIPCOMP_PIC.png", 0, 0);
-    public static readonly MenuSpriteSpec Register = new("0048_REGISTER_PIC.png", 0, 0);
-    public static readonly MenuSpriteSpec HelpComputer = new("0079_HELPCOMP_PIC.png", 104, 58);
-    public static readonly MenuSpriteSpec Pointer = new("0072_POINT_PIC.png", 63, 0);
-    public static readonly MenuSpriteSpec Slider = new("0071_SLIDE_PIC.png", 0, 0);
-    public static readonly MenuSpriteSpec Cursor = new("0014_CURSOR_PIC.png", 0, 0);
-    public static readonly MenuSpriteSpec LightOn = new("0074_LIGHTON_PIC.png", 0, 0);
-    public static readonly MenuSpriteSpec LightOff = new("0075_LIGHTOFF_PIC.png", 0, 0);
-    public static readonly MenuSpriteSpec RegisterPortrait = new("0054_WMALEID_PIC.png", 5, 109);
+    public static readonly MenuSpriteSpec HangarPilot = new("HANGP_PIC", 84, 117);
+    public static readonly MenuSpriteSpec ShipComputer = new("SHIPCOMP_PIC", 0, 0);
+    public static readonly MenuSpriteSpec Register = new("REGISTER_PIC", 0, 0);
+    public static readonly MenuSpriteSpec HelpComputer = new("HELPCOMP_PIC", 104, 58);
+    public static readonly MenuSpriteSpec Pointer = new("POINT_PIC", 63, 0);
+    public static readonly MenuSpriteSpec Slider = new("SLIDE_PIC", 0, 0);
+    public static readonly MenuSpriteSpec Cursor = new("CURSOR_PIC", 0, 0);
+    public static readonly MenuSpriteSpec LightOn = new("LIGHTON_PIC", 0, 0);
+    public static readonly MenuSpriteSpec LightOff = new("LIGHTOFF_PIC", 0, 0);
+    public static readonly MenuSpriteSpec RegisterPortrait = new("WMALEID_PIC", 5, 109);
     // ID-portrait variants (C sid_pics order): 0=WMALE 1=BMALE 2=WFEMALE 3=BFEMALE.
     public static readonly IReadOnlyList<MenuSpriteSpec> RegisterPortraits =
     [
-        new("0054_WMALEID_PIC.png", 5, 109),
-        new("0057_BMALEID_PIC.png", 5, 109),
-        new("0055_WFMALEID_PIC.png", 5, 109),
-        new("0056_BFMALEID_PIC.png", 5, 109),
+        new("WMALEID_PIC", 5, 109),
+        new("BMALEID_PIC", 5, 109),
+        new("WFMALEID_PIC", 5, 109),
+        new("BFMALEID_PIC", 5, 109),
     ];
     public static readonly IReadOnlyList<MenuSpriteSpec> DifficultyPortraits =
     [
-        new("0022_CDIF1_PIC.png", 0, 0),
-        new("0023_CDIF2_PIC.png", 0, 0),
-        new("0024_CDIF3_PIC.png", 0, 0),
-        new("0025_CDIF4_PIC.png", 0, 0),
+        new("CDIF1_PIC", 0, 0),
+        new("CDIF2_PIC", 0, 0),
+        new("CDIF3_PIC", 0, 0),
+        new("CDIF4_PIC", 0, 0),
     ];
 
     public static readonly IReadOnlyList<MenuSpriteSpec> MainVisibleItems =
     [
-        new("0031_MENU1_PIC.png", 95, 89),
-        new("0032_MENU2_PIC.png", 95, 103),
-        new("0034_MENU4_PIC.png", 95, 117),
-        new("0035_MENU5_PIC.png", 95, 131),
-        new("0036_MENU6_PIC.png", 95, 145),
-        new("0038_MENU8_PIC.png", 95, 159),
+        new("MENU1_PIC", 95, 89),
+        new("MENU2_PIC", 95, 103),
+        new("MENU4_PIC", 95, 117),
+        new("MENU5_PIC", 95, 131),
+        new("MENU6_PIC", 95, 145),
+        new("MENU8_PIC", 95, 159),
     ];
 
     public static readonly IReadOnlyList<int> MainSelectableY =
@@ -67,7 +72,7 @@ internal static class MenuChrome
     /// <summary>RETURN-to-game item (MENU7_PIC). Rendered only while a campaign is in
     /// progress (C ingameflag, WINDOWS.C:2026). MAIN_SWD field idx 7 = (95, 173),
     /// directly below QUIT.</summary>
-    public static readonly MenuSpriteSpec ReturnItem = new("0037_MENU7_PIC.png", 95, 173);
+    public static readonly MenuSpriteSpec ReturnItem = new("MENU7_PIC", 95, 173);
 
     public static readonly IReadOnlyList<(string Label, int X, int Y)> HangarTargets =
     [

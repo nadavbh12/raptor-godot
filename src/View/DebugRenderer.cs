@@ -183,13 +183,13 @@ public partial class DebugRenderer : Node2D
         string spritesRoot = ProjectSettings.GlobalizePath("res://assets/sprites");
         _spritesRoot = spritesRoot;
         for (int i = 0; i <= 9; i++)
-            _digitTex[i] = LoadSpriteFromPath(Path.Combine(spritesRoot, $"{i + 1:D4}_N{i}_PIC.png"));
-        _digitTex[10] = LoadSpriteFromPath(Path.Combine(spritesRoot, "0011_N$_PIC.png"));
-        // Player has 7 LPLAYER_PIC frames (0058..0064) for the bank angles
-        // when steering left/right. Index 3 (0061) is neutral (playerbasepic).
+            _digitTex[i] = LoadSprite($"N{i}_PIC");
+        _digitTex[10] = LoadSprite("N$_PIC");
+        // Player has 7 LPLAYER_PIC frames for the bank angles when steering
+        // left/right; index 3 is neutral (playerbasepic). They are consecutive
+        // GLB items sharing one name, so they come back as ordered frames.
         for (int i = 0; i < 7; i++)
-            _playerTex[i] = LoadSpriteFromPath(
-                Path.Combine(spritesRoot, $"{58 + i:D4}_LPLAYER_PIC.png"));
+            _playerTex[i] = LoadSpriteFrame("LPLAYER_PIC", i);
 
         ZIndex = 100;
 
@@ -1008,11 +1008,7 @@ public partial class DebugRenderer : Node2D
             DrawTexture(tex, new Vector2(spec.X, spec.Y), modulate);
     }
 
-    private Texture2D? LoadUiSprite(MenuSpriteSpec spec)
-    {
-        string path = Path.Combine(ProjectSettings.GlobalizePath("res://assets/sprites"), spec.FileName);
-        return LoadSpriteFromPath(path);
-    }
+    private Texture2D? LoadUiSprite(MenuSpriteSpec spec) => LoadSprite(spec.IName);
 
     private void DrawMenuText(string text, int x, int y, int size, Color color)
     {

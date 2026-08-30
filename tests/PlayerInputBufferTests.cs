@@ -135,20 +135,20 @@ public class InputStateTests
     [Fact]
     public void Menu_chrome_uses_extracted_c_menu_assets()
     {
-        Assert.Equal("0030_BACKGRND_PIC.png", MenuChrome.Background.FileName);
-        Assert.Equal("0015_RAPLOG_PIC.png", MenuChrome.RaptorLogo.FileName);
-        Assert.Equal("0018_COPYRGHT_PIC.png", MenuChrome.Copyright.FileName);
-        Assert.Equal("0042_HANGER_PIC.png", MenuChrome.Hangar.FileName);
-        Assert.Equal("0045_SHIPCOMP_PIC.png", MenuChrome.ShipComputer.FileName);
-        Assert.Equal("0048_REGISTER_PIC.png", MenuChrome.Register.FileName);
-        Assert.Equal("0054_WMALEID_PIC.png", MenuChrome.RegisterPortrait.FileName);
+        Assert.Equal("BACKGRND_PIC", MenuChrome.Background.IName);
+        Assert.Equal("RAPLOG_PIC", MenuChrome.RaptorLogo.IName);
+        Assert.Equal("COPYRGHT_PIC", MenuChrome.Copyright.IName);
+        Assert.Equal("HANGER_PIC", MenuChrome.Hangar.IName);
+        Assert.Equal("SHIPCOMP_PIC", MenuChrome.ShipComputer.IName);
+        Assert.Equal("REGISTER_PIC", MenuChrome.Register.IName);
+        Assert.Equal("WMALEID_PIC", MenuChrome.RegisterPortrait.IName);
         Assert.Equal(6, MenuChrome.MainVisibleItems.Count);
-        Assert.Equal("0031_MENU1_PIC.png", MenuChrome.MainVisibleItems[0].FileName);
+        Assert.Equal("MENU1_PIC", MenuChrome.MainVisibleItems[0].IName);
         Assert.Equal(95, MenuChrome.MainVisibleItems[0].X);
         Assert.Equal(89, MenuChrome.MainVisibleItems[0].Y);
-        Assert.Equal("0034_MENU4_PIC.png", MenuChrome.MainVisibleItems[2].FileName);
-        Assert.Equal("0036_MENU6_PIC.png", MenuChrome.MainVisibleItems[4].FileName);
-        Assert.Equal("0038_MENU8_PIC.png", MenuChrome.MainVisibleItems[5].FileName);
+        Assert.Equal("MENU4_PIC", MenuChrome.MainVisibleItems[2].IName);
+        Assert.Equal("MENU6_PIC", MenuChrome.MainVisibleItems[4].IName);
+        Assert.Equal("MENU8_PIC", MenuChrome.MainVisibleItems[5].IName);
     }
 
     [Fact]

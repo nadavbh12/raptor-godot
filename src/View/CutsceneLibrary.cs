@@ -76,8 +76,8 @@ public static class CutsceneLibrary
     {
         var frames = new List<AgxMovieFrame>
         {
-            new(Path.Combine(spritesRoot, "0039_APOGEE_PIC.png"), CutsceneTimings.ApogeeHold),
-            new(Path.Combine(spritesRoot, "0040_CYGNUS_PIC.png"), CutsceneTimings.CygnusHold),
+            new(FindSprite(spritesRoot, "APOGEE_PIC"), CutsceneTimings.ApogeeHold),
+            new(FindSprite(spritesRoot, "CYGNUS_PIC"), CutsceneTimings.CygnusHold),
         };
         return new AgxMovie(frames, 0);
     }
@@ -126,5 +126,26 @@ public static class CutsceneLibrary
             for (int i = 0; i < count; i++)
                 frames.Add(new AgxMovieFrame(
                     Path.Combine(agxRoot, $"{family}_{i:D2}.png"), hold, sfxFor?.Invoke(i)));
+    }
+
+    /// <summary>
+    /// Resolve a sprite by its GLB item name, ignoring the numeric prefix.
+    /// Extracted files are NNNN_&lt;iname&gt;.png where NNNN is the item's position
+    /// in the GLB table; that position shifts between game editions, so only
+    /// the name is a stable identifier. Returns a path that may not exist,
+    /// which the frame loader already treats as a missing texture.
+    /// </summary>
+    private static string FindSprite(string spritesRoot, string iname)
+    {
+        if (Directory.Exists(spritesRoot))
+        {
+            string[] hits = Directory.GetFiles(spritesRoot, $"*_{iname}.png");
+            if (hits.Length > 0)
+            {
+                System.Array.Sort(hits, System.StringComparer.Ordinal);
+                return hits[0];
+            }
+        }
+        return Path.Combine(spritesRoot, $"{iname}.png");
     }
 }
