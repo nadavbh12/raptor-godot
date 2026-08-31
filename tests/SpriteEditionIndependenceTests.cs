@@ -31,8 +31,15 @@ public class SpriteEditionIndependenceTests
         return dir!.FullName;
     }
 
+    /// Scans tests/ as well as src/. The first version of this guard looked
+    /// only at src/, and an index-pinned assertion in CutsceneTests went
+    /// straight through it -- a test that fails on a different edition of the
+    /// game data is the same coupling, just one directory over.
     private static IEnumerable<string> SourceFiles(string root) =>
-        Directory.EnumerateFiles(Path.Combine(root, "src"), "*.cs", SearchOption.AllDirectories);
+        new[] { "src", "tests" }
+            .Select(d => Path.Combine(root, d))
+            .Where(Directory.Exists)
+            .SelectMany(d => Directory.EnumerateFiles(d, "*.cs", SearchOption.AllDirectories));
 
     /// A literal "0030_BACKGRND_PIC.png" anywhere in live code, or a computed
     /// prefix like $"{58 + i:D4}_LPLAYER_PIC.png", reintroduces the coupling.

@@ -294,9 +294,9 @@ public class CutsceneTests
 
         // 2 logos + 153 attract = 155 frames.
         Assert.Equal(155, m.Frames.Count);
-        Assert.EndsWith("0039_APOGEE_PIC.png", m.Frames[0].Path);
+        Assert.EndsWith("APOGEE_PIC.png", m.Frames[0].Path);
         Assert.Equal(CutsceneTimings.ApogeeHold, m.Frames[0].DurationFrames);
-        Assert.EndsWith("0040_CYGNUS_PIC.png", m.Frames[1].Path);
+        Assert.EndsWith("CYGNUS_PIC.png", m.Frames[1].Path);
         Assert.Equal(CutsceneTimings.CygnusHold, m.Frames[1].DurationFrames);
         Assert.EndsWith("CHASE_AGX_00.png", m.Frames[2].Path);   // attract starts after logos
         Assert.EndsWith("EXPLO_AGX_21.png", m.Frames[^1].Path);

@@ -35,8 +35,16 @@ ci/full.sh                         # full local acceptance runner
 changing anything under `src/`. The test project refuses to run against a
 stale one rather than reporting a misleading pass.
 
-`ci/full.sh` disables audio for both Godot and the C reference. Menu pixel parity is
-included when `MENU_C_CAPTURE_ROOT=/path/to/reusable/c/captures` is provided.
+The unit suite and `tools/extract_assets.py` need nothing beyond this repo.
+`ci/full.sh` is different: it is the maintainer's acceptance runner and needs a
+sibling checkout of [`dosraptor`](https://github.com/nadavbh12/dosraptor) (or
+`$DOSRAPTOR`) to build the C reference binary it compares against. Several of
+its gates cannot pass outside that setup — the `death_wave*` parity scenarios
+and the menu-event sweep read input scripts that are not published, and menu
+pixel parity additionally needs `MENU_C_CAPTURE_ROOT=/path/to/c/captures`. It
+also runs `set -e`, so it stops at the first such failure rather than
+reporting the rest. If you are contributing, `dotnet test` is the gate that
+matters; `ci/full.sh` disables audio for both Godot and the C reference.
 
 ## Game data
 

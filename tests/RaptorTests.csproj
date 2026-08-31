@@ -4,6 +4,12 @@
     <IsPackable>false</IsPackable>
     <Nullable>enable</Nullable>
     <!--
+      Same reason raptor.csproj sets this: the test host targets net8.0, and
+      machines with only a newer runtime installed otherwise fail to launch it
+      with "You must install or update .NET to run this application".
+    -->
+    <RollForward>Major</RollForward>
+    <!--
       Exclude .godot scratch dir (mirrors raptor.csproj exclusion).
       Compile includes below pull only the sim source files we need.
     -->
