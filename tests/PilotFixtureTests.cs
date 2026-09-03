@@ -31,18 +31,36 @@ public class PilotFixtureTests
         finally { if (Directory.Exists(dir)) Directory.Delete(dir, true); }
     }
 
-    // Manual fixture author. Run explicitly to (re)generate the committed
-    // load_navigate_and_load fixture. Skipped in normal CI — it writes into the
-    // repo tree. Deterministic (no RNG/timestamp), so re-running is idempotent.
-    [Fact(Skip = "manual: regenerates the committed load fixture; run with --filter")]
-    public void Generate_load_navigate_fixture()
+    // The committed fixture that tools/capture_menu_goldens.sh stages for the
+    // load_navigate_and_load scenario must stay loadable and correct. It used
+    // to be produced by a permanently-skipped [Fact] in this file, which
+    // asserted nothing; regeneration now lives in tools/PilotFixture, and this
+    // verifies the committed bytes instead. If PilotSaveStore's format changes
+    // without the fixture being regenerated, this fails rather than the C
+    // reference silently reading garbage during a golden capture.
+    [Fact]
+    public void Committed_load_fixture_holds_the_three_expected_pilots()
     {
-        string dir = Path.Combine(RepoRoot(), "tests", "parity", "menu_fixtures", "load_navigate_and_load");
-        if (Directory.Exists(dir)) Directory.Delete(dir, true);
-        Directory.CreateDirectory(dir);
-        PilotSaveStore.Save(dir, "ALPHA",   "AL", 0, 1000u);   // CHAR0000
-        PilotSaveStore.Save(dir, "BRAVO",   "BR", 1, 25000u);  // CHAR0001
-        PilotSaveStore.Save(dir, "CHARLIE", "CH", 3, 148500u); // CHAR0002
+        string dir = Path.Combine(RepoRoot(), "tests", "parity", "menu_fixtures",
+                                  "load_navigate_and_load");
+        Assert.True(Directory.Exists(dir), $"missing pilot fixture: {dir}");
+
+        var all = PilotSaveStore.LoadAll(dir);
+        Assert.Equal(3, all.Count);
+
+        (string Name, string Callsign, int IdPic, uint Score)[] expected =
+        {
+            ("ALPHA",   "AL", 0, 1000u),
+            ("BRAVO",   "BR", 1, 25000u),
+            ("CHARLIE", "CH", 3, 148500u),
+        };
+        for (int i = 0; i < expected.Length; i++)
+        {
+            Assert.Equal(expected[i].Name, all[i].Name);
+            Assert.Equal(expected[i].Callsign, all[i].Callsign);
+            Assert.Equal(expected[i].IdPic, all[i].IdPic);
+            Assert.Equal(expected[i].Score, all[i].Score);
+        }
     }
 
     private static string RepoRoot()

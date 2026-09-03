@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Regenerates the committed pilot-save fixture that tools/capture_menu_goldens.sh
+    stages for the load_navigate_and_load scenario. It writes real CHAR####.FIL
+    bytes through PilotSaveStore, so the fixture always matches the save format
+    the game actually implements rather than being hand-crafted binary.
+
+    This lived as a permanently-skipped [Fact] in the test suite, which meant it
+    asserted nothing, reported a skip on every run, and would have written into
+    the repo tree if anyone ran it unfiltered. It is a maintainer tool, so it
+    lives with the other maintainer tools.
+
+    Like tests/RaptorTests.csproj this references the pre-built game assembly
+    rather than using a ProjectReference, which would drag in Godot.NET.Sdk and
+    the editor build pipeline. Build raptor.csproj first.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Raptor.PilotFixture</RootNamespace>
+    <AssemblyName>PilotFixture</AssemblyName>
+    <RollForward>Major</RollForward>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="raptor">
+      <HintPath>../../.godot/mono/temp/bin/Debug/raptor.dll</HintPath>
+    </Reference>
+    <Reference Include="GodotSharp">
+      <HintPath>../../.godot/mono/temp/bin/Debug/GodotSharp.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+</Project>

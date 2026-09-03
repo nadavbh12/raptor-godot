@@ -46,6 +46,10 @@ also runs `set -e`, so it stops at the first such failure rather than
 reporting the rest. If you are contributing, `dotnet test` is the gate that
 matters; `ci/full.sh` disables audio for both Godot and the C reference.
 
+Maintainer tooling lives in `tools/`: `capture_menu_goldens.sh` records the C
+reference's menu goldens, and `PilotFixture` regenerates the pilot-save fixture
+those captures stage (`dotnet run --project tools/PilotFixture`).
+
 ## Game data
 
 **This repository contains no game content.** Raptor's art, audio, maps and text
