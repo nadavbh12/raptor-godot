@@ -8,6 +8,12 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net8.0</TargetFramework>
+    <!--
+      As in raptor.csproj and tests/RaptorTests.csproj: scripts/lint_sim.sh runs
+      this as a CI gate, and without RollForward it cannot start on a machine
+      that has only a newer runtime than 8 installed.
+    -->
+    <RollForward>Major</RollForward>
     <Nullable>enable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <RootNamespace>Raptor.SimLint</RootNamespace>
