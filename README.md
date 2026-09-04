@@ -36,6 +36,9 @@ changing anything under `src/`. The test project refuses to run against a
 stale one rather than reporting a misleading pass.
 
 The unit suite and `tools/extract_assets.py` need nothing beyond this repo.
+(One parity scenario's playthrough script lives in `dosraptor` and is not
+published; the manifest test checks it only when that sibling checkout is
+present, so a plain clone still passes.)
 `ci/full.sh` is different: it is the maintainer's acceptance runner and needs a
 sibling checkout of [`dosraptor`](https://github.com/nadavbh12/dosraptor) (or
 `$DOSRAPTOR`) to build the C reference binary it compares against. Several of

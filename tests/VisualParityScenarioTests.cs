@@ -64,12 +64,25 @@ public class VisualParityScenarioTests
             Assert.NotEmpty(scenario.Detectors);
             Assert.NotEmpty(scenario.Acceptance);
 
+            // Playthrough scripts for parity scenarios live in the companion
+            // dosraptor repo, not here, and are not published. An outside
+            // contributor legitimately cannot obtain them, so only assert the
+            // script exists when that sibling checkout is actually present --
+            // otherwise `dotnet test` fails on something unobtainable. When the
+            // reference repo IS present, a missing script is a real problem and
+            // still fails.
             var scriptPath = PathInRepo(scenario.Playthrough);
             if (!File.Exists(scriptPath))
             {
-                scriptPath = Path.GetFullPath(Path.Combine(RepoRoot(), "..", "dosraptor", scenario.Playthrough));
+                var referenceRepo = Path.GetFullPath(Path.Combine(RepoRoot(), "..", "dosraptor"));
+                if (Directory.Exists(referenceRepo))
+                {
+                    scriptPath = Path.Combine(referenceRepo, scenario.Playthrough);
+                    Assert.True(File.Exists(scriptPath),
+                        $"missing playthrough for {scenario.Id}: {scenario.Playthrough} "
+                        + $"(not in this repo, and absent from {referenceRepo})");
+                }
             }
-            Assert.True(File.Exists(scriptPath), $"missing playthrough for {scenario.Id}: {scenario.Playthrough}");
 
             foreach (var dump in scenario.RequiredDumps)
                 Assert.Contains(dump, KnownDumpCategories);
