@@ -97,6 +97,7 @@ public class CutsceneTests
     // ---- CutsceneLibrary.Landing builds the faithful sequence ----
 
     [Fact]
+    [Trait("RequiresGameData", "true")]
     public void Landing_movie_builds_33_frames_at_rate_10_with_fade()
     {
         var m = CutsceneLibrary.Landing(AgxRoot());
@@ -113,6 +114,7 @@ public class CutsceneTests
     // ---- CutsceneLibrary.Death — migrated invariance guard ----
 
     [Fact]
+    [Trait("RequiresGameData", "true")]
     public void Death_movie_preserves_air_then_ground_frame_sequence()
     {
         var m = CutsceneLibrary.Death(AgxRoot());
@@ -237,6 +239,7 @@ public class CutsceneTests
     }
 
     [Fact]
+    [Trait("RequiresGameData", "true")]
     public void AttractIntro_concatenates_city_side1x2_pilot_side2_explosion()
     {
         var m = CutsceneLibrary.AttractIntro(AgxRoot());
@@ -271,6 +274,7 @@ public class CutsceneTests
     }
 
     [Fact]
+    [Trait("RequiresGameData", "true")]
     public void Victory_movie_concatenates_game1end_then_landing()
     {
         var m = CutsceneLibrary.Victory(AgxRoot());
@@ -288,6 +292,7 @@ public class CutsceneTests
     }
 
     [Fact]
+    [Trait("RequiresGameData", "true")]
     public void StartupIntro_prepends_publisher_logos_to_the_attract()
     {
         var m = CutsceneLibrary.StartupIntro(AgxRoot(), SpritesRoot());

@@ -68,6 +68,11 @@ rather than reporting a misleading pass.
 The unit suite needs nothing beyond this repository and your generated
 `assets/`.
 
+21 tests parse real extracted game data and carry a `RequiresGameData` trait.
+CI cannot run those — the data is not redistributable, so a runner has no
+`assets/` — and filters them with `--filter "RequiresGameData!=true"`. Run
+locally without the filter and you get the full 883.
+
 ## Parity harness
 
 "Ported, not re-imagined" is checked rather than claimed: a harness replays the

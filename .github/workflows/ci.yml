@@ -9,11 +9,22 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
+      - name: Install Python deps
+        # tests/visual_audit.py imports PIL; without it the visual-audit test
+        # fails with a bare non-zero exit that looks nothing like its cause.
+        run: python3 -m pip install --quiet --break-system-packages pillow
       - name: Lint sim discipline
         run: bash scripts/lint_sim.sh
       - name: Build project
         run: dotnet build raptor.csproj
       - name: Run xUnit tests
-        run: dotnet test tests/RaptorTests.csproj --logger "console;verbosity=normal"
+        # Tests tagged RequiresGameData read extracted game assets. Raptor's
+        # data is not redistributable, so assets/ is generated locally from the
+        # user's own copy (see the README) and cannot exist on a CI runner.
+        # Run everything else; locally, omit the filter to cover the lot.
+        run: >
+          dotnet test tests/RaptorTests.csproj
+          --filter "RequiresGameData!=true"
+          --logger "console;verbosity=normal"
       - name: Parity smoke (skipped on CI runners without Godot)
         run: bash tests/run_parity_smoke.sh

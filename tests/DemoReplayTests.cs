@@ -8,6 +8,7 @@ namespace Raptor.Tests;
 public class DemoReplayTests
 {
     [Fact]
+    [Trait("RequiresGameData", "true")]
     public void LoadFile_reads_header_and_records_from_extracted_demo()
     {
         var path = Path.Combine(FindRepoRoot(), "assets", "demos", "DEMO1G1_REC.json");

@@ -16,6 +16,7 @@ public class MazeLevelLoaderTests
     }
 
     [Fact]
+    [Trait("RequiresGameData", "true")]
     public void Loads_Map1_Wave1()
     {
         var level = MazeLevelLoader.LoadFromFile(WavePath(1));
@@ -25,6 +26,7 @@ public class MazeLevelLoaderTests
     }
 
     [Fact]
+    [Trait("RequiresGameData", "true")]
     public void Sprite_count_matches_numsprites_field()
     {
         var level = MazeLevelLoader.LoadFromFile(WavePath(1));
@@ -32,6 +34,7 @@ public class MazeLevelLoaderTests
     }
 
     [Fact]
+    [Trait("RequiresGameData", "true")]
     public void Map1_has_299_sprites()
     {
         var level = MazeLevelLoader.LoadFromFile(WavePath(1));
@@ -39,6 +42,7 @@ public class MazeLevelLoaderTests
     }
 
     [Fact]
+    [Trait("RequiresGameData", "true")]
     public void Spawn_Fields_Are_Populated()
     {
         var level = MazeLevelLoader.LoadFromFile(WavePath(1));
@@ -50,6 +54,7 @@ public class MazeLevelLoaderTests
     }
 
     [Fact]
+    [Trait("RequiresGameData", "true")]
     public void First_sprite_has_expected_values()
     {
         var level = MazeLevelLoader.LoadFromFile(WavePath(1));
@@ -63,6 +68,7 @@ public class MazeLevelLoaderTests
     }
 
     [Fact]
+    [Trait("RequiresGameData", "true")]
     public void Map_name_is_correct()
     {
         var level = MazeLevelLoader.LoadFromFile(WavePath(1));
@@ -70,6 +76,7 @@ public class MazeLevelLoaderTests
     }
 
     [Fact]
+    [Trait("RequiresGameData", "true")]
     public void Map_grid_dimensions_are_correct()
     {
         var level = MazeLevelLoader.LoadFromFile(WavePath(1));

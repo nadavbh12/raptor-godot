@@ -22,6 +22,7 @@ public class AudioTests
     }
 
     [Fact]
+    [Trait("RequiresGameData", "true")]
     public void Parses_raptor_sfx_as_11025hz_16bit_mono_pcm()
     {
         var wav = WavData.Parse(File.ReadAllBytes(Path.Combine(SoundsDir(), "GUN_FX.wav")));
@@ -34,6 +35,7 @@ public class AudioTests
     }
 
     [Fact]
+    [Trait("RequiresGameData", "true")]
     public void Every_mapped_label_resolves_to_an_existing_16bit_wav()
     {
         foreach (var (label, file) in SfxBank.LabelToFile)
@@ -64,6 +66,7 @@ public class AudioTests
     }
 
     [Fact]
+    [Trait("RequiresGameData", "true")]
     public void Every_midi_track_has_a_rendered_ogg()
     {
         string music = Path.Combine(Path.GetDirectoryName(SoundsDir())!, "music");

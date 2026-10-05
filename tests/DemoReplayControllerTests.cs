@@ -16,6 +16,7 @@ public class DemoReplayControllerTests
         DemoReplay.LoadFile(Path.Combine(FindRepoRoot(), "assets", "demos", "DEMO1G1_REC.json"));
 
     [Fact]
+    [Trait("RequiresGameData", "true")]
     public void Schedule_then_ShouldBegin_gates_on_start_frame()
     {
         var c = new DemoReplayController();
@@ -31,6 +32,7 @@ public class DemoReplayControllerTests
     }
 
     [Fact]
+    [Trait("RequiresGameData", "true")]
     public void Begin_activates_resets_cursor_and_returns_replay()
     {
         var replay = LoadDemo();
@@ -46,6 +48,7 @@ public class DemoReplayControllerTests
     }
 
     [Fact]
+    [Trait("RequiresGameData", "true")]
     public void TryNextFrame_yields_records_in_order_then_ends()
     {
         var replay = LoadDemo();

@@ -35,6 +35,7 @@ public class CosmeticAssetPresenceTests
         => Directory.GetFiles(BulletsDir(), $"{family}_*.png").Any();
 
     [Fact]
+    [Trait("RequiresGameData", "true")]
     public void Es_laser_sprites_exist()
     {
         Assert.True(HasFamily("ELASER_BLK"));
@@ -45,6 +46,7 @@ public class CosmeticAssetPresenceTests
     // Task 7a: SMSHIELD_PIC (GLB item 966, name "SMSHIELD_PIC//") is the
     // super-shield HUD counter icon — OBJECTS.C:663-672.
     [Fact]
+    [Trait("RequiresGameData", "true")]
     public void SuperShield_hud_icon_is_extracted()
         => Assert.True(Directory.GetFiles(SpritesDir(), "*_SMSHIELD_PIC.png").Any());
 }
