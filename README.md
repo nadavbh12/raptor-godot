@@ -1,70 +1,40 @@
 # Raptor — Godot 4 + C#
 
-Reimplementation of Raptor: Call Of The Shadows in Godot 4 with C#. Phase 1 goal is single-player faithful gameplay; phase 2 (deferred) adds 2-player and extensions.
-
-## Status
-
-Phase 1 parity implementation is in progress. Current local gates are the unit suite,
-script parity, demo parity, and targeted menu/visual parity checks. The original seed
-sweep gate has been dropped because the captured seed script was not meaningfully
-RNG-sensitive.
+*Raptor: Call Of The Shadows* — the 1994 top-down shooter by Cygnus Studios and
+Apogee — rebuilt in Godot 4 and C#.
 
 ## Build
 
+> Rather not do this by hand? Point your coding agent at this file — this
+> section and the next are everything it needs to get you from a fresh clone to
+> a running game.
+
 Requires:
-- Godot 4.3+ .NET edition
-- .NET 8 SDK
+
+- **Godot 4.6.3, .NET edition.** The version must match `Godot.NET.Sdk` in
+  `raptor.csproj`. A mismatch still builds, then fails at runtime with
+  `.NET: Assemblies not found`, so `ci/full.sh` checks it up front.
+- **.NET 8 SDK or newer.** The projects target `net8.0` with
+  `RollForward=Major`, so a newer runtime alone is fine.
 
 ```
 dotnet build raptor.csproj
 godot --path .
 ```
 
-The game will not run until you have generated `assets/` — see
-[Game data](#game-data) below.
-
-## Test
-
-```
-dotnet build raptor.csproj         # tests reference the built game assembly
-dotnet test tests/RaptorTests.csproj
-ci/full.sh                         # full local acceptance runner
-```
-
-`dotnet test` does not rebuild the game assembly, so build it first after
-changing anything under `src/`. The test project refuses to run against a
-stale one rather than reporting a misleading pass.
-
-The unit suite and `tools/extract_assets.py` need nothing beyond this repo.
-(One parity scenario's playthrough script lives in `dosraptor` and is not
-published; the manifest test checks it only when that sibling checkout is
-present, so a plain clone still passes.)
-`ci/full.sh` is different: it is the maintainer's acceptance runner and needs a
-sibling checkout of [`dosraptor`](https://github.com/nadavbh12/dosraptor) (or
-`$DOSRAPTOR`) to build the C reference binary it compares against. Several of
-its gates cannot pass outside that setup — the `death_wave*` parity scenarios
-and the menu-event sweep read input scripts that are not published, and menu
-pixel parity additionally needs `MENU_C_CAPTURE_ROOT=/path/to/c/captures`. It
-also runs `set -e`, so it stops at the first such failure rather than
-reporting the rest. If you are contributing, `dotnet test` is the gate that
-matters; `ci/full.sh` disables audio for both Godot and the C reference.
-
-Maintainer tooling lives in `tools/`: `capture_menu_goldens.sh` records the C
-reference's menu goldens, and `PilotFixture` regenerates the pilot-save fixture
-those captures stage (`dotnet run --project tools/PilotFixture`).
+The game needs `assets/`, which you generate yourself — see [Game data](#game-data).
 
 ## Game data
 
 **This repository contains no game content.** Raptor's art, audio, maps and text
-remain the property of their rights holders and are not redistributed here. The
-`assets/` directory is git-ignored; you generate it from your own copy of the
-game.
+remain the property of their rights holders and are not redistributed here.
+`assets/` is git-ignored and built from your own copy of the game.
 
 You need `FILE0000.GLB` and `FILE0001.GLB` from a legitimate Raptor
-distribution. Either:
-- The freely-redistributable shareware (Internet Archive, search
-  "Raptor Call of the Shadows shareware").
-- The GOG/Steam 2010 Edition; the original `.GLB` files are bundled in its
+distribution, either:
+
+- the freely-redistributable shareware release (on the Internet Archive), or
+- the GOG/Steam *2010 Edition*, which bundles the original `.GLB` files in its
   install directory.
 
 Then:
@@ -73,27 +43,51 @@ Then:
 tools/extract_assets.py /path/to/dir/containing/GLBs
 ```
 
-That unpacks both archives into `assets/` (~1800 files, a few seconds) and
-renders the music. Extraction is pure Python standard library — no other
-repository, no C toolchain, no third-party packages. The music render is the
-one exception: authentic Apogee OPL2 FM sound comes from libADLMIDI, so that
-step needs `cmake`, a C++ compiler and `ffmpeg`, and builds the synth on first
-run. Pass `--skip-music` to skip it (the game runs, silently).
+This unpacks both archives into `assets/` — around 1850 files in a few seconds —
+and renders the soundtrack. Extraction is pure Python standard library: no
+other repository, no C toolchain, no third-party packages. The music render is
+the one exception, since authentic OPL2 FM sound comes from libADLMIDI, which it
+builds on first run; that step needs `cmake`, a C++ compiler and `ffmpeg`. Pass
+`--skip-music` to skip it and the game runs silently.
 
-The extractor is a port of the one in `dosraptor`, and its output is verified
-against it: every image pixel-identical, everything else byte-identical. It
-also fixes a tempo bug in the original — MUS is converted at DMX's default
-rate of 140 rather than the 70 Hz Raptor actually uses
-(`SOURCE/FX.C:1076`), which makes every track play at double speed.
+Either edition works. Sprites are addressed by their archive item name, not by
+index, because the shareware and registered archives number their contents
+differently.
 
-## Companion repo
+## Test
 
-The original C codebase lives at https://github.com/nadavbh12/dosraptor. It serves as the parity ground-truth generator and the asset extractor.
+```
+dotnet build raptor.csproj         # tests reference the built game assembly
+dotnet test tests/RaptorTests.csproj
+```
+
+`dotnet test` does not rebuild the game assembly, so build first after changing
+anything under `src/`; the test project refuses to run against a stale one
+rather than reporting a misleading pass.
+
+The unit suite needs nothing beyond this repository and your generated
+`assets/`.
+
+## Parity harness
+
+"Ported, not re-imagined" is checked rather than claimed: a harness replays the
+same input through this port and the original binary, then diffs per-frame
+object state. That is what keeps the flight paths and weapon timings honest.
+
+Running it needs the original C source as a sibling checkout
+([`dosraptor`](https://github.com/nadavbh12/dosraptor), or `$DOSRAPTOR`) so
+`ci/full.sh` can build the reference binary. A few of its gates also read
+recorded inputs and captured frames that are not published, so `ci/full.sh`
+will not go fully green outside a maintainer setup — `dotnet test` is the gate
+for contributions.
+
+`tools/capture_menu_goldens.sh` records menu goldens from the C build, and
+`dotnet run --project tools/PilotFixture` regenerates the pilot-save fixture
+they stage.
 
 ## License
 
-GPL v2 or later (inherited from the upstream Raptor source), see
-[LICENSE](LICENSE).
+GPL v2 or later, inherited from the upstream Raptor source — see [LICENSE](LICENSE).
 
-This covers the source code in this repository only. The original game data
-you supply is not covered by it and is not redistributed here.
+This covers the source code in this repository only. The game data you supply is
+not covered by it and is not redistributed here.
